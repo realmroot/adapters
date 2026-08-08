@@ -46,13 +46,30 @@ adapter 越来越少。
 Agent 能以自己的稳定身份直接进入各种平台。详见
 [原生 Agent 协议愿景](docs/native-agent-protocol.md)。
 
-## 首批平台
+## Provider 全景规划
 
-| 平台 | 身份模型 | 平台中的效果 | 状态 |
-| --- | --- | --- | --- |
-| GitHub | 代理应用身份 | GitHub 记录 Realmroot GitHub App，Issue 正文显示来源 Agent 角标 | Alpha |
-| Cloudflare | 原生 service principal | 每个 Agent 对应独立 account-owned token，并出现在 Cloudflare 审计日志中 | 计划中 |
-| Linear | 原生 Agent 身份 | Agent 以自己的名称和头像出现在 Linear，并参与 Agent workflow | 计划中 |
+路线图覆盖下面的完整 Provider 组合。`提案`表示平台已经进入正式评估队列，
+并不代表目标身份模型已经通过 capability review。
+
+| 平台 | 目标身份模型 | 期望在平台中的效果 | 波次 | 状态 |
+| --- | --- | --- | ---: | --- |
+| GitHub | 代理应用身份 | 共享 GitHub App actor，并注入可信 Agent 角标 | 1 | Alpha |
+| Linear | 原生 Agent 身份 | App user、Agent 名称/头像、委托与 Agent Session | 1 | 设计中 |
+| Cloudflare | 原生 service principal | 独立 account-owned token actor 出现在审计日志中 | 1 | 设计中 |
+| GitLab | 原生 service principal | 独立 service account 出现在 group、project 与审计记录中 | 2 | 提案 |
+| Bitbucket | 原生 service principal | repository、project 或 workspace access-token actor | 2 | 提案 |
+| Vercel | 原生 service principal | 独立 integration 身份，并可关联平台侧审计 | 2 | 提案 |
+| Slack | 代理应用身份 | conversation 与平台审计中的 app/bot actor | 3 | 提案 |
+| Microsoft Teams | 代理应用身份 | Teams conversation 中的 bot/application actor | 3 | 提案 |
+| Jira | 代理应用身份 | issue、comment 与 workflow 操作中的 app actor | 3 | 提案 |
+| Confluence | 代理应用身份 | page、comment 与内容操作中的 app actor | 3 | 提案 |
+| Notion | 代理 integration 身份 | page、database 与 comment 中的 integration actor | 3 | 提案 |
+| Asana | 代理应用身份 | task、project 与 comment 中的 application/delegated actor | 3 | 提案 |
+| AWS | 原生 service principal | IAM role session 与 CloudTrail actor 关联到 Agent | 4 | 提案 |
+| Microsoft Entra | 原生 service principal | tenant 审计记录中的 workload identity/service principal | 4 | 提案 |
+| Google Cloud | 原生 service principal | Cloud Audit Logs 中的 service account 或 federated workload principal | 4 | 提案 |
+
+各波次目标、验收要求以及提案进入实现阶段的规则见[路线图](ROADMAP.md)。
 
 ## 身份能力等级
 

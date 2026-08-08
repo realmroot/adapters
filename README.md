@@ -50,16 +50,32 @@ We invite API and platform builders to implement this protocol profile and help
 evolve it in the open. Read [The native Agent protocol vision](docs/native-agent-protocol.md)
 for the platform contract, adoption path, and current standards foundation.
 
-## Initial providers
+## Provider portfolio
 
-| Provider | Identity model | Provider-visible result | Status |
-| --- | --- | --- | --- |
-| GitHub | Brokered application actor | GitHub records the Realmroot GitHub App; issue bodies identify the originating Agent | Alpha |
-| Cloudflare | Native service principal | A dedicated account-owned token identifies the Agent in Cloudflare audit logs | Planned |
-| Linear | Native Agent actor | The Agent appears in Linear with its name and avatar and can participate in Agent workflows | Planned |
+The roadmap covers the full provider portfolio below. `Proposal` means the
+provider is in the formal assessment queue; it does not claim that its target
+identity model has already passed a capability review.
 
-See [the roadmap](ROADMAP.md) for delivery phases and future provider
-candidates.
+| Provider | Target identity model | Target provider-visible result | Wave | Status |
+| --- | --- | --- | ---: | --- |
+| GitHub | Brokered application actor | Shared GitHub App actor with trusted Agent attribution | 1 | Alpha |
+| Linear | Native Agent actor | App user, Agent name/avatar, delegation, and Agent Sessions | 1 | Design |
+| Cloudflare | Native service principal | Dedicated account-owned token actor in audit logs | 1 | Design |
+| GitLab | Native service principal | Dedicated service account visible in groups, projects, and audit records | 2 | Proposal |
+| Bitbucket | Native service principal | Repository, project, or workspace access-token actor | 2 | Proposal |
+| Vercel | Native service principal | Dedicated integration identity with provider-side audit correlation | 2 | Proposal |
+| Slack | Brokered application actor | App/bot actor in conversations and platform audit surfaces | 3 | Proposal |
+| Microsoft Teams | Brokered application actor | Bot/application actor in Teams conversations | 3 | Proposal |
+| Jira | Brokered application actor | App actor on issues, comments, and workflow operations | 3 | Proposal |
+| Confluence | Brokered application actor | App actor on pages, comments, and content operations | 3 | Proposal |
+| Notion | Brokered integration actor | Integration actor on pages, databases, and comments | 3 | Proposal |
+| Asana | Brokered application actor | Application/delegated actor on tasks, projects, and comments | 3 | Proposal |
+| AWS | Native service principal | IAM role session and CloudTrail actor correlated to the Agent | 4 | Proposal |
+| Microsoft Entra | Native service principal | Workload identity/service principal in tenant audit records | 4 | Proposal |
+| Google Cloud | Native service principal | Service account or federated workload principal in Cloud Audit Logs | 4 | Proposal |
+
+See [the roadmap](ROADMAP.md) for wave goals, acceptance requirements, and the
+rules for moving a proposal into implementation.
 
 ## Identity levels
 
