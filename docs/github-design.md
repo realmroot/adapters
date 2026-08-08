@@ -1,20 +1,57 @@
 # GitHub adapter design
 
-The GitHub adapter is a protocol and credential shim, not a second GitHub API.
-It exposes a deliberately small, generated-compatible slice of GitHub's REST
-shape and forwards accepted operations to GitHub.
+The GitHub adapter is a protocol, credential, and attribution shim, not a
+second GitHub API. It exposes a deliberately small slice of GitHub's REST shape
+and forwards accepted operations to GitHub.
 
-## Resource boundary
+## Resource and connection boundaries
 
-One GitHub App installation is one Realmroot native Resource Server:
+The Worker exposes one GitHub Resource Server:
 
 ```text
-http://127.0.0.1:4103/github/installations/{installationId}
+http://127.0.0.1:4103/github
 ```
 
-The installation identifier is therefore part of the OAuth audience. A token
-issued for one installation cannot be replayed against another installation.
-Repository-level authorization is enforced again before each forwarded call.
+One Realmroot owner has at most one Connection for that Resource Server. The
+Connection may contain any number of GitHub App installations. Installations
+are concrete RFC 9396-style `github_installation` authorization details, not
+URLs supplied by the caller:
+
+```json
+{
+  "type": "github_installation",
+  "installation_id": "152097080",
+  "account_login": "saltbo",
+  "target_type": "User"
+}
+```
+
+Realmroot signs the Connection ID and approved authorization details into each
+short-lived token. The Worker resolves repositories against only those signed
+installation contexts. A caller cannot select or substitute an installation
+through a path parameter.
+
+## Account connection
+
+The Resource Server advertises the draft broker endpoints in its RFC 9728
+metadata. Realmroot sends a signed, ten-minute request object containing the
+owner, canonical Connection ID, callback URI, PKCE challenge, requested scopes,
+and authorization-detail templates.
+
+The Worker then:
+
+1. authorizes the user with the GitHub App's OAuth client;
+2. verifies the GitHub user and App installations visible to that user;
+3. sends users with no installation through the GitHub App setup URL and
+   verifies the installation after returning;
+4. binds all verified installations to the one Connection in D1; and
+5. returns a one-use authorization code to Realmroot's callback.
+
+The code exchange is PKCE-bound. Realmroot stores the Connection, subject hint,
+scopes, and concrete installation contexts. GitHub user tokens and installation
+credentials remain inside the Worker boundary. Reconnecting the same GitHub
+subject updates the existing Connection; a different subject is rejected until
+the current Connection is revoked.
 
 ## Runtime ownership
 
@@ -23,21 +60,23 @@ DPoP validation, scope enforcement, idempotency, attribution, Problem Details,
 request correlation, and audit records.
 
 The runtime is an independent Cloudflare Worker. It reads provider credentials
-from Worker secrets and owns a dedicated D1 database for DPoP replay claims,
-idempotent response records, and audit events. Production code uses Web Crypto,
-standard Fetch APIs, and Cloudflare bindings; it has no Node server or
-filesystem dependency.
+from Worker secrets and owns a dedicated D1 database for account bindings,
+installation contexts, one-time broker intents, DPoP replay claims, idempotent
+response records, and audit events. Production code uses Web Crypto, Fetch, and
+Cloudflare bindings; it has no Node server or filesystem dependency.
 
-The GitHub provider owns GitHub App JWTs, installation-token downscoping,
-installation and repository discovery, GitHub permission mapping, and outbound
-HTTP translation. It does not expose provider credentials or SDK types.
+The GitHub provider owns GitHub App OAuth, App JWTs, installation-token
+downscoping, installation and repository discovery, permission mapping, and
+outbound HTTP translation. It accepts both GitHub-downloaded PKCS#1 private
+keys and unencrypted PKCS#8 keys. Provider credentials and SDK types are never
+exposed across either protocol boundary.
 
 ## Initial operation slice
 
 | Adapter operation | GitHub operation | Realmroot scope |
 | --- | --- | --- |
-| `GET /repositories` | `GET /installation/repositories` | `github:metadata:read` |
-| `POST /repos/{owner}/{repo}/issues` | Same path | `github:issues:write` |
+| `GET /repositories` | `GET /installation/repositories` for every token-bound installation | `github:metadata:read` |
+| `POST /repos/{owner}/{repo}/issues` | Same path after resolving its bound installation | `github:issues:write` |
 
 The public OpenAPI document contains only this allowlist. Adding an operation
 extends the allowlist and permission mapping; it does not add a second business
@@ -61,5 +100,5 @@ This yields an explicit chain:
 Realmroot Agent -> GitHub App installation actor -> GitHub resource
 ```
 
-The footer is display attribution, not a claim that GitHub natively authenticated
-the Realmroot Agent.
+The footer is display attribution, not a claim that GitHub natively
+authenticated the Realmroot Agent.

@@ -1,5 +1,7 @@
 import { env, SELF } from 'cloudflare:test'
 import { describe, expect, it, vi } from 'vitest'
+import { sha256Base64Url } from '../../src/core/digest.js'
+import { D1GitHubConnections } from '../../src/storage/d1-github-connections.js'
 import { D1RuntimeState } from '../../src/storage/d1-runtime-state.js'
 
 describe('Cloudflare Worker runtime', () => {
@@ -31,5 +33,39 @@ describe('Cloudflare Worker runtime', () => {
       .bind('request-1')
       .first<{ event_json: string }>()
     expect(JSON.parse(audit?.event_json ?? '{}')).toMatchObject({ event: 'provider.operation' })
+  })
+
+  it('stores one GitHub connection with multiple installation contexts and consumes PKCE once', async () => {
+    const connections = new D1GitHubConnections(env.DB)
+    const verifier = 'realmroot-pkce-verifier-with-sufficient-entropy'
+    const request = {
+      sub: 'user-1',
+      jti: 'request-1',
+      state: 'realmroot-state',
+      connection_id: 'connection-1',
+      expected_external_subject: null,
+      owner_type: 'user' as const,
+      callback_uri: 'https://realmroot.example/api/account-connections/oauth/callback',
+      code_challenge: await sha256Base64Url(verifier),
+      code_challenge_method: 'S256' as const,
+      scope: 'github:metadata:read github:issues:write',
+      authorization_details: [{ type: 'github_installation' }],
+    }
+    await connections.create(request, 'provider-state')
+    const intent = await connections.findByProviderState('provider-state', 'pending_oauth')
+    await connections.complete(
+      intent,
+      { id: 7, login: 'controller', name: 'Controller' },
+      [
+        { id: 101, accountLogin: 'realmroot', targetType: 'Organization' },
+        { id: 102, accountLogin: 'controller', targetType: 'User' },
+      ],
+      'connection-code',
+    )
+    const result = await connections.exchange('connection-code', verifier)
+    expect(result.intent.connectionId).toBe('connection-1')
+    expect(result.contexts.map((context) => context.installationId)).toEqual([101, 102])
+    await expect(connections.activeInstallationIds('connection-1')).resolves.toEqual([101, 102])
+    await expect(connections.exchange('connection-code', verifier)).rejects.toThrow('Connection code is invalid')
   })
 })

@@ -152,7 +152,7 @@ migrations/     D1 schema
 
 The runtime is a Cloudflare Worker, not a Node server. Node 24 and pnpm 10 are
 development tools only. Local operation also needs a running Realmroot
-deployment and a GitHub App installation.
+deployment and a GitHub App with its OAuth callback and setup callback enabled.
 
 ```bash
 pnpm install
@@ -161,37 +161,46 @@ pnpm exec wrangler d1 migrations apply realmroot-adapters-db --local
 pnpm dev -- --port 4103
 ```
 
-After configuring the GitHub App credentials, register installation `42` as a
-native Resource Server in Realmroot:
+After configuring the GitHub App credentials, register one native Resource
+Server for GitHub. Installations are account-connection contexts; they are not
+separate Resource Servers and never appear in the audience URL:
 
 ```json
 {
-  "identifier": "github-installation-42",
-  "resourceUrl": "http://127.0.0.1:4103/github/installations/42",
+  "identifier": "github",
+  "resourceUrl": "http://127.0.0.1:4103/github",
   "ownerOrganizationId": "org_platform",
+  "authorizationDetails": [{ "type": "github_installation" }],
   "enabled": true,
   "availableToAgents": true,
   "visibility": "public"
 }
 ```
 
-Set `GITHUB_APP_ID` and `GITHUB_PRIVATE_KEY` in the ignored `.dev.vars` file.
-The private key must be unencrypted PKCS#8 PEM. A GitHub-downloaded PKCS#1 key
-can be converted locally with:
+Set `GITHUB_APP_ID`, `GITHUB_PRIVATE_KEY`, `GITHUB_CLIENT_ID`, and
+`GITHUB_CLIENT_SECRET` in the ignored `.dev.vars` file. Both GitHub-downloaded
+PKCS#1 keys and unencrypted PKCS#8 PEM keys are accepted.
 
-```bash
-openssl pkcs8 -topk8 -nocrypt -in github-app.private-key.pem -out github-app.pkcs8.pem
+Configure the GitHub App callbacks as:
+
+```text
+Callback URL: http://127.0.0.1:4103/github/oauth/callback
+Setup URL:    http://127.0.0.1:4103/github/account-connection-installations
 ```
 
 For deployment, store the key without putting it in source or Wrangler vars:
 
 ```bash
 pnpm exec wrangler secret put GITHUB_APP_ID
-pnpm exec wrangler secret put GITHUB_PRIVATE_KEY < github-app.pkcs8.pem
+pnpm exec wrangler secret put GITHUB_PRIVATE_KEY < github-app.private-key.pem
+pnpm exec wrangler secret put GITHUB_CLIENT_ID
+pnpm exec wrangler secret put GITHUB_CLIENT_SECRET
 ```
 
-The first slice needs repository Metadata read and Issues read/write. Install
-the App only on repositories that should form this Resource boundary.
+The first slice needs repository Metadata read and Issues read/write. Each
+Realmroot account has at most one GitHub Connection, and that Connection may
+contain multiple GitHub App installations. Install the App only on repositories
+that should be available through that account connection.
 
 The current operations are intentionally narrow:
 

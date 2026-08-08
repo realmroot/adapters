@@ -15,6 +15,8 @@ export type AgentPrincipal = Readonly<{
   issuer: string
   actor: Readonly<{ issuer: string; subject: string; profile: 'ai_agent' }>
   scopes: ReadonlySet<string>
+  connectionId?: string | null
+  authorizationDetails?: readonly Readonly<Record<string, unknown>>[]
 }>
 
 export type RealmrootAuthenticator = {
@@ -70,9 +72,19 @@ export function createRealmrootAuthenticator(input: {
         scopes: new Set(
           typeof access.payload.scope === 'string' ? access.payload.scope.split(/\s+/).filter(Boolean) : [],
         ),
+        connectionId: typeof access.payload.connection_id === 'string' ? access.payload.connection_id : null,
+        authorizationDetails: authorizationDetails(access.payload.authorization_details),
       })
     },
   }
+}
+
+function authorizationDetails(value: unknown): readonly Readonly<Record<string, unknown>>[] {
+  if (value === undefined) return []
+  if (!Array.isArray(value) || value.some((item) => !item || typeof item !== 'object' || Array.isArray(item))) {
+    throw unauthorized('The Realmroot access token authorization details are invalid.')
+  }
+  return value as Readonly<Record<string, unknown>>[]
 }
 
 async function verifyProof(request: Request, token: string, replayStore: DpopReplayStore, now: () => number) {

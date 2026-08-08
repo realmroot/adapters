@@ -3,6 +3,7 @@ import { createApp } from '../src/app.js'
 import type { AppConfig } from '../src/config.js'
 import type { IdempotencyStore } from '../src/core/idempotency.js'
 import { adapterApiVersion } from '../src/providers/github/openapi.js'
+import type { GitHubConnectionStore } from '../src/storage/d1-github-connections.js'
 
 const config: AppConfig = {
   origin: 'http://127.0.0.1:4103',
@@ -17,20 +18,23 @@ const principal = {
   issuer: config.realmrootIssuer,
   actor: { issuer: config.realmrootIssuer, subject: 'agt_1', profile: 'ai_agent' as const },
   scopes: new Set(['github:metadata:read', 'github:issues:write']),
+  connectionId: 'connection-1',
+  authorizationDetails: [],
 }
 
 describe('GitHub adapter contract', () => {
-  it('[spec: github-adapter/github-contract] publishes install-specific metadata and OpenAPI discovery', async () => {
+  it('[spec: github-adapter/github-contract] publishes one GitHub Resource Server and broker metadata', async () => {
     const app = testApp()
-    const metadata = await app.request('/.well-known/oauth-protected-resource/github/installations/42')
+    const metadata = await app.request('/.well-known/oauth-protected-resource/github')
     expect(await metadata.json()).toMatchObject({
-      resource: 'http://127.0.0.1:4103/github/installations/42',
+      resource: 'http://127.0.0.1:4103/github',
       authorization_servers: [config.realmrootIssuer],
       scopes_supported: ['github:metadata:read', 'github:issues:write'],
+      account_connection_modes_supported: ['brokered'],
     })
-    const resource = await app.request('/github/installations/42')
+    const resource = await app.request('/github')
     expect(resource.headers.get('link')).toContain('rel="service-desc"')
-    const openapi = await app.request('/github/installations/42/openapi.json')
+    const openapi = await app.request('/github/openapi.json')
     const contract = (await openapi.json()) as { paths: Record<string, unknown> }
     expect(contract.paths).toHaveProperty('/repositories')
     expect(contract.paths).toHaveProperty('/repos/{owner}/{repository}/issues')
@@ -46,9 +50,27 @@ describe('GitHub adapter contract', () => {
       htmlUrl: 'https://github.test/issues/2',
     }))
     const audit = vi.fn(async () => {})
-    const app = testApp({ github: { listRepositories: vi.fn(), createIssue }, audit })
+    const app = testApp({
+      github: {
+        listRepositories: vi.fn(async () => ({
+          items: [
+            {
+              id: 1,
+              name: 'example',
+              fullName: 'realmroot/example',
+              private: false,
+              htmlUrl: 'https://github.test/realmroot/example',
+              owner: 'realmroot',
+            },
+          ],
+          total: 1,
+        })),
+        createIssue,
+      },
+      audit,
+    })
     const request = () =>
-      app.request('/github/installations/42/repos/realmroot/example/issues', {
+      app.request('/github/repos/realmroot/example/issues', {
         method: 'POST',
         headers: { 'API-Version': adapterApiVersion, 'Idempotency-Key': 'issue-1', 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: 'Adapter test', body: 'Original' }),
@@ -65,7 +87,7 @@ describe('GitHub adapter contract', () => {
   it('[spec: github-adapter/github-reserved-attribution] rejects forged attribution before GitHub', async () => {
     const createIssue = vi.fn()
     const app = testApp({ github: { listRepositories: vi.fn(), createIssue } })
-    const response = await app.request('/github/installations/42/repos/realmroot/example/issues', {
+    const response = await app.request('/github/repos/realmroot/example/issues', {
       method: 'POST',
       headers: { 'API-Version': adapterApiVersion, 'Idempotency-Key': 'issue-2', 'Content-Type': 'application/json' },
       body: JSON.stringify({ title: 'Forged', body: '<!-- realmroot-agent: fake -->' }),
@@ -88,13 +110,21 @@ describe('GitHub adapter contract', () => {
               htmlUrl: 'https://github.test/realmroot/one',
               owner: 'realmroot',
             },
+            {
+              id: 2,
+              name: 'two',
+              fullName: 'realmroot/two',
+              private: false,
+              htmlUrl: 'https://github.test/realmroot/two',
+              owner: 'realmroot',
+            },
           ],
           total: 2,
         })),
         createIssue: vi.fn(),
       },
     })
-    const response = await app.request('/github/installations/42/repositories?page=1&perPage=1', {
+    const response = await app.request('/github/repositories?page=1&perPage=1', {
       headers: { 'API-Version': adapterApiVersion },
     })
     expect(response.status).toBe(200)
@@ -103,26 +133,26 @@ describe('GitHub adapter contract', () => {
   })
 
   it('returns correlated Problem Details for version, authorization, route, and input failures', async () => {
-    const missingVersion = await testApp().request('/github/installations/42/repositories')
-    expect(missingVersion.status).toBe(400)
-    expect(missingVersion.headers.get('request-id')).toBeTruthy()
+    const defaultVersion = await testApp().request('/github/repositories')
+    expect(defaultVersion.status).toBe(200)
+    expect(defaultVersion.headers.get('request-id')).toBeTruthy()
+    const unsupportedVersion = await testApp().request('/github/repositories', {
+      headers: { 'API-Version': '2026-01-01' },
+    })
+    expect(unsupportedVersion.status).toBe(400)
 
     const denied = testApp({
       authenticator: { authenticate: vi.fn(async () => ({ ...principal, scopes: new Set<string>() })) },
     })
     expect(
       (
-        await denied.request('/github/installations/42/repositories', {
+        await denied.request('/github/repositories', {
           headers: { 'API-Version': adapterApiVersion },
         })
       ).status,
     ).toBe(403)
     expect((await testApp().request('/missing')).status).toBe(404)
-    expect((await testApp().request('/.well-known/oauth-protected-resource/github/installations/nope')).status).toBe(
-      400,
-    )
-
-    const malformed = await testApp().request('/github/installations/42/repos/realmroot/example/issues', {
+    const malformed = await testApp().request('/github/repos/realmroot/example/issues', {
       method: 'POST',
       headers: {
         'API-Version': adapterApiVersion,
@@ -145,13 +175,14 @@ describe('GitHub adapter contract', () => {
           identityUrl: 'https://id.test/agentinfo?sub=agt_1',
         })),
       },
+      githubConnections: fakeGitHubConnections(),
     })
-    const list = await app.request('/github/installations/42/repositories', {
+    const list = await app.request('/github/repositories', {
       headers: { 'API-Version': adapterApiVersion },
     })
     expect(list.status).toBe(503)
 
-    const create = await app.request('/github/installations/42/repos/realmroot/example/issues', {
+    const create = await app.request('/github/repos/realmroot/example/issues', {
       method: 'POST',
       headers: {
         'API-Version': adapterApiVersion,
@@ -179,8 +210,20 @@ function testApp(overrides: Partial<Parameters<typeof createApp>[1]> = {}) {
       createIssue: vi.fn(),
     },
     idempotency: new FakeIdempotencyStore(),
+    githubConnections: fakeGitHubConnections(),
     ...overrides,
   })
+}
+
+function fakeGitHubConnections(): GitHubConnectionStore {
+  return {
+    create: vi.fn(async () => {}),
+    findByProviderState: vi.fn(),
+    rotateProviderState: vi.fn(async () => {}),
+    complete: vi.fn(async () => {}),
+    exchange: vi.fn(),
+    activeInstallationIds: vi.fn(async () => [42]),
+  }
 }
 
 class FakeIdempotencyStore implements IdempotencyStore {

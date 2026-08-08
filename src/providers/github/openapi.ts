@@ -1,13 +1,13 @@
 export const adapterApiVersion = '2026-08-07'
 export const githubScopes = ['github:metadata:read', 'github:issues:write'] as const
 
-export function githubOpenApi(input: { resource: string; realmrootIssuer: string; installationId: number }) {
+export function githubOpenApi(input: { resource: string; realmrootIssuer: string }) {
   const headers = {
     ApiVersion: {
       name: 'API-Version',
       in: 'header',
-      required: true,
-      schema: { type: 'string', const: adapterApiVersion },
+      required: false,
+      schema: { type: 'string', const: adapterApiVersion, default: adapterApiVersion },
     },
     RequestId: {
       description: 'Request correlation identifier.',
@@ -55,7 +55,7 @@ export function githubOpenApi(input: { resource: string; realmrootIssuer: string
           ],
           security: [{ realmrootOidc: ['github:metadata:read'] }],
           responses: {
-            '200': { description: `Repositories selected for installation ${input.installationId}.` },
+            '200': { description: 'Repositories selected across the connected GitHub App installations.' },
             '401': { description: 'Authentication failed.' },
             '403': { description: 'Authorization failed.' },
           },

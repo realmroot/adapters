@@ -51,6 +51,17 @@ describe('GitHub provider HTTP boundary', () => {
       body: { title: 'Hello', body: 'Body' },
     })
   })
+
+  it('accepts the PKCS#1 private keys downloaded from GitHub App settings', async () => {
+    const privateKey = generateKeyPairSync('rsa', { modulusLength: 2048 })
+      .privateKey.export({ type: 'pkcs1', format: 'pem' })
+      .toString()
+    const provider = createGitHubProvider({ appId: '123', privateKey, apiOrigin, now: () => 1_800_000_000_000 })
+
+    await expect(provider.listRepositories(42, 1, 30)).resolves.toMatchObject({
+      items: [{ id: 99, fullName: 'realmroot/example' }],
+    })
+  })
 })
 
 async function route(request: IncomingMessage, response: ServerResponse, seen: SeenRequest[]) {

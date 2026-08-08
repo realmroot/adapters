@@ -35,3 +35,14 @@ export interface GitHubProvider {
   }>
   createIssue(input: CreateIssueInput): Promise<GitHubIssue>
 }
+
+export type GitHubUser = Readonly<{ id: number; login: string; name: string | null }>
+export type GitHubInstallation = Readonly<{ id: number; accountLogin: string; targetType: string }>
+
+export interface GitHubConnectionProvider {
+  authorizationUrl(state: string): string
+  exchangeUserCode(code: string): Promise<string>
+  getUser(token: string): Promise<GitHubUser>
+  listUserInstallations(token: string): Promise<GitHubInstallation[]>
+  newInstallationUrl(state: string): Promise<string>
+}

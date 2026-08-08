@@ -1,15 +1,17 @@
-import { Hono } from 'hono'
+import { type Context, Hono } from 'hono'
 import { z } from 'zod'
 import type { AppConfig } from './config.js'
 import { type AgentInfoResolver, createAgentInfoResolver } from './core/agent-info.js'
 import { attributedBody } from './core/attribution.js'
+import type { BrokeredConnectionRequest } from './core/connection-request.js'
 import type { IdempotencyStore } from './core/idempotency.js'
 import { badRequest, forbidden, HttpProblem } from './core/problem.js'
 import type { RealmrootAuthenticator } from './core/realmroot-auth.js'
-import { createGitHubProvider } from './providers/github/client.js'
+import { createGitHubConnectionProvider, createGitHubProvider } from './providers/github/client.js'
 import { githubManifest } from './providers/github/manifest.js'
 import { adapterApiVersion, githubOpenApi, githubScopes } from './providers/github/openapi.js'
-import type { GitHubProvider } from './providers/github/types.js'
+import type { GitHubConnectionProvider, GitHubProvider } from './providers/github/types.js'
+import type { GitHubConnectionIntent, GitHubConnectionStore } from './storage/d1-github-connections.js'
 
 type Variables = { requestId: string }
 const issueInputSchema = z
@@ -26,6 +28,9 @@ export type AppDependencies = {
   github?: GitHubProvider
   idempotency: IdempotencyStore
   audit?: (record: Record<string, unknown>) => Promise<void>
+  connectionRequestVerifier?: (request: string) => Promise<BrokeredConnectionRequest>
+  githubConnection?: GitHubConnectionProvider
+  githubConnections?: GitHubConnectionStore
 }
 
 export function createApp(config: AppConfig, dependencies: AppDependencies) {
@@ -33,6 +38,8 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
   const authenticator = dependencies.authenticator
   const agentInfo = dependencies.agentInfo ?? createAgentInfoResolver(fetch, config.realmrootAgentInfoEndpoint)
   const github = dependencies.github ?? configuredGitHub(config)
+  const githubConnection = dependencies.githubConnection ?? configuredGitHubConnection(config)
+  const githubConnections = dependencies.githubConnections
   const idempotency = dependencies.idempotency
   const audit =
     dependencies.audit ??
@@ -49,23 +56,24 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
   app.get('/health', (c) => c.json({ status: 'ok' }))
   app.get('/providers/github/manifest', (c) => c.json(githubManifest))
 
-  app.get('/.well-known/oauth-protected-resource/github/installations/:installationId', (c) => {
-    const resource = installationResource(config.origin, installationId(c.req.param('installationId')))
+  app.get('/.well-known/oauth-protected-resource/github', (c) => {
+    const resource = githubResource(config.origin)
     return c.json({
       resource,
       authorization_servers: [config.realmrootIssuer],
       scopes_supported: githubScopes,
       bearer_methods_supported: ['header'],
+      account_connection_modes_supported: ['brokered'],
+      account_connection_authorization_endpoint: `${resource}/account-connection-authorizations`,
+      account_connection_token_endpoint: `${resource}/account-connection-credentials`,
     })
   })
 
-  app.get('/github/installations/:installationId/openapi.json', (c) => {
-    const id = installationId(c.req.param('installationId'))
+  app.get('/github/openapi.json', (c) => {
     return c.json(
       githubOpenApi({
-        resource: installationResource(config.origin, id),
+        resource: githubResource(config.origin),
         realmrootIssuer: config.realmrootIssuer,
-        installationId: id,
       }),
       200,
       {
@@ -74,22 +82,90 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
     )
   })
 
-  app.get('/github/installations/:installationId', (c) => {
-    const id = installationId(c.req.param('installationId'))
-    const resource = installationResource(config.origin, id)
+  app.get('/github', (c) => {
+    const resource = githubResource(config.origin)
     return c.json({ resource, serviceDescription: `${resource}/openapi.json`, identityLevel: 'brokered' }, 200, {
       Link: `<${resource}/openapi.json>; rel="service-desc"; type="application/vnd.oai.openapi+json"`,
     })
   })
 
-  app.get('/github/installations/:installationId/repositories', async (c) => {
+  app.get('/github/account-connection-authorizations', async (c) => {
+    const request = c.req.query('request')
+    if (!request || !dependencies.connectionRequestVerifier || !githubConnections || !githubConnection) {
+      throw new HttpProblem(
+        503,
+        'urn:realmroot:adapter:not-configured',
+        'Service Unavailable',
+        'GitHub account connection is not configured.',
+      )
+    }
+    const connectionRequest = await dependencies.connectionRequestVerifier(request)
+    const providerState = randomToken()
+    await githubConnections.create(connectionRequest, providerState)
+    return c.redirect(githubConnection.authorizationUrl(providerState))
+  })
+
+  app.get('/github/oauth/callback', async (c) => {
+    if (!githubConnections || !githubConnection) throw notConfiguredConnection()
+    const state = requiredQuery(c.req.query('state'), 'GitHub OAuth state')
+    const code = requiredQuery(c.req.query('code'), 'GitHub OAuth code')
+    const intent = await githubConnections.findByProviderState(state, 'pending_oauth')
+    const userToken = await githubConnection.exchangeUserCode(code)
+    const [user, installations] = await Promise.all([
+      githubConnection.getUser(userToken),
+      githubConnection.listUserInstallations(userToken),
+    ])
+    if (intent.expectedInstallationId && !installations.some((item) => item.id === intent.expectedInstallationId)) {
+      throw forbidden('The authorized GitHub user cannot manage the selected App installation.')
+    }
+    if (installations.length === 0) {
+      const installState = randomToken()
+      await githubConnections.rotateProviderState(intent.requestId, installState, 'awaiting_install', null)
+      return c.redirect(await githubConnection.newInstallationUrl(installState))
+    }
+    return completeGitHubAuthorization(c, githubConnections, intent, user, installations)
+  })
+
+  app.get('/github/account-connection-installations', async (c) => {
+    if (!githubConnections || !githubConnection) throw notConfiguredConnection()
+    const state = requiredQuery(c.req.query('state'), 'GitHub installation state')
+    const installation = installationId(requiredQuery(c.req.query('installation_id'), 'GitHub installation ID'))
+    const intent = await githubConnections.findByProviderState(state, 'awaiting_install')
+    const oauthState = randomToken()
+    await githubConnections.rotateProviderState(intent.requestId, oauthState, 'pending_oauth', installation)
+    return c.redirect(githubConnection.authorizationUrl(oauthState))
+  })
+
+  app.post('/github/account-connection-credentials', async (c) => {
+    if (!githubConnections) throw notConfiguredConnection()
+    const form = await c.req.formData()
+    const code = requiredForm(form, 'code')
+    const verifier = requiredForm(form, 'code_verifier')
+    const { intent, binding, contexts } = await githubConnections.exchange(code, verifier)
+    return c.json({
+      external_subject: String(binding.githubUserId),
+      display_name: binding.displayName,
+      broker_reference: intent.connectionId,
+      scope: (JSON.parse(binding.scopesJson) as string[]).join(' '),
+      authorization_details: contexts.map((context) => ({
+        type: 'github_installation',
+        installation_id: String(context.installationId),
+        account_login: context.accountLogin,
+        target_type: context.targetType,
+      })),
+    })
+  })
+
+  app.get('/github/repositories', async (c) => {
     requireApiVersion(c.req.header('API-Version'))
-    const id = installationId(c.req.param('installationId'))
-    const principal = await authenticator.authenticate(c.req.raw, installationResource(config.origin, id))
+    const principal = await authenticator.authenticate(c.req.raw, githubResource(config.origin))
     requireScope(principal.scopes, 'github:metadata:read')
+    const installationIds = await connectionInstallationIds(principal)
     const query = paginationSchema.parse(c.req.query())
-    const result = await github.listRepositories(id, query.page, query.perPage)
-    const hasMore = query.page * query.perPage < result.total
+    const repositories = (await Promise.all(installationIds.map((id) => allRepositories(id)))).flat()
+    const offset = (query.page - 1) * query.perPage
+    const items = repositories.slice(offset, offset + query.perPage)
+    const hasMore = offset + query.perPage < repositories.length
     if (hasMore) {
       const next = new URL(c.req.url)
       next.searchParams.set('page', String(query.page + 1))
@@ -99,31 +175,33 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
     c.header('API-Version', adapterApiVersion)
     c.header('Vary', 'API-Version')
     return c.json({
-      items: result.items,
-      pagination: { page: query.page, perPage: query.perPage, total: result.total, hasMore },
+      items,
+      pagination: { page: query.page, perPage: query.perPage, total: repositories.length, hasMore },
     })
   })
 
-  app.post('/github/installations/:installationId/repos/:owner/:repository/issues', async (c) => {
+  app.post('/github/repos/:owner/:repository/issues', async (c) => {
     requireApiVersion(c.req.header('API-Version'))
-    const id = installationId(c.req.param('installationId'))
-    const principal = await authenticator.authenticate(c.req.raw, installationResource(config.origin, id))
+    const principal = await authenticator.authenticate(c.req.raw, githubResource(config.origin))
     requireScope(principal.scopes, 'github:issues:write')
+    const installationIds = await connectionInstallationIds(principal)
     const input = issueInputSchema.parse(await readJson(c.req.raw))
     const owner = c.req.param('owner')
     const repository = c.req.param('repository')
     const result = await idempotency.execute(
       c.req.header('Idempotency-Key') ?? null,
-      `${principal.actor.issuer}:${principal.actor.subject}:${id}:${owner.toLowerCase()}/${repository.toLowerCase()}:create-issue`,
+      `${principal.actor.issuer}:${principal.actor.subject}:${principal.connectionId}:${owner.toLowerCase()}/${repository.toLowerCase()}:create-issue`,
       input,
       async () => {
         const display = await agentInfo.resolve(principal)
+        const body = attributedBody(input.body, principal, display, c.get('requestId'))
+        const id = await repositoryInstallation(installationIds, owner, repository)
         const issue = await github.createIssue({
           installationId: id,
           owner,
           repository,
           title: input.title,
-          body: attributedBody(input.body, principal, display, c.get('requestId')),
+          body,
         })
         await audit({
           event: 'provider.operation',
@@ -146,6 +224,60 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
     return result
   })
 
+  async function connectionInstallationIds(principal: Awaited<ReturnType<RealmrootAuthenticator['authenticate']>>) {
+    if (!principal.connectionId || !githubConnections) {
+      throw forbidden('A brokered GitHub account connection is required.')
+    }
+    const ids = await githubConnections.activeInstallationIds(principal.connectionId)
+    const selected = (principal.authorizationDetails ?? []).flatMap((detail) =>
+      detail.type === 'github_installation' && typeof detail.installation_id === 'string'
+        ? [installationId(detail.installation_id)]
+        : [],
+    )
+    if (selected.length === 0) return ids
+    if (selected.some((id) => !ids.includes(id))) throw forbidden('Token contains an unconnected GitHub installation.')
+    return [...new Set(selected)]
+  }
+
+  async function allRepositories(installationId: number) {
+    const items = []
+    for (let page = 1; ; page += 1) {
+      const result = await github.listRepositories(installationId, page, 100)
+      items.push(...result.items.map((repository) => ({ ...repository, installationId })))
+      if (page * 100 >= result.total) return items
+    }
+  }
+
+  async function repositoryInstallation(installationIds: number[], owner: string, repository: string) {
+    for (const id of installationIds) {
+      const repositories = await allRepositories(id)
+      if (
+        repositories.some(
+          (candidate) =>
+            candidate.owner.toLowerCase() === owner.toLowerCase() &&
+            candidate.name.toLowerCase() === repository.toLowerCase(),
+        )
+      )
+        return id
+    }
+    throw forbidden('The repository is outside the connected GitHub installations.')
+  }
+
+  async function completeGitHubAuthorization(
+    c: Context,
+    connectionStore: GitHubConnectionStore,
+    intent: GitHubConnectionIntent,
+    user: Awaited<ReturnType<GitHubConnectionProvider['getUser']>>,
+    installations: Awaited<ReturnType<GitHubConnectionProvider['listUserInstallations']>>,
+  ) {
+    const code = randomToken()
+    await connectionStore.complete(intent, user, installations, code)
+    const callback = new URL(intent.callbackUri)
+    callback.searchParams.set('state', intent.realmrootState)
+    callback.searchParams.set('code', code)
+    return c.redirect(callback.toString())
+  }
+
   app.notFound((c) =>
     problemResponse(
       new HttpProblem(404, 'about:blank', 'Not Found', 'The resource was not found.'),
@@ -155,6 +287,17 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
   )
   app.onError((error, c) => {
     const problem = normalizeProblem(error)
+    console.error(
+      JSON.stringify({
+        event: 'request.error',
+        requestId: c.get('requestId'),
+        method: c.req.method,
+        path: new URL(c.req.url).pathname,
+        status: problem.status,
+        type: problem.type,
+        detail: problem.message,
+      }),
+    )
     return problemResponse(problem, c.req.url, c.get('requestId'))
   })
   return app
@@ -188,8 +331,19 @@ function configuredGitHub(config: AppConfig): GitHubProvider {
   })
 }
 
-function installationResource(origin: string, installationId: number) {
-  return `${origin}/github/installations/${installationId}`
+function configuredGitHubConnection(config: AppConfig): GitHubConnectionProvider | undefined {
+  if (!config.githubAppId || !config.githubPrivateKey || !config.githubClientId || !config.githubClientSecret) return
+  return createGitHubConnectionProvider({
+    appId: config.githubAppId,
+    privateKey: config.githubPrivateKey,
+    clientId: config.githubClientId,
+    clientSecret: config.githubClientSecret,
+    apiOrigin: config.githubApiOrigin,
+  })
+}
+
+function githubResource(origin: string) {
+  return `${origin}/github`
 }
 
 function installationId(value: string) {
@@ -198,8 +352,36 @@ function installationId(value: string) {
   return parsed
 }
 
+function randomToken() {
+  const bytes = crypto.getRandomValues(new Uint8Array(32))
+  return btoa(String.fromCharCode(...bytes))
+    .replaceAll('+', '-')
+    .replaceAll('/', '_')
+    .replace(/=+$/, '')
+}
+
+function requiredQuery(value: string | undefined, label: string) {
+  if (!value) throw badRequest(`${label} is required.`)
+  return value
+}
+
+function requiredForm(form: FormData, name: string) {
+  const value = form.get(name)
+  if (typeof value !== 'string' || !value) throw badRequest(`${name} is required.`)
+  return value
+}
+
+function notConfiguredConnection() {
+  return new HttpProblem(
+    503,
+    'urn:realmroot:adapter:not-configured',
+    'Service Unavailable',
+    'GitHub account connection is not configured.',
+  )
+}
+
 function requireApiVersion(value: string | undefined) {
-  if (value !== adapterApiVersion)
+  if (value !== undefined && value !== adapterApiVersion)
     throw badRequest(`API-Version must be ${adapterApiVersion}.`, 'unsupported-api-version')
 }
 
