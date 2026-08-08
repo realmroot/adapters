@@ -14,9 +14,40 @@ an operation. Most external platforms cannot consume that identity directly.
 This project provides provider adapters that preserve the Realmroot security
 boundary while using the strongest identity model each platform supports.
 
-The goal is not to hide every provider behind a generic proxy. The goal is to
-make an Agent's identity, authority, and resulting operation as native,
-visible, and auditable as the provider allows.
+## A bridge designed to disappear
+
+Realmroot Adapters is a transitional compatibility layer, not the destination.
+It exists only while external platforms cannot directly accept a stable Agent
+identity, Agent-bound authority, and proof-of-possession credentials.
+
+Our end state is an open, interoperable Agent-native access protocol profile
+implemented by platforms at their own resource boundaries. A conforming
+platform can discover and authenticate an Agent, authorize it for exact
+Resources and scopes, record it as a native actor, and revoke its authority
+without an adapter in the request path.
+
+```text
+Today
+Agent -> Realmroot -> Adapter -> Platform API
+
+End state
+Agent -- Realmroot-issued authority --> Agent-native Platform API
+```
+
+Adapters serve three temporary purposes:
+
+- provide compatibility for platforms that have not implemented the protocol;
+- document the exact native-identity and authorization gaps in each platform;
+- provide a migration path and conformance evidence that help the platform
+  adopt direct Agent access.
+
+When a platform implements the native protocol profile, its adapter should be
+deprecated and removed. Success is not an ever-growing permanent proxy layer;
+success is fewer adapters because more platforms recognize Agents natively.
+
+We invite API and platform builders to implement this protocol profile and help
+evolve it in the open. Read [The native Agent protocol vision](docs/native-agent-protocol.md)
+for the platform contract, adoption path, and current standards foundation.
 
 ## Initial providers
 
@@ -72,7 +103,9 @@ A provider adapter is responsible for:
 - correlating Realmroot audit records with provider actors and resulting
   resources;
 - declaring when identity is visible in product UI, audit logs, both, or
-  neither.
+  neither;
+- publishing the provider's native-readiness gaps and a concrete adapter exit
+  condition.
 
 ## Security invariants
 
@@ -90,7 +123,8 @@ All adapters share the same non-negotiable security properties:
   actual authorization and audit semantics.
 
 Read [Architecture](docs/architecture.md) for the initial module boundaries and
-trust model.
+trust model, and [The native Agent protocol vision](docs/native-agent-protocol.md)
+for the adapter-free end state.
 
 ## Repository layout
 
@@ -101,6 +135,7 @@ providers/
   linear/       Provider design and implementation
 docs/
   architecture.md
+  native-agent-protocol.md
 ```
 
 The runtime and package layout will be introduced with the first vertical

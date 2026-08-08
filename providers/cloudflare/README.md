@@ -46,3 +46,15 @@ resource-policy changes fail closed.
 A representative operation appears in Cloudflare's own audit log with the
 dedicated Agent token ID and token name and can be correlated to the immutable
 Realmroot Agent and approved authority.
+
+## Native-readiness gaps and retirement
+
+An account-owned token gives Cloudflare a native service principal, but the
+platform does not yet consume the external stable Agent identity and its
+proof-bound delegated authority directly. The adapter still provisions and
+holds a Cloudflare credential on the Agent's behalf.
+
+This adapter can be retired when Cloudflare can accept the stable Agent and
+approved account or zone authority at its API boundary, issue or validate
+short-lived proof-bound access, and preserve that Agent directly in Cloudflare
+audit records without an adapter-owned token mapping.

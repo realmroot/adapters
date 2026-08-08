@@ -21,5 +21,6 @@
 - [ ] Resource and scope behavior fails closed.
 - [ ] Provider errors remain inside the adapter boundary.
 - [ ] Documentation and the capability manifest are updated where applicable.
+- [ ] Provider work documents native-readiness gaps and does not make the adapter harder to retire without justification.
 - [ ] Tests prove the changed behavior at the cheapest meaningful layer.
 - [ ] Commits include a Developer Certificate of Origin sign-off.

@@ -13,8 +13,37 @@ Realmroot 原生 Resource Server 能识别执行操作的具体 Agent，但大�
 暂时无法直接消费这种身份。本项目为外部平台提供 adapter，在保持 Realmroot
 安全边界的同时，使用平台所能提供的最强原生身份模型。
 
-我们的目标不是简单地用一个通用代理包装所有平台，而是尽可能让 Agent 的身份、
-权限与操作结果在目标平台中原生可见并且可审计。
+## 一座最终应该消失的桥
+
+Realmroot Adapters 是过渡性的兼容层，不是最终形态。它只在外部平台暂时无法直接
+接受稳定 Agent 身份、Agent 授权与持有者证明凭证时存在。
+
+我们的最终愿景，是形成一个开放、可互操作、由平台在自身资源边界实现的
+**Agent-native access protocol profile**。实现该协议层的平台能够直接发现并认证
+Agent，按照精确的 Resource 与 scope 授权，把 Agent 记录为平台原生 actor，并在
+不经过 adapter 的情况下完成撤销和审计。
+
+```text
+当前
+Agent -> Realmroot -> Adapter -> 平台 API
+
+最终形态
+Agent -- Realmroot 签发的 authority --> Agent-native 平台 API
+```
+
+Adapter 只有三个过渡性职责：
+
+- 为尚未实现协议的平台提供兼容能力；
+- 明确记录每个平台距离原生 Agent 身份与授权还缺少哪些能力；
+- 提供迁移路径与一致性验证，帮助平台最终完成直接接入。
+
+当平台实现原生协议后，对应 adapter 应进入弃用并最终删除。项目的成功不是形成
+一个越来越庞大的永久代理层，而是因为越来越多的平台能原生识别 Agent，所需的
+adapter 越来越少。
+
+我们希望向所有 API 与平台开发者发出倡议：共同实现并公开演进这一协议层，让
+Agent 能以自己的稳定身份直接进入各种平台。详见
+[原生 Agent 协议愿景](docs/native-agent-protocol.md)。
 
 ## 首批平台
 
@@ -49,7 +78,8 @@ adapter 不得声称超过平台真实授权与审计能力的身份等级。
 - 获取、轮换、撤销并安全存储平台凭证；
 - 保证平台写操作的幂等性；
 - 关联 Realmroot 审计记录、平台 actor 与最终资源；
-- 声明 Agent 身份在产品 UI、审计日志或其他位置的可见性。
+- 声明 Agent 身份在产品 UI、审计日志或其他位置的可见性；
+- 发布平台的 native-readiness gap，以及 adapter 可以退出的明确条件。
 
 ## 安全原则
 
@@ -60,7 +90,8 @@ adapter 不得声称超过平台真实授权与审计能力的身份等级。
 - 每次请求都必须同时满足已审批的 Realmroot Resource、scope 与平台权限。
 - Realmroot 撤销、平台权限降低或资源移除后，后续访问必须停止。
 
-更多内容见[架构说明](docs/architecture.md)与[路线图](ROADMAP.md)。
+更多内容见[架构说明](docs/architecture.md)、
+[原生 Agent 协议愿景](docs/native-agent-protocol.md)与[路线图](ROADMAP.md)。
 
 ## 参与贡献
 

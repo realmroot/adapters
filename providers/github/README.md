@@ -52,3 +52,13 @@ GitHub URL. The adapter declares brokered identity in discovery metadata.
 
 Distinct native GitHub identities would require a GitHub account or GitHub App
 per Agent. That provisioning model is intentionally outside the initial scope.
+
+## Native-readiness gaps and retirement
+
+GitHub does not currently accept an external stable Agent principal as the
+native actor for general API operations, nor does its Resource API directly
+consume the Realmroot proof-bound Agent authority profile.
+
+This adapter can be retired when GitHub can authenticate a stable external
+Agent, authorize it for selected repositories and operations, record it as the
+native actor, and enforce revocation directly at the GitHub API boundary.
