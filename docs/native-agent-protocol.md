@@ -29,10 +29,11 @@ not require all traffic to traverse Realmroot infrastructure, and the protocol
 must not prevent other conforming issuers, Agent runtimes, or authorization
 systems from participating.
 
-This document describes the direction of the profile. It is not yet a formal
-standards-body specification. Normative requirements, versioning, compatibility
-policy, test vectors, and governance will be extracted and published as the
-implementations mature.
+This document describes the direction of the profile. It is not a formal
+standards-body specification. The versioned, normative implementation baseline
+is maintained in Realmroot's
+[Agent-native Resource Server Profile](https://github.com/realmroot/realmroot/blob/main/docs/integrations/agent-native-resource-server-profile.md);
+this repository assesses providers against its stable capability IDs.
 
 ## What a platform implements
 
