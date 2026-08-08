@@ -1,0 +1,77 @@
+name: Provider proposal
+description: Propose support for a new external platform
+title: "provider: "
+labels:
+  - provider
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Provider proposals are evaluated by identity fidelity before API breadth. Use official provider documentation as evidence.
+  - type: input
+    id: provider
+    attributes:
+      label: Provider
+      description: The external platform and product surface.
+      placeholder: Example Platform
+    validations:
+      required: true
+  - type: dropdown
+    id: identity-level
+    attributes:
+      label: Proposed identity level
+      options:
+        - Native Agent
+        - Native service principal
+        - Brokered
+        - Unknown
+    validations:
+      required: true
+  - type: textarea
+    id: actor
+    attributes:
+      label: Native actor and visibility
+      description: Describe the stable actor, how it is created, and where it appears in product UI and audit logs.
+    validations:
+      required: true
+  - type: textarea
+    id: authorization
+    attributes:
+      label: Installation and credential lifecycle
+      description: Explain authorization, administrator requirements, expiry, rotation, and revocation.
+    validations:
+      required: true
+  - type: textarea
+    id: resources
+    attributes:
+      label: Resources and permissions
+      description: Describe discoverable Resources, selection boundaries, scopes, roles, or permission groups.
+    validations:
+      required: true
+  - type: textarea
+    id: operations
+    attributes:
+      label: Initial vertical slice
+      description: Propose the smallest representative read and write journey, including idempotency behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Official documentation
+      description: Link the provider's official identity, authorization, API, audit, webhook, and revocation documentation.
+    validations:
+      required: true
+  - type: textarea
+    id: limitations
+    attributes:
+      label: Limitations and requirements
+      description: Include product tiers, marketplace review, compliance, preview status, and known identity limitations.
+    validations:
+      required: true
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Contribution
+      options:
+        - label: I can help design, implement, test, or maintain this provider.

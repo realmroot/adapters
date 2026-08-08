@@ -1,0 +1,29 @@
+name: Feature request
+description: Propose a change to an existing provider or core capability
+title: "feature: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Describe the observable Agent, controller, operator, or provider outcome.
+    validations:
+      required: true
+  - type: textarea
+    id: identity
+    attributes:
+      label: Identity and authorization impact
+      description: Which actors, Resources, scopes, credentials, and audit records are affected?
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Provider evidence
+      description: Link official documentation when the request depends on provider behavior.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

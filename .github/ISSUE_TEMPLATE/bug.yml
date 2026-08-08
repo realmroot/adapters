@@ -1,0 +1,51 @@
+name: Bug report
+description: Report a reproducible defect
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Release, commit, or container version.
+    validations:
+      required: true
+  - type: input
+    id: provider
+    attributes:
+      label: Provider
+      description: Provider module or core.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Use an isolated test account and remove all credentials and personal data.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized diagnostics
+      render: shell
+  - type: checkboxes
+    id: security
+    attributes:
+      label: Security check
+      options:
+        - label: This report does not expose credentials or customer data and is not a private security vulnerability.
+          required: true
