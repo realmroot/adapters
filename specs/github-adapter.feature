@@ -34,7 +34,8 @@ Feature: GitHub App adapter
   Scenario: An authorized Agent lists repositories in one installation
     Given the Agent presents a Realmroot DPoP access token for that installation
     When the Agent lists repositories
-    Then the adapter mints a short-lived GitHub installation credential
+    Then query parameters do not change the DPoP target URI
+    And the adapter mints a short-lived GitHub installation credential
     And only repositories selected for that installation are returned
     And the GitHub credential is never returned
 
