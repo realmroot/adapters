@@ -16,7 +16,9 @@ rescue Psych::Exception => error
   ERRORS << "#{path.delete_prefix("#{ROOT}/")}: invalid YAML: #{error.message}"
 end
 
-markdown_files = Dir.glob(File.join(ROOT, "**/*.md"), File::FNM_DOTMATCH)
+markdown_files = Dir.glob(File.join(ROOT, "**/*.md"), File::FNM_DOTMATCH).reject do |path|
+  path.include?("/node_modules/") || path.include?("/dist/") || path.include?("/coverage/")
+end
 
 markdown_files.sort.each do |file|
   File.read(file).scan(/\[[^\]]*\]\(([^)]+)\)/).flatten.each do |target|

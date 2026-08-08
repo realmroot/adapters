@@ -1,6 +1,6 @@
 # GitHub provider
 
-Status: **design**
+Status: **alpha implementation**
 
 Identity level: **brokered**
 
@@ -18,27 +18,35 @@ The provider must therefore preserve:
 
 It must not claim that a display footer changes GitHub's native actor.
 
-## Initial Resource mapping
+## Initial connection and Resource mapping
 
 ```text
-GitHub App installation
-  organization or user account
-    repository
+one Realmroot owner + GitHub provider
+  one Connection
+    one or more GitHub App installations
+      organization or user account
+        repository
 ```
+
+The current Worker implements this brokered account-connection flow. The
+installation is a concrete authorization context signed into target tokens,
+not a Resource Server URL or caller-selected path parameter.
 
 ## Initial operations
 
-- discover installations and selected repositories;
-- create an issue;
-- create a pull request;
-- create issue and pull-request comments;
-- create review comments;
-- read representative repository and collaboration resources.
+- discover connected installations and selected repositories;
+- create an issue with Agent attribution.
+
+The current executable slice supports installation repository discovery and
+issue creation. Pull requests, comments, reviews, delegated user-token
+operations and webhook-driven installation lifecycle invalidation remain
+roadmap work. Realmroot-signed Provider Connection revocation is implemented.
 
 ## Initial credential modes
 
 - installation access token for App-attributed automation;
-- GitHub App user access token for explicitly delegated user operations.
+- GitHub App user access token only while authorizing and verifying a
+  Connection; it is not returned to Realmroot or retained as Agent authority.
 
 Provider credentials remain adapter-owned and are never returned to the Agent.
 
@@ -55,7 +63,7 @@ per Agent. That provisioning model is intentionally outside the initial scope.
 
 ## Profile 0.1 capability report
 
-Assessment date: **2026-08-07**
+Assessment date: **2026-08-08**
 
 Assessment target: GitHub Apps with installation access tokens and optional
 user access tokens.
@@ -68,13 +76,13 @@ Evidence: [installation authentication](https://docs.github.com/en/apps/creating
 and [webhook events](https://docs.github.com/en/webhooks/webhook-events-and-payloads#installation).
 
 This is a public-contract assessment, not conformance-test evidence. `🟨`
-means the adapter design owns the compatibility work; it does not mean that
-work is implemented yet.
+means the adapter owns the compatibility work at its own boundary; it does not
+mean GitHub implements that capability natively.
 
 | Profile capability | Status | Evidence and adapter responsibility |
 | --- | --- | --- |
 | `RESOURCE-HTTPS` | 🟨 | GitHub has an HTTPS API, but its token is not bound to the selected installation or repository as the profile's exact audience. |
-| `RESOURCE-METADATA` | 🟨 | No RFC 9728 metadata is documented for GitHub API Resources; the adapter will publish the selected installation and repository boundary. |
+| `RESOURCE-METADATA` | 🟨 | No RFC 9728 metadata is documented for GitHub API Resources; the adapter publishes one GitHub protected Resource and its scopes. |
 | `API-SERVICE-DESC` | 🟨 | GitHub does not advertise its API contract from the selected Resource with RFC 8631. |
 | `API-OPENAPI` | 🟨 | The adapter will expose only its supported operation slice and scope mapping. |
 | `AS-METADATA` | 🟨 | GitHub App endpoints are documented individually rather than discovered through the required issuer metadata. |
@@ -94,7 +102,8 @@ work is implemented yet.
 | `JWT-ACCESS-TOKEN` | 🟨 | GitHub installation access tokens do not expose the required RFC 9068 claims to the Resource Server. |
 | `DPOP` | 🟨 | GitHub API tokens are Bearer credentials; the adapter will require DPoP on its Agent-facing boundary. |
 | `JWK-THUMBPRINT` | 🟨 | The adapter owns the inbound `cnf.jkt` binding. |
-| `RICH-AUTHORIZATION` | ➖ | The initial GitHub mode does not use RFC 9396; installation and repository selection remain provider-specific. |
+| `RICH-AUTHORIZATION` | 🟨 | The adapter carries `github_installation` authorization details through Realmroot grants and tokens; GitHub represents that boundary with App installations rather than RFC 9396. |
+| `BROKERED-ACCOUNT-CONNECTION` | 🟨 | The adapter implements the Realmroot extension and keeps GitHub OAuth and installation credentials within its Worker boundary; GitHub does not implement the exchange. |
 | `PUSHED-AUTHORIZATION` | ➖ | PAR is conditional on RFC 9396 use. |
 | `AUTHORIZATION-CATALOG` | ➖ | The RFC 9396 catalog extension is not used; ordinary adapter Resource discovery still enumerates installations and repositories. |
 | `TOKEN-REVOCATION` | 🟨 | GitHub exposes provider-specific token and installation lifecycle operations rather than the profile's RFC 7009 contract. |

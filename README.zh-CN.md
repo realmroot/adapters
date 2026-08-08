@@ -6,8 +6,9 @@
 [贡献指南](CONTRIBUTING.md) · [安全策略](SECURITY.md)
 
 > [!IMPORTANT]
-> 项目目前处于架构设计与初始化阶段，尚无可用于生产环境的 provider
-> adapter。
+> 项目目前处于 Alpha 阶段。GitHub 纵向切片已经作为独立 Cloudflare Worker
+> 运行，并使用独立 D1 持久化 DPoP 防重放、幂等结果、审计记录和签名 broker
+> 撤销；平台 webhook 生命周期处理尚未达到生产要求。
 
 Realmroot 原生 Resource Server 能识别执行操作的具体 Agent，但大多数外部平台
 暂时无法直接消费这种身份。本项目为外部平台提供 adapter，在保持 Realmroot
@@ -49,7 +50,7 @@ Agent 能以自己的稳定身份直接进入各种平台。详见
 
 | 平台 | 身份模型 | 平台中的效果 | 状态 |
 | --- | --- | --- | --- |
-| GitHub | 代理应用身份 | GitHub 记录 Realmroot GitHub App，Realmroot 记录具体来源 Agent | 计划中 |
+| GitHub | 代理应用身份 | GitHub 记录 Realmroot GitHub App，Issue 正文显示来源 Agent 角标 | Alpha |
 | Cloudflare | 原生 service principal | 每个 Agent 对应独立 account-owned token，并出现在 Cloudflare 审计日志中 | 计划中 |
 | Linear | 原生 Agent 身份 | Agent 以自己的名称和头像出现在 Linear，并参与 Agent workflow | 计划中 |
 

@@ -6,8 +6,9 @@ Bring trusted Realmroot Agent identities to external platforms.
 [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
 
 > [!IMPORTANT]
-> This project is in its architecture and bootstrap phase. No provider adapter
-> is production-ready yet.
+> This project is in alpha. The GitHub vertical slice runs as an independent
+> Cloudflare Worker with durable D1 state and signed broker revocation, but
+> provider webhook lifecycle handling is not production-ready yet.
 
 Realmroot-native resource servers can authenticate the exact Agent performing
 an operation. Most external platforms cannot consume that identity directly.
@@ -53,7 +54,7 @@ for the platform contract, adoption path, and current standards foundation.
 
 | Provider | Identity model | Provider-visible result | Status |
 | --- | --- | --- | --- |
-| GitHub | Brokered application actor | GitHub records the Realmroot GitHub App; Realmroot records the originating Agent | Planned |
+| GitHub | Brokered application actor | GitHub records the Realmroot GitHub App; issue bodies identify the originating Agent | Alpha |
 | Cloudflare | Native service principal | A dedicated account-owned token identifies the Agent in Cloudflare audit logs | Planned |
 | Linear | Native Agent actor | The Agent appears in Linear with its name and avatar and can participate in Agent workflows | Planned |
 
@@ -130,17 +131,96 @@ for the adapter-free end state.
 
 ```text
 providers/
-  github/       Provider design and implementation
+  github/       Provider capability report
   cloudflare/   Provider design and implementation
   linear/       Provider design and implementation
 docs/
   architecture.md
+  github-design.md
   native-agent-protocol.md
+specs/
+  github-adapter.feature
+src/
+  core/         Shared DPoP, AgentInfo, attribution, errors, and idempotency
+  providers/    Thin provider credential and HTTP boundaries
+  storage/      Worker-owned D1 runtime state
+  worker.ts     Cloudflare Worker entrypoint
+migrations/     D1 schema
 ```
 
-The runtime and package layout will be introduced with the first vertical
-provider slice. We deliberately avoid freezing a framework-oriented directory
-structure before the canonical provider contract is proven.
+## Run the GitHub vertical slice
+
+The runtime is a Cloudflare Worker, not a Node server. Node 24 and pnpm 10 are
+development tools only. Local operation also needs a running Realmroot
+deployment and a GitHub App with its OAuth callback and setup callback enabled.
+
+```bash
+pnpm install
+cp .dev.vars.example .dev.vars
+pnpm exec wrangler d1 migrations apply realmroot-adapters-db --local
+pnpm dev -- --port 4103
+```
+
+After configuring the GitHub App credentials, register one brokered Resource
+Server for GitHub and select the Realmroot GitHub Connector. Installations are
+account-connection contexts; they are not separate Resource Servers and never
+appear in the audience URL:
+
+```json
+{
+  "identifier": "github",
+  "resourceUrl": "http://127.0.0.1:4103/github",
+  "connectorId": "YOUR_GITHUB_CONNECTOR_ID",
+  "ownerOrganizationId": "org_platform",
+  "authorizationDetails": [{ "type": "github_installation" }],
+  "enabled": true,
+  "availableToAgents": true,
+  "visibility": "public"
+}
+```
+
+Set `GITHUB_APP_ID`, `GITHUB_PRIVATE_KEY`, `GITHUB_CLIENT_ID`, and
+`GITHUB_CLIENT_SECRET` in the ignored `.dev.vars` file. Both GitHub-downloaded
+PKCS#1 keys and unencrypted PKCS#8 PEM keys are accepted.
+
+Configure the GitHub App callbacks as:
+
+```text
+Callback URL: http://127.0.0.1:4103/github/oauth/callback
+Setup URL:    http://127.0.0.1:4103/github/account-connection-installations
+```
+
+For deployment, store the key without putting it in source or Wrangler vars:
+
+```bash
+pnpm exec wrangler secret put GITHUB_APP_ID
+pnpm exec wrangler secret put GITHUB_PRIVATE_KEY < github-app.private-key.pem
+pnpm exec wrangler secret put GITHUB_CLIENT_ID
+pnpm exec wrangler secret put GITHUB_CLIENT_SECRET
+```
+
+The first slice needs repository Metadata read and Issues read/write. Each
+Realmroot account has at most one GitHub Connection, and that Connection may
+contain multiple GitHub App installations. Install the App only on repositories
+that should be available through that account connection.
+
+The current operations are intentionally narrow:
+
+```text
+GET  /repositories
+POST /repos/{owner}/{repository}/issues
+```
+
+Run the project checks with:
+
+```bash
+pnpm run typecheck
+pnpm test
+pnpm run types:check
+pnpm run lint
+pnpm run build
+pnpm run docs:check
+```
 
 ## Contributing
 

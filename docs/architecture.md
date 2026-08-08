@@ -56,6 +56,16 @@ The adapter terminates the Realmroot-facing request but does not weaken it. A
 provider bearer credential may exist behind the adapter only when required by
 the provider. It is never returned across the Agent boundary.
 
+## Deployment boundary
+
+The adapter is deployed as an independent Cloudflare Worker. It does not run
+inside the Realmroot Worker and does not share Realmroot's database. Each
+deployment owns its provider secrets and a D1 database containing only adapter
+runtime state: provider account bindings and contexts, one-time broker intents,
+DPoP replay claims, idempotent write outcomes, and correlated audit events.
+Provider credentials never cross into Realmroot. The Worker runtime uses Web
+Crypto and Fetch APIs without a Node process or filesystem.
+
 ## Identity model
 
 Every operation records two identities:
