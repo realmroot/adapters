@@ -29,7 +29,8 @@ production use.
 - [x] Define the machine-readable provider capability manifest from the stable
   profile IDs.
 - Define the canonical provider module contract around identity, authorization,
-  discovery, credentials, operations, revocation, idempotency, and audit.
+  provider-permission scopes, transparent proxying, transformations, revocation,
+  and audit.
 - Define conformance tests shared by every provider.
 - Define a stable error taxonomy without leaking provider SDK types.
 - Define deployment, secret storage, observability, and release conventions.
@@ -66,28 +67,28 @@ GitHub establishes the compatibility baseline for a provider that cannot
 represent each Realmroot Agent as a native actor.
 
 - GitHub App installation and repository selection.
-- Organization and repository discovery.
-- Installation-token and delegated-user modes.
-- Issues, pull requests, comments, and reviews.
+- GitHub REST transparent proxy through installation tokens.
+- Provider-permission scopes and repository downscoping.
+- Isolated attribution transformers for issues and comments.
 - DPoP Agent boundary and provider credential isolation.
-- Idempotent writes and audit correlation.
+- Provider-native HTTP semantics and audit correlation.
 - Explicit brokered identity declaration; no false native-Agent claim.
 
 Implemented in the alpha slice:
 
 - [x] installation-specific RFC 9728 Resource boundary and OpenAPI discovery;
 - [x] Realmroot JWT and DPoP validation;
-- [x] repository discovery through short-lived installation credentials;
-- [x] repository-downscoped issue creation;
+- [x] transparent GitHub REST forwarding through short-lived installation credentials;
+- [x] provider permission scopes and repository-downscoped credentials;
 - [x] trusted visible and machine-readable Agent attribution;
-- [x] Cloudflare Worker runtime with durable D1 replay, idempotency, and audit state.
+- [x] Cloudflare Worker runtime with durable D1 replay and audit state;
 - [x] one Provider Connection per Realmroot owner with signed broker revocation;
 
 Remaining before production readiness:
 
 - [ ] audit retention, operational queries, and production observability policy;
 - [ ] installation/repository lifecycle webhooks and provider-originated invalidation;
-- [ ] pull requests, comments, reviews, and delegated-user mode;
+- [ ] additional attribution transformers and delegated-user mode;
 - [ ] deployment, secret rotation, and live-provider conformance automation.
 
 Exit criteria: every write can be traced from the Realmroot Agent and approved
@@ -160,7 +161,7 @@ and the condition under which its adapter can be retired.
 - Claiming that a display name is a distinct security principal when the
   provider records only a shared application actor.
 - Exposing provider credentials to Agents.
-- Providing an unrestricted generic pass-through API.
+- Replacing provider APIs with adapter-owned business endpoints or schemas.
 - Silently weakening DPoP or provider permission boundaries.
 - Permanently proxying a provider after it supports a compatible native
   Realmroot Resource Server integration.

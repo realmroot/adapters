@@ -1,32 +1,13 @@
 import { importPKCS8, SignJWT } from 'jose'
 import { z } from 'zod'
 import { failedDependency } from '../../core/problem.js'
-import type { GitHubConnectionProvider, GitHubProvider, GitHubRepository } from './types.js'
+import { githubOpenApiSource } from './openapi-paths.js'
+import type { GitHubConnectionProvider, GitHubPermissions, GitHubProvider } from './types.js'
 
 const githubApiVersion = '2026-03-10'
 const userAgent = 'realmroot-adapters/0.1'
-const repositoriesSchema = z.object({
-  total_count: z.number().int().nonnegative(),
-  repositories: z.array(
-    z.object({
-      id: z.number().int().positive(),
-      name: z.string(),
-      full_name: z.string(),
-      private: z.boolean(),
-      html_url: z.url(),
-      owner: z.object({ login: z.string() }),
-    }),
-  ),
-})
+const permissionsSchema = z.record(z.string(), z.enum(['read', 'write', 'admin']))
 const installationTokenSchema = z.object({ token: z.string().min(1), expires_at: z.iso.datetime() })
-const issueSchema = z.object({
-  id: z.number().int().positive(),
-  number: z.number().int().positive(),
-  title: z.string(),
-  body: z.string().nullable(),
-  state: z.string(),
-  html_url: z.url(),
-})
 const oauthTokenSchema = z.object({ access_token: z.string().min(1) })
 const userSchema = z.object({ id: z.number().int().positive(), login: z.string().min(1), name: z.string().nullable() })
 const userInstallationsSchema = z.object({
@@ -35,137 +16,95 @@ const userInstallationsSchema = z.object({
       id: z.number().int().positive(),
       account: z.object({ login: z.string().min(1) }),
       target_type: z.string().min(1),
+      permissions: permissionsSchema,
     }),
   ),
 })
-const appSchema = z.object({ slug: z.string().min(1) })
+const appSchema = z.object({ slug: z.string().min(1), permissions: permissionsSchema })
 
-export function createGitHubProvider(input: {
+type GitHubClientInput = {
   appId: string
   privateKey: string
   apiOrigin: string
   fetcher?: typeof fetch
   now?: () => number
-}): GitHubProvider {
+}
+
+export function createGitHubProvider(input: GitHubClientInput): GitHubProvider {
   const fetcher = input.fetcher ?? fetch
-  const now = input.now ?? Date.now
+  const appJwt = createAppJwt(input)
+  let permissionRequest: Promise<GitHubPermissions> | undefined
 
   return {
-    async listRepositories(installationId, page, perPage) {
-      const token = await installationToken(installationId, {})
-      const url = new URL('/installation/repositories', input.apiOrigin)
-      url.searchParams.set('page', String(page))
-      url.searchParams.set('per_page', String(perPage))
-      const response = await github(url, { token })
-      const parsed = repositoriesSchema.parse(await response.json())
-      return { items: parsed.repositories.map(toRepository), total: parsed.total_count }
+    appPermissions() {
+      permissionRequest ??= readAppPermissions().catch((error: unknown) => {
+        permissionRequest = undefined
+        throw error
+      })
+      return permissionRequest
     },
 
-    async createIssue(issue) {
-      const repository = await findRepository(issue.installationId, issue.owner, issue.repository)
-      const token = await installationToken(issue.installationId, {
-        repository_ids: [repository.id],
-        permissions: { issues: 'write' },
+    async openApiDocument() {
+      const response = await fetcher(githubOpenApiSource, {
+        headers: { accept: 'application/vnd.oai.openapi+json, application/json' },
+        signal: AbortSignal.timeout(10_000),
       })
-      const path = `/repos/${encodeURIComponent(issue.owner)}/${encodeURIComponent(issue.repository)}/issues`
-      const response = await github(new URL(path, input.apiOrigin), {
-        method: 'POST',
-        token,
-        body: { title: issue.title, body: issue.body },
-      })
-      const parsed = issueSchema.parse(await response.json())
-      return {
-        id: parsed.id,
-        number: parsed.number,
-        title: parsed.title,
-        body: parsed.body,
-        state: parsed.state,
-        htmlUrl: parsed.html_url,
-      }
+      if (!response.ok) throw failedDependency(`GitHub OpenAPI download failed with ${response.status}.`)
+      return response
+    },
+
+    async installationToken(request) {
+      const response = await githubRequest(
+        new Request(new URL(`/app/installations/${request.installationId}/access_tokens`, input.apiOrigin), {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            permissions: request.permissions,
+            ...(request.repositories ? { repositories: request.repositories } : {}),
+          }),
+        }),
+        await appJwt(),
+      )
+      return installationTokenSchema.parse(await response.json()).token
+    },
+
+    request(request, installationToken) {
+      return githubRequest(request, installationToken, false)
     },
   }
 
-  async function findRepository(installationId: number, owner: string, name: string) {
-    let page = 1
-    while (true) {
-      const result = await providerListRepositories(installationId, page, 100)
-      const match = result.items.find(
-        (repository) =>
-          repository.owner.toLowerCase() === owner.toLowerCase() &&
-          repository.name.toLowerCase() === name.toLowerCase(),
-      )
-      if (match) return match
-      if (page * 100 >= result.total) throw failedDependency('The repository is not selected for this installation.')
-      page += 1
-    }
+  async function readAppPermissions() {
+    const response = await githubRequest(new Request(new URL('/app', input.apiOrigin)), await appJwt())
+    return appSchema.parse(await response.json()).permissions
   }
 
-  async function providerListRepositories(installationId: number, page: number, perPage: number) {
-    const token = await installationToken(installationId, {})
-    const url = new URL('/installation/repositories', input.apiOrigin)
-    url.searchParams.set('page', String(page))
-    url.searchParams.set('per_page', String(perPage))
-    const response = await github(url, { token })
-    const parsed = repositoriesSchema.parse(await response.json())
-    return { items: parsed.repositories.map(toRepository), total: parsed.total_count }
-  }
-
-  async function installationToken(installationId: number, downscope: Record<string, unknown>) {
-    const jwt = await appJwt()
-    const response = await github(new URL(`/app/installations/${installationId}/access_tokens`, input.apiOrigin), {
-      method: 'POST',
-      token: jwt,
-      body: downscope,
-    })
-    return installationTokenSchema.parse(await response.json()).token
-  }
-
-  async function appJwt() {
-    const current = Math.floor(now() / 1000)
-    const privateKey = await importPKCS8(toPkcs8(input.privateKey), 'RS256')
-    return new SignJWT({})
-      .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
-      .setIssuer(input.appId)
-      .setIssuedAt(current - 60)
-      .setExpirationTime(current + 9 * 60)
-      .sign(privateKey)
-  }
-
-  async function github(url: URL, request: { token: string; method?: string; body?: Record<string, unknown> }) {
-    const response = await fetcher(url, {
-      method: request.method ?? 'GET',
-      headers: {
-        accept: 'application/vnd.github+json',
-        authorization: `Bearer ${request.token}`,
-        'user-agent': userAgent,
-        'x-github-api-version': githubApiVersion,
-        ...(request.body ? { 'content-type': 'application/json' } : {}),
-      },
-      ...(request.body ? { body: JSON.stringify(request.body) } : {}),
-      signal: AbortSignal.timeout(10_000),
-    })
-    if (!response.ok) {
-      const requestId = response.headers.get('x-github-request-id')
-      throw failedDependency(
-        `GitHub rejected the request with ${response.status}${requestId ? ` (${requestId})` : ''}.`,
-      )
-    }
+  async function githubRequest(request: Request, token: string, requireSuccess = true) {
+    const headers = forwardedHeaders(request.headers)
+    headers.set('authorization', `Bearer ${token}`)
+    headers.set('user-agent', userAgent)
+    if (!headers.has('accept')) headers.set('accept', 'application/vnd.github+json')
+    if (!headers.has('x-github-api-version')) headers.set('x-github-api-version', githubApiVersion)
+    const response = await fetcher(
+      new Request(request, {
+        headers,
+        redirect: 'manual',
+        signal: AbortSignal.timeout(10_000),
+      }),
+    )
+    if (requireSuccess && !response.ok) throw providerFailure(response, request.url)
     return response
   }
 }
 
-export function createGitHubConnectionProvider(input: {
-  appId: string
-  privateKey: string
-  clientId: string
-  clientSecret: string
-  redirectUri: string
-  apiOrigin: string
-  fetcher?: typeof fetch
-  now?: () => number
-}): GitHubConnectionProvider {
+export function createGitHubConnectionProvider(
+  input: GitHubClientInput & {
+    clientId: string
+    clientSecret: string
+    redirectUri: string
+  },
+): GitHubConnectionProvider {
   const fetcher = input.fetcher ?? fetch
-  const now = input.now ?? Date.now
+  const appJwt = createAppJwt(input)
 
   return {
     authorizationUrl(state) {
@@ -191,21 +130,21 @@ export function createGitHubConnectionProvider(input: {
       return oauthTokenSchema.parse(await response.json()).access_token
     },
     async getUser(token) {
-      const response = await githubUserRequest('/user', token)
+      const response = await userRequest('/user', token)
       return userSchema.parse(await response.json())
     },
     async listUserInstallations(token) {
-      const response = await githubUserRequest('/user/installations?per_page=100', token)
+      const response = await userRequest('/user/installations?per_page=100', token)
       const parsed = userInstallationsSchema.parse(await response.json())
       return parsed.installations.map((installation) => ({
         id: installation.id,
         accountLogin: installation.account.login,
         targetType: installation.target_type,
+        permissions: installation.permissions,
       }))
     },
     async newInstallationUrl(state) {
-      const jwt = await appJwt()
-      const response = await githubUserRequest('/app', jwt)
+      const response = await userRequest('/app', await appJwt())
       const app = appSchema.parse(await response.json())
       const url = new URL(`https://github.com/apps/${encodeURIComponent(app.slug)}/installations/new`)
       url.searchParams.set('state', state)
@@ -213,18 +152,7 @@ export function createGitHubConnectionProvider(input: {
     },
   }
 
-  async function appJwt() {
-    const current = Math.floor(now() / 1000)
-    const privateKey = await importPKCS8(toPkcs8(input.privateKey), 'RS256')
-    return new SignJWT({})
-      .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
-      .setIssuer(input.appId)
-      .setIssuedAt(current - 60)
-      .setExpirationTime(current + 9 * 60)
-      .sign(privateKey)
-  }
-
-  async function githubUserRequest(path: string, token: string) {
+  async function userRequest(path: string, token: string) {
     const response = await fetcher(new URL(path, input.apiOrigin), {
       headers: {
         accept: 'application/vnd.github+json',
@@ -234,12 +162,37 @@ export function createGitHubConnectionProvider(input: {
       },
       signal: AbortSignal.timeout(10_000),
     })
-    if (!response.ok) {
-      const requestId = response.headers.get('x-github-request-id')
-      throw failedDependency(`GitHub rejected ${path} with ${response.status}${requestId ? ` (${requestId})` : ''}.`)
-    }
+    if (!response.ok) throw providerFailure(response, path)
     return response
   }
+}
+
+function createAppJwt(input: Pick<GitHubClientInput, 'appId' | 'privateKey' | 'now'>) {
+  const now = input.now ?? Date.now
+  let importedKey: ReturnType<typeof importPKCS8> | undefined
+  return async () => {
+    const current = Math.floor(now() / 1000)
+    importedKey ??= importPKCS8(toPkcs8(input.privateKey), 'RS256')
+    return new SignJWT({})
+      .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
+      .setIssuer(input.appId)
+      .setIssuedAt(current - 60)
+      .setExpirationTime(current + 9 * 60)
+      .sign(await importedKey)
+  }
+}
+
+function forwardedHeaders(input: Headers) {
+  const headers = new Headers(input)
+  for (const name of ['authorization', 'dpop', 'host', 'content-length', 'connection', 'cookie']) headers.delete(name)
+  return headers
+}
+
+function providerFailure(response: Response, target: string) {
+  const requestId = response.headers.get('x-github-request-id')
+  return failedDependency(
+    `GitHub rejected ${new URL(target, 'https://api.github.com').pathname} with ${response.status}${requestId ? ` (${requestId})` : ''}.`,
+  )
 }
 
 function toPkcs8(pem: string) {
@@ -267,8 +220,7 @@ function toPkcs8(pem: string) {
     0x05,
     0x00,
   )
-  const privateKey = der(0x04, pkcs1)
-  const encoded = der(0x30, concat(version, rsaAlgorithm, privateKey))
+  const encoded = der(0x30, concat(version, rsaAlgorithm, der(0x04, pkcs1)))
   const base64 =
     btoa(String.fromCharCode(...encoded))
       .match(/.{1,64}/g)
@@ -295,15 +247,4 @@ function concat(...values: Uint8Array[]) {
     offset += value.length
   }
   return result
-}
-
-function toRepository(input: z.infer<typeof repositoriesSchema>['repositories'][number]): GitHubRepository {
-  return {
-    id: input.id,
-    name: input.name,
-    fullName: input.full_name,
-    private: input.private,
-    htmlUrl: input.html_url,
-    owner: input.owner.login,
-  }
 }

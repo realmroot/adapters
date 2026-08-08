@@ -1,7 +1,7 @@
 import { env, SELF } from 'cloudflare:test'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { sha256Base64Url } from '../../src/core/digest.js'
-import { D1GitHubConnections } from '../../src/storage/d1-github-connections.js'
+import { D1GitHubConnections } from '../../src/providers/github/connections.js'
 import { D1RuntimeState } from '../../src/storage/d1-runtime-state.js'
 
 describe('Cloudflare Worker runtime', () => {
@@ -11,18 +11,11 @@ describe('Cloudflare Worker runtime', () => {
     await expect(response.json()).resolves.toEqual({ status: 'ok' })
   })
 
-  it('persists replay protection, idempotency, and audit state in real D1', async () => {
+  it('persists replay protection and audit state in real D1', async () => {
     const state = new D1RuntimeState(env.DB)
     const proof = { keyThumbprint: 'thumbprint', jti: 'proof-1', now: 1_000, expiresAt: 301_000 }
     await expect(state.claim(proof)).resolves.toBe(true)
     await expect(state.claim(proof)).resolves.toBe(false)
-
-    const operation = vi.fn(async () => Response.json({ id: 1 }, { status: 201 }))
-    const first = await state.execute('issue-1', 'agent:repository:create-issue', { title: 'One' }, operation)
-    const replay = await state.execute('issue-1', 'agent:repository:create-issue', { title: 'One' }, operation)
-    expect(first.status).toBe(201)
-    expect(replay.status).toBe(201)
-    expect(operation).toHaveBeenCalledOnce()
 
     await state.recordAudit({
       requestId: 'request-1',
@@ -48,7 +41,7 @@ describe('Cloudflare Worker runtime', () => {
       callback_uri: 'https://realmroot.example/api/account-connections/oauth/callback',
       code_challenge: await sha256Base64Url(verifier),
       code_challenge_method: 'S256' as const,
-      scope: 'github:metadata:read github:issues:write',
+      scope: 'metadata:read issues:write',
       authorization_details: [{ type: 'github_installation' }],
     }
     await connections.create(request, 'provider-state')
@@ -57,8 +50,13 @@ describe('Cloudflare Worker runtime', () => {
       intent,
       { id: 7, login: 'controller', name: 'Controller' },
       [
-        { id: 101, accountLogin: 'realmroot', targetType: 'Organization' },
-        { id: 102, accountLogin: 'controller', targetType: 'User' },
+        {
+          id: 101,
+          accountLogin: 'realmroot',
+          targetType: 'Organization',
+          permissions: { metadata: 'read', issues: 'write' },
+        },
+        { id: 102, accountLogin: 'controller', targetType: 'User', permissions: { metadata: 'read', issues: 'write' } },
       ],
       'connection-code',
     )
@@ -66,7 +64,10 @@ describe('Cloudflare Worker runtime', () => {
     expect(result.intent.connectionId).toBe('connection-1')
     expect(result.brokerReference).toBe('connection-1')
     expect(result.contexts.map((context) => context.installationId)).toEqual([101, 102])
-    await expect(connections.activeInstallationIdsForOwner('user-1')).resolves.toEqual([101, 102])
+    await expect(connections.activeInstallationsForOwner('user-1')).resolves.toEqual([
+      { installationId: 101, accountLogin: 'realmroot', targetType: 'Organization' },
+      { installationId: 102, accountLogin: 'controller', targetType: 'User' },
+    ])
     await expect(connections.exchange('connection-code', verifier, 'request-1')).rejects.toThrow(
       'Connection code is invalid',
     )
@@ -84,12 +85,21 @@ describe('Cloudflare Worker runtime', () => {
     await connections.complete(
       reconnect,
       { id: 7, login: 'controller', name: 'Controller' },
-      [{ id: 103, accountLogin: 'realmroot', targetType: 'Organization' }],
+      [
+        {
+          id: 103,
+          accountLogin: 'realmroot',
+          targetType: 'Organization',
+          permissions: { metadata: 'read', issues: 'write' },
+        },
+      ],
       'connection-code-2',
     )
     const reconnected = await connections.exchange('connection-code-2', verifier, 'request-2')
     expect(reconnected.brokerReference).toBe('connection-1')
-    await expect(connections.activeInstallationIdsForOwner('user-1')).resolves.toEqual([103])
+    await expect(connections.activeInstallationsForOwner('user-1')).resolves.toEqual([
+      { installationId: 103, accountLogin: 'realmroot', targetType: 'Organization' },
+    ])
     const active = await env.DB.prepare(
       "SELECT COUNT(*) AS count FROM github_connection_binding WHERE owner_subject = ? AND status = 'active'",
     )
@@ -111,7 +121,7 @@ describe('Cloudflare Worker runtime', () => {
       callback_uri: 'https://realmroot.example/api/account-connections/oauth/callback',
       code_challenge: await sha256Base64Url(verifier),
       code_challenge_method: 'S256' as const,
-      scope: 'github:metadata:read',
+      scope: 'metadata:read',
       authorization_details: [{ type: 'github_installation' }],
     }
     await connections.create(request, 'provider-state-revoke')
@@ -119,7 +129,7 @@ describe('Cloudflare Worker runtime', () => {
     await connections.complete(
       intent,
       { id: 8, login: 'controller', name: 'Controller' },
-      [{ id: 201, accountLogin: 'realmroot', targetType: 'Organization' }],
+      [{ id: 201, accountLogin: 'realmroot', targetType: 'Organization', permissions: { metadata: 'read' } }],
       'connection-code-revoke',
     )
     await connections.exchange('connection-code-revoke', verifier, 'request-revoke')
@@ -131,7 +141,7 @@ describe('Cloudflare Worker runtime', () => {
       expiresAt: Date.now() + 60_000,
     }
     await connections.revoke(revocation)
-    await expect(connections.activeInstallationIdsForOwner('user-revoke')).rejects.toThrow(
+    await expect(connections.activeInstallationsForOwner('user-revoke')).rejects.toThrow(
       'Active GitHub account connection is required',
     )
 
@@ -147,12 +157,14 @@ describe('Cloudflare Worker runtime', () => {
     await connections.complete(
       reconnect,
       { id: 8, login: 'controller', name: 'Controller' },
-      [{ id: 202, accountLogin: 'realmroot', targetType: 'Organization' }],
+      [{ id: 202, accountLogin: 'realmroot', targetType: 'Organization', permissions: { metadata: 'read' } }],
       'connection-code-reconnect',
     )
     await connections.exchange('connection-code-reconnect', verifier, 'request-reconnect')
 
     await expect(connections.revoke(revocation)).rejects.toThrow('revocation request was already used')
-    await expect(connections.activeInstallationIdsForOwner('user-revoke')).resolves.toEqual([202])
+    await expect(connections.activeInstallationsForOwner('user-revoke')).resolves.toEqual([
+      { installationId: 202, accountLogin: 'realmroot', targetType: 'Organization' },
+    ])
   })
 })

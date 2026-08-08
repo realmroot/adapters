@@ -1,15 +1,19 @@
+import { readdir, readFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import { createApp } from '../src/app.js'
-import type { AppConfig } from '../src/config.js'
-import type { IdempotencyStore } from '../src/core/idempotency.js'
-import { adapterApiVersion } from '../src/providers/github/openapi.js'
-import type { GitHubConnectionStore } from '../src/storage/d1-github-connections.js'
+import { createGitHubAdapter, type GitHubAdapterDependencies } from '../src/providers/github/adapter.js'
+import type { GitHubAdapterConfig } from '../src/providers/github/config.js'
+import type { GitHubConnectionStore } from '../src/providers/github/connections.js'
+import type { GitHubProvider } from '../src/providers/github/types.js'
 
-const config: AppConfig = {
+const config: GitHubAdapterConfig = {
   origin: 'http://127.0.0.1:4103',
   realmrootIssuer: 'http://127.0.0.1:4189/api/auth',
   realmrootJwksUrl: 'http://127.0.0.1:4189/api/auth/jwks',
   githubApiOrigin: 'https://api.github.com',
+  githubUploadsOrigin: 'https://uploads.github.com',
   githubAppId: '123',
 }
 
@@ -17,49 +21,198 @@ const principal = {
   subject: 'org_1',
   issuer: config.realmrootIssuer,
   actor: { issuer: config.realmrootIssuer, subject: 'agt_1', profile: 'ai_agent' as const },
-  scopes: new Set(['github:metadata:read', 'github:issues:write']),
+  scopes: new Set(['metadata:read', 'issues:write']),
   connectionId: 'connection-1',
-  authorizationDetails: [],
+  authorizationDetails: [{ type: 'github_installation', installation_id: '42' }],
 }
 
 describe('GitHub adapter contract', () => {
-  it('[spec: github-adapter/github-contract] publishes one GitHub Resource Server and broker metadata', async () => {
-    const app = testApp()
-    const metadata = await app.request('/.well-known/oauth-protected-resource/github')
+  it('[spec: github-adapter/github-contract] publishes the GitHub Resource Server and provider scopes', async () => {
+    const metadata = await testApp().request('/.well-known/oauth-protected-resource/github')
     expect(await metadata.json()).toMatchObject({
       resource: 'http://127.0.0.1:4103/github',
       authorization_servers: [config.realmrootIssuer],
-      scopes_supported: ['github:metadata:read', 'github:issues:write'],
+      scopes_supported: ['contents:read', 'contents:write', 'issues:read', 'issues:write', 'metadata:read'],
       account_connection_modes_supported: ['brokered'],
-      account_connection_revocation_endpoint: 'http://127.0.0.1:4103/github/account-connection-revocations',
     })
-    const resource = await app.request('/github')
+    const resource = await testApp().request('/github')
     expect(resource.headers.get('link')).toContain('rel="service-desc"')
-    const openapi = await app.request('/github/openapi.json')
-    const contract = (await openapi.json()) as { paths: Record<string, unknown> }
-    expect(contract.paths).toHaveProperty('/repositories')
-    expect(contract.paths).toHaveProperty('/repos/{owner}/{repository}/issues')
+    const contract = (await (await testApp().request('/github/openapi.json')).json()) as {
+      paths: Record<string, unknown>
+      servers: Array<{ url: string }>
+    }
+    expect(contract.servers[0]?.url).toBe('http://127.0.0.1:4103/github')
+    expect(contract.paths).toHaveProperty('/installation/repositories')
+    expect(contract.paths).toHaveProperty('/repos/{owner}/{repo}/issues')
+    expect(contract.paths).not.toHaveProperty('/applications/{client_id}/token')
+    expect(contract.paths).toMatchObject({
+      '/installation/repositories': {
+        get: { security: [{ realmrootOidc: ['metadata:read'] }] },
+      },
+      '/repos/{owner}/{repo}/issues': {
+        parameters: [{ name: 'owner', in: 'path' }],
+        get: { security: [{ realmrootOidc: ['issues:read'] }] },
+        post: { security: [{ realmrootOidc: ['issues:write'] }] },
+      },
+    })
+    expect(
+      (contract.paths['/repos/{owner}/{repo}/issues'] as { post: { servers?: unknown } }).post.servers,
+    ).toBeUndefined()
   })
 
-  it('[spec: github-adapter/github-provider-revocation] accepts a signed one-use broker revocation', async () => {
+  it('[spec: github-adapter/github-permission-translation] returns permissions as scopes and resources as authorization details', async () => {
+    const connections = fakeConnections()
+    connections.exchange = vi.fn(async () => ({
+      intent: intent('completed'),
+      brokerReference: 'broker-1',
+      binding: {
+        githubUserId: 7,
+        githubLogin: 'controller',
+        displayName: 'Controller',
+        scopesJson: '["issues:read","issues:write","metadata:read"]',
+      },
+      contexts: [{ installationId: 42, accountLogin: 'realmroot', targetType: 'Organization' }],
+    }))
+    const response = await testApp({ connections }).request('/github/account-connection-credentials', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ code: 'code', code_verifier: 'verifier', connection_id: 'request-1' }),
+    })
+    expect(await response.json()).toEqual({
+      external_subject: '7',
+      display_name: 'Controller',
+      broker_reference: 'broker-1',
+      scope: 'issues:read issues:write metadata:read',
+      authorization_details: [
+        {
+          type: 'github_installation',
+          installation_id: '42',
+          account_login: 'realmroot',
+          target_type: 'Organization',
+        },
+      ],
+    })
+  })
+
+  it('reports an invalid upstream GitHub OpenAPI document as a dependency failure', async () => {
+    const provider = fakeProvider()
+    provider.openApiDocument = vi.fn(async () => Response.json({ invalid: true }))
+    const response = await testApp({ provider }).request('/github/openapi.json')
+    expect(response.status).toBe(424)
+    expect(await response.json()).toMatchObject({
+      type: 'urn:realmroot:adapter:provider-failure',
+      detail: 'GitHub returned an invalid OpenAPI document.',
+    })
+  })
+
+  it('rejects a GitHub OpenAPI document larger than the bounded discovery response', async () => {
+    const provider = fakeProvider()
+    provider.openApiDocument = vi.fn(
+      async () => new Response('{}', { headers: { 'Content-Length': String(20 * 1024 * 1024 + 1) } }),
+    )
+    const response = await testApp({ provider }).request('/github/openapi.json')
+    expect(response.status).toBe(424)
+    expect(await response.json()).toMatchObject({
+      detail: 'GitHub OpenAPI exceeds the 20971520 byte adapter limit.',
+    })
+  })
+
+  it('[spec: github-adapter/github-transparent-proxy] preserves the GitHub request and response', async () => {
+    const provider = fakeProvider()
+    const request = vi.fn(async (upstream: Request, token: string) => {
+      expect(token).toBe('installation-secret')
+      expect(upstream.url).toBe('https://api.github.com/repos/realmroot/example/labels?per_page=7')
+      expect(upstream.method).toBe('PATCH')
+      expect(upstream.headers.get('accept')).toBe('application/vnd.github+json')
+      expect(await upstream.json()).toEqual({ name: 'agent-ready', color: '123456' })
+      return new Response(JSON.stringify({ id: 9 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'X-GitHub-Request-Id': 'github-1' },
+      })
+    })
+    provider.request = request
+    const response = await testApp({ provider }).request('/github/repos/realmroot/example/labels?per_page=7', {
+      method: 'PATCH',
+      headers: { Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'agent-ready', color: '123456' }),
+    })
+    expect(response.status).toBe(200)
+    expect(response.headers.get('x-github-request-id')).toBe('github-1')
+    expect(await response.json()).toEqual({ id: 9 })
+    expect(provider.installationToken).toHaveBeenCalledWith({
+      installationId: 42,
+      permissions: { issues: 'write', metadata: 'read' },
+      repositories: ['example'],
+    })
+  })
+
+  it('keeps release asset uploads behind the adapter and forwards them to GitHub uploads', async () => {
+    const provider = fakeProvider()
+    provider.request = vi.fn(async (upstream: Request) => {
+      expect(upstream.url).toBe('https://uploads.github.com/repos/realmroot/example/releases/7/assets?name=app.zip')
+      return Response.json({ id: 9 }, { status: 201 })
+    })
+    const response = await testApp({ provider }).request(
+      '/github/repos/realmroot/example/releases/7/assets?name=app.zip',
+      { method: 'POST', body: 'archive' },
+    )
+    expect(response.status).toBe(201)
+  })
+
+  it('[spec: github-adapter/github-create-issue] injects attribution without changing GitHub response semantics', async () => {
+    const provider = fakeProvider()
+    provider.request = vi.fn(async (upstream: Request) => {
+      const input = (await upstream.json()) as { title: string; labels: string[]; body: string }
+      expect(input.title).toBe('Adapter test')
+      expect(input.labels).toEqual(['adapter'])
+      expect(input.body).toContain('Created by [Build Agent]')
+      expect(input.body).toContain('<!-- realmroot-agent:')
+      return new Response(JSON.stringify({ id: 1, number: 2 }), {
+        status: 201,
+        headers: { Location: 'https://api.github.com/repos/realmroot/example/issues/2' },
+      })
+    })
+    const response = await testApp({ provider }).request('/github/repos/realmroot/example/issues', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: 'Adapter test', labels: ['adapter'], body: 'Original' }),
+    })
+    expect(response.status).toBe(201)
+    expect(response.headers.get('location')).toContain('/issues/2')
+    expect(await response.json()).toEqual({ id: 1, number: 2 })
+  })
+
+  it('[spec: github-adapter/github-reserved-attribution] rejects forged attribution before GitHub', async () => {
+    const provider = fakeProvider()
+    const response = await testApp({ provider }).request('/github/repos/realmroot/example/issues', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: 'Forged', body: '<!-- realmroot-agent: fake -->' }),
+    })
+    expect(response.status).toBe(400)
+    expect(provider.installationToken).not.toHaveBeenCalled()
+    expect(provider.request).not.toHaveBeenCalled()
+  })
+
+  it('[spec: github-adapter/github-provider-revocation] delegates signed revocation to the GitHub connection', async () => {
+    const connections = fakeConnections()
     const revoke = vi.fn(async () => {})
-    const app = testApp({
+    connections.revoke = revoke
+    const response = await testApp({
+      connections,
       revocationRequestVerifier: vi.fn(async () => ({
         sub: 'org_1',
         jti: 'revocation-1',
         exp: 1_800_000_060,
-        connection_id: 'provider-connection-1',
-        resource_authorization_id: 'resource-authorization-1',
+        connection_id: 'connection-1',
+        resource_authorization_id: 'authorization-1',
         broker_reference: 'broker-1',
       })),
-      githubConnections: { ...fakeGitHubConnections(), revoke },
-    })
-    const response = await app.request('/github/account-connection-revocations', {
+    }).request('/github/account-connection-revocations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ request: 'signed-revocation' }),
     })
-
     expect(response.status).toBe(204)
     expect(revoke).toHaveBeenCalledWith({
       brokerReference: 'broker-1',
@@ -69,319 +222,103 @@ describe('GitHub adapter contract', () => {
     })
   })
 
-  it('[spec: github-adapter/github-provider-connection] completes authorization and returns only broker metadata', async () => {
-    const store = fakeGitHubConnections()
-    const intent = {
-      requestId: 'request-1',
-      connectionId: 'provider-connection-1',
-      expectedExternalSubject: null,
-      ownerSubject: 'org_1',
-      realmrootState: 'realmroot-state',
-      callbackUri: 'https://id.example/api/account-connections/oauth/callback',
-      codeChallenge: 'challenge',
-      scopesJson: '["github:metadata:read"]',
-      expectedInstallationId: null,
-      status: 'pending_oauth' as const,
-      expiresAt: Date.now() + 60_000,
+  it('[spec: github-adapter/provider-isolation] forbids imports between Provider implementations', async () => {
+    const providersRoot = join(dirname(fileURLToPath(import.meta.url)), '../src/providers')
+    const providers = (await readdir(providersRoot, { withFileTypes: true })).filter((entry) => entry.isDirectory())
+    for (const provider of providers) {
+      const directory = join(providersRoot, provider.name)
+      const files = (await readdir(directory)).filter((name) => name.endsWith('.ts'))
+      for (const file of files) {
+        const source = await readFile(join(directory, file), 'utf8')
+        for (const other of providers.filter((candidate) => candidate.name !== provider.name)) {
+          expect(source, `${provider.name}/${file} imports ${other.name}`).not.toMatch(
+            new RegExp(`from ['"][^'"]*providers/${other.name}(?:/|['"])`),
+          )
+          expect(source, `${provider.name}/${file} imports ${other.name}`).not.toMatch(
+            new RegExp(`from ['"]\\.\\./${other.name}(?:/|['"])`),
+          )
+        }
+      }
     }
-    store.findByProviderState = vi.fn(async () => intent)
-    store.exchange = vi.fn(async () => ({
-      intent: { ...intent, status: 'completed' as const },
-      brokerReference: 'broker-1',
-      binding: {
-        githubUserId: 7,
-        githubLogin: 'controller',
-        displayName: 'Controller',
-        scopesJson: '["github:metadata:read"]',
-      },
-      contexts: [{ installationId: 42, accountLogin: 'realmroot', targetType: 'Organization' }],
-    }))
-    const app = testApp({
-      connectionRequestVerifier: vi.fn(async () => ({
-        sub: 'org_1',
-        jti: 'request-1',
-        state: 'realmroot-state',
-        connection_id: 'provider-connection-1',
-        expected_external_subject: null,
-        owner_type: 'organization' as const,
-        callback_uri: intent.callbackUri,
-        code_challenge: 'a'.repeat(43),
-        code_challenge_method: 'S256' as const,
-        scope: 'github:metadata:read',
-        authorization_details: [{ type: 'github_installation' }],
-      })),
-      githubConnection: {
-        authorizationUrl: vi.fn(() => 'https://github.com/login/oauth/authorize?state=provider-state'),
-        exchangeUserCode: vi.fn(async () => 'user-token'),
-        getUser: vi.fn(async () => ({ id: 7, login: 'controller', name: 'Controller' })),
-        listUserInstallations: vi.fn(async () => [{ id: 42, accountLogin: 'realmroot', targetType: 'Organization' }]),
-        newInstallationUrl: vi.fn(),
-      },
-      githubConnections: store,
-    })
-
-    const authorization = await app.request('/github/account-connection-authorizations?request=signed-request')
-    expect(authorization.status).toBe(302)
-    expect(authorization.headers.get('location')).toContain('github.com/login/oauth/authorize')
-    expect(store.create).toHaveBeenCalledWith(expect.objectContaining({ sub: 'org_1' }), expect.any(String))
-
-    const callback = await app.request('/github/oauth/callback?state=provider-state&code=github-code')
-    expect(callback.status).toBe(302)
-    expect(callback.headers.get('location')).toContain(`${intent.callbackUri}?state=realmroot-state&code=`)
-    expect(store.complete).toHaveBeenCalledWith(
-      intent,
-      expect.objectContaining({ id: 7 }),
-      [expect.objectContaining({ id: 42 })],
-      expect.any(String),
-    )
-
-    const credentials = await app.request('/github/account-connection-credentials', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ code: 'adapter-code', code_verifier: 'verifier', connection_id: 'request-1' }),
-    })
-    expect(credentials.status).toBe(200)
-    await expect(credentials.json()).resolves.toMatchObject({
-      external_subject: '7',
-      broker_reference: 'broker-1',
-      authorization_details: [{ type: 'github_installation', installation_id: '42' }],
-    })
-    expect(store.exchange).toHaveBeenCalledWith('adapter-code', 'verifier', 'request-1')
-  })
-
-  it('records one structured completion event for success and unexpected failure', async () => {
-    const info = vi.spyOn(console, 'info').mockImplementation(() => {})
-    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
-    try {
-      expect((await testApp().request('/health')).status).toBe(200)
-      expect(info).toHaveBeenCalledOnce()
-      expect(JSON.parse(String(info.mock.calls[0]?.[0]))).toMatchObject({
-        event: 'request.complete',
-        method: 'GET',
-        path: '/health',
-        status: 200,
-      })
-
-      const failed = testApp({
-        githubConnections: {
-          ...fakeGitHubConnections(),
-          activeInstallationIdsForOwner: vi.fn(async () => {
-            throw new Error('storage unavailable')
-          }),
-        },
-      })
-      expect((await failed.request('/github/repositories')).status).toBe(500)
-      expect(error).toHaveBeenCalledOnce()
-      expect(JSON.parse(String(error.mock.calls[0]?.[0]))).toMatchObject({
-        event: 'request.complete',
-        status: 500,
-        failure: { type: 'about:blank', error: { message: 'storage unavailable' } },
-      })
-    } finally {
-      info.mockRestore()
-      error.mockRestore()
-    }
-  })
-
-  it('[spec: github-adapter/github-create-issue] injects attribution, audits, and replays one write', async () => {
-    const createIssue = vi.fn(async (input) => ({
-      id: 1,
-      number: 2,
-      title: input.title,
-      body: input.body,
-      state: 'open',
-      htmlUrl: 'https://github.test/issues/2',
-    }))
-    const audit = vi.fn(async () => {})
-    const app = testApp({
-      github: {
-        listRepositories: vi.fn(async () => ({
-          items: [
-            {
-              id: 1,
-              name: 'example',
-              fullName: 'realmroot/example',
-              private: false,
-              htmlUrl: 'https://github.test/realmroot/example',
-              owner: 'realmroot',
-            },
-          ],
-          total: 1,
-        })),
-        createIssue,
-      },
-      audit,
-    })
-    const request = () =>
-      app.request('/github/repos/realmroot/example/issues', {
-        method: 'POST',
-        headers: { 'API-Version': adapterApiVersion, 'Idempotency-Key': 'issue-1', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: 'Adapter test', body: 'Original' }),
-      })
-
-    expect((await request()).status).toBe(201)
-    expect((await request()).status).toBe(201)
-    expect(createIssue).toHaveBeenCalledOnce()
-    expect(createIssue.mock.calls[0]?.[0].body).toContain('Created by [Build Agent]')
-    expect(createIssue.mock.calls[0]?.[0].body).toContain('<!-- realmroot-agent:')
-    expect(audit).toHaveBeenCalledOnce()
-  })
-
-  it('[spec: github-adapter/github-reserved-attribution] rejects forged attribution before GitHub', async () => {
-    const createIssue = vi.fn()
-    const app = testApp({ github: { listRepositories: vi.fn(), createIssue } })
-    const response = await app.request('/github/repos/realmroot/example/issues', {
-      method: 'POST',
-      headers: { 'API-Version': adapterApiVersion, 'Idempotency-Key': 'issue-2', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: 'Forged', body: '<!-- realmroot-agent: fake -->' }),
-    })
-    expect(response.status).toBe(400)
-    expect(response.headers.get('content-type')).toContain('application/problem+json')
-    expect(createIssue).not.toHaveBeenCalled()
-  })
-
-  it('[spec: github-adapter/github-repositories] authenticates, paginates, and exposes no provider credential', async () => {
-    const app = testApp({
-      github: {
-        listRepositories: vi.fn(async () => ({
-          items: [
-            {
-              id: 1,
-              name: 'one',
-              fullName: 'realmroot/one',
-              private: true,
-              htmlUrl: 'https://github.test/realmroot/one',
-              owner: 'realmroot',
-            },
-            {
-              id: 2,
-              name: 'two',
-              fullName: 'realmroot/two',
-              private: false,
-              htmlUrl: 'https://github.test/realmroot/two',
-              owner: 'realmroot',
-            },
-          ],
-          total: 2,
-        })),
-        createIssue: vi.fn(),
-      },
-    })
-    const response = await app.request('/github/repositories?page=1&perPage=1', {
-      headers: { 'API-Version': adapterApiVersion },
-    })
-    expect(response.status).toBe(200)
-    expect(response.headers.get('link')).toContain('page=2')
-    expect(JSON.stringify(await response.json())).not.toContain('token')
-  })
-
-  it('returns correlated Problem Details for version, authorization, route, and input failures', async () => {
-    const defaultVersion = await testApp().request('/github/repositories')
-    expect(defaultVersion.status).toBe(200)
-    expect(defaultVersion.headers.get('request-id')).toBeTruthy()
-    const unsupportedVersion = await testApp().request('/github/repositories', {
-      headers: { 'API-Version': '2026-01-01' },
-    })
-    expect(unsupportedVersion.status).toBe(400)
-
-    const denied = testApp({
-      authenticator: { authenticate: vi.fn(async () => ({ ...principal, scopes: new Set<string>() })) },
-    })
-    expect(
-      (
-        await denied.request('/github/repositories', {
-          headers: { 'API-Version': adapterApiVersion },
-        })
-      ).status,
-    ).toBe(403)
-    expect((await testApp().request('/missing')).status).toBe(404)
-    const malformed = await testApp().request('/github/repos/realmroot/example/issues', {
-      method: 'POST',
-      headers: {
-        'API-Version': adapterApiVersion,
-        'Idempotency-Key': 'issue-3',
-        'Content-Type': 'application/json',
-      },
-      body: '{',
-    })
-    expect(malformed.status).toBe(400)
-  })
-
-  it('keeps discovery available but fails provider operations when GitHub credentials are absent', async () => {
-    const app = createApp(config, {
-      authenticator: { authenticate: vi.fn(async () => principal) },
-      idempotency: new FakeIdempotencyStore(),
-      agentInfo: {
-        resolve: vi.fn(async () => ({
-          name: 'Build Agent',
-          picture: 'https://id.test/a.png',
-          identityUrl: 'https://id.test/agentinfo?sub=agt_1',
-        })),
-      },
-      githubConnections: fakeGitHubConnections(),
-      audit: vi.fn(async () => {}),
-    })
-    const list = await app.request('/github/repositories', {
-      headers: { 'API-Version': adapterApiVersion },
-    })
-    expect(list.status).toBe(503)
-
-    const create = await app.request('/github/repos/realmroot/example/issues', {
-      method: 'POST',
-      headers: {
-        'API-Version': adapterApiVersion,
-        'Idempotency-Key': 'issue-4',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ title: 'No credentials' }),
-    })
-    expect(create.status).toBe(503)
   })
 })
 
-function testApp(overrides: Partial<Parameters<typeof createApp>[1]> = {}) {
-  return createApp(config, {
+function testApp(overrides: Partial<GitHubAdapterDependencies> = {}) {
+  const dependencies: GitHubAdapterDependencies = {
     authenticator: { authenticate: vi.fn(async () => principal) },
     agentInfo: {
       resolve: vi.fn(async () => ({
         name: 'Build Agent',
         picture: 'https://id.test/a.png',
-        identityUrl: 'https://id.test/agentinfo?sub=agt_1',
+        identityUrl: 'https://id.test/agents/agt_1',
       })),
     },
-    github: {
-      listRepositories: vi.fn(async () => ({ items: [], total: 0 })),
-      createIssue: vi.fn(),
-    },
-    idempotency: new FakeIdempotencyStore(),
-    githubConnections: fakeGitHubConnections(),
+    provider: fakeProvider(),
+    connections: fakeConnections(),
     audit: vi.fn(async () => {}),
     ...overrides,
-  })
+  }
+  return createApp([createGitHubAdapter(config, dependencies)])
 }
 
-function fakeGitHubConnections(): GitHubConnectionStore {
+function fakeProvider(): GitHubProvider {
+  return {
+    appPermissions: vi.fn(async () => ({ contents: 'write', metadata: 'read', issues: 'write' }) as const),
+    openApiDocument: vi.fn(async () =>
+      Response.json({
+        openapi: '3.0.3',
+        info: { title: 'GitHub REST API', version: '1.1.4' },
+        components: { schemas: { issue: { type: 'object' } } },
+        paths: {
+          '/installation/repositories': {
+            get: { operationId: 'apps/list-repos-accessible-to-installation', responses: { 200: {} } },
+          },
+          '/repos/{owner}/{repo}/issues': {
+            parameters: [{ name: 'owner', in: 'path' }],
+            get: { operationId: 'issues/list-for-repo', responses: { 200: {} } },
+            post: {
+              operationId: 'issues/create',
+              servers: [{ url: 'https://uploads.github.com' }],
+              responses: { 201: {} },
+            },
+          },
+          '/applications/{client_id}/token': {
+            patch: { operationId: 'apps/reset-token', responses: { 200: {} } },
+          },
+        },
+      }),
+    ),
+    installationToken: vi.fn(async () => 'installation-secret'),
+    request: vi.fn(async () => new Response(null, { status: 204 })),
+  }
+}
+
+function fakeConnections(): GitHubConnectionStore {
   return {
     create: vi.fn(async () => {}),
     findByProviderState: vi.fn(),
     rotateProviderState: vi.fn(async () => {}),
     complete: vi.fn(async () => {}),
     exchange: vi.fn(),
-    activeInstallationIdsForOwner: vi.fn(async () => [42]),
+    activeInstallationsForOwner: vi.fn(async () => [
+      { installationId: 42, accountLogin: 'realmroot', targetType: 'Organization' },
+    ]),
     revoke: vi.fn(async () => {}),
   }
 }
 
-class FakeIdempotencyStore implements IdempotencyStore {
-  readonly responses = new Map<string, Response>()
-
-  async execute(key: string | null, namespace: string, _input: unknown, operation: () => Promise<Response>) {
-    if (!key) throw new Error('Idempotency-Key is required.')
-    const storageKey = `${namespace}:${key}`
-    const stored = this.responses.get(storageKey)
-    if (stored) return stored.clone()
-    const response = await operation()
-    this.responses.set(storageKey, response.clone())
-    return response
+function intent(status: 'completed') {
+  return {
+    requestId: 'request-1',
+    connectionId: 'connection-1',
+    expectedExternalSubject: null,
+    ownerSubject: 'org_1',
+    realmrootState: 'state',
+    callbackUri: 'https://id.example/callback',
+    codeChallenge: 'challenge',
+    scopesJson: '["metadata:read"]',
+    expectedInstallationId: null,
+    status,
+    expiresAt: Date.now() + 60_000,
   }
 }

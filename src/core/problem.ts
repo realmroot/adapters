@@ -24,10 +24,6 @@ export function badRequest(detail: string, type = 'invalid-request') {
   return new HttpProblem(400, `urn:realmroot:adapter:${type}`, 'Bad Request', detail)
 }
 
-export function conflict(detail: string) {
-  return new HttpProblem(409, 'urn:realmroot:adapter:idempotency-conflict', 'Conflict', detail)
-}
-
 export function failedDependency(detail: string) {
   return new HttpProblem(424, 'urn:realmroot:adapter:provider-failure', 'Failed Dependency', detail)
 }

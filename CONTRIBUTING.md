@@ -24,8 +24,8 @@ documentation for:
 5. discoverable Resource types and selection boundaries;
 6. permissions and their mapping to operations;
 7. webhook or polling signals for permission and installation changes;
-8. provider idempotency guarantees and remaining deduplication needs;
-9. the smallest representative read and write operations;
+8. provider retry and idempotency semantics that the proxy must preserve;
+9. transformations required beyond transparent forwarding;
 10. known product-tier, review, marketplace, or compliance requirements;
 11. a date-stamped matrix for every stable capability ID in the
     [Agent-native Resource Server Profile](https://github.com/realmroot/realmroot/blob/main/docs/integrations/agent-native-resource-server-profile.md),
@@ -47,6 +47,10 @@ proxy.
 - Start with one complete provider journey and its proof.
 - Keep canonical contracts owned by the application behavior that consumes
   them; adapters implement those contracts.
+- Preserve the provider's original API instead of adding adapter-owned business
+  operations or response schemas.
+- Keep each provider implementation isolated; adding or fixing one provider
+  must not require changes inside another provider directory.
 - Do not expose provider SDK types, token formats, or HTTP response shapes to
   the core.
 - Validate at Agent, provider, network, environment, and persistence

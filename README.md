@@ -97,10 +97,12 @@ A provider adapter is responsible for:
 - authenticating a DPoP-bound Realmroot Agent request;
 - mapping the authenticated Agent to a provider-native actor when available;
 - keeping provider credentials outside Agent and CLI visibility;
-- discovering provider resources and mapping them to Realmroot Resources;
-- mapping Realmroot scopes to provider permissions and resource boundaries;
+- translating provider permissions into Realmroot scopes without inventing a
+  second permission vocabulary;
+- forwarding the provider's original HTTP API and preserving its semantics;
 - acquiring, rotating, revoking, and safely storing provider credentials;
-- enforcing idempotency for provider writes;
+- transforming only operations that require compatibility behavior such as
+  Agent attribution;
 - correlating Realmroot audit records with provider actors and resulting
   resources;
 - declaring when identity is visible in product UI, audit logs, both, or
@@ -141,8 +143,8 @@ docs/
 specs/
   github-adapter.feature
 src/
-  core/         Shared DPoP, Agent Profile, attribution, errors, and idempotency
-  providers/    Thin provider credential and HTTP boundaries
+  core/         Shared HTTP lifecycle, DPoP, Agent Profile, and errors
+  providers/    Isolated provider connections, permission translation, proxy, and transformations
   storage/      Worker-owned D1 runtime state
   worker.ts     Cloudflare Worker entrypoint
 migrations/     D1 schema
@@ -208,17 +210,27 @@ pnpm exec wrangler secret put GITHUB_CLIENT_ID
 pnpm exec wrangler secret put GITHUB_CLIENT_SECRET
 ```
 
-The first slice needs repository Metadata read and Issues read/write. Each
+The first connected App currently needs repository Metadata read and Issues
+read/write. Each
 Realmroot account has at most one GitHub Connection, and that Connection may
 contain multiple GitHub App installations. Install the App only on repositories
 that should be available through that account connection.
 
-The current operations are intentionally narrow:
+The GitHub Resource URL mirrors the original GitHub REST paths:
 
 ```text
-GET  /repositories
-POST /repos/{owner}/{repository}/issues
+GET  /github/installation/repositories
+POST /github/repos/{owner}/{repo}/issues
+PATCH /github/repos/{owner}/{repo}/labels/{name}
+...all other GitHub REST paths accepted by the transparent proxy
 ```
+
+Most requests are streamed transparently. The adapter parses a request body
+only for a small registry of operations that need Agent attribution. GitHub
+continues to define request and response schemas, endpoint behavior, and
+permission enforcement. OpenAPI discovery publishes the subset GitHub documents
+for installation access tokens and the permissions currently configured on the
+App.
 
 Run the project checks with:
 

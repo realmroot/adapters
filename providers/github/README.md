@@ -84,7 +84,7 @@ mean GitHub implements that capability natively.
 | `RESOURCE-HTTPS` | 🟨 | GitHub has an HTTPS API, but its token is not bound to the selected installation or repository as the profile's exact audience. |
 | `RESOURCE-METADATA` | 🟨 | No RFC 9728 metadata is documented for GitHub API Resources; the adapter publishes one GitHub protected Resource and its scopes. |
 | `API-SERVICE-DESC` | 🟨 | GitHub does not advertise its API contract from the selected Resource with RFC 8631. |
-| `API-OPENAPI` | 🟨 | The adapter will expose only its supported operation slice and scope mapping. |
+| `API-OPENAPI` | 🟨 | The adapter publishes GitHub's official installation-token operation slice with native GitHub App permission scopes. |
 | `AS-METADATA` | 🟨 | GitHub App endpoints are documented individually rather than discovered through the required issuer metadata. |
 | `OIDC-CONNECTION` | 🟨 | User access tokens and `/user` provide provider-specific connection semantics, not the complete OIDC contract. |
 | `OAUTH-CODE` | ✅ | GitHub App user authorization uses the OAuth authorization-code flow. |

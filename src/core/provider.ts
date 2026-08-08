@@ -12,7 +12,14 @@ export type ProviderManifest = Readonly<{
   credentialModes: readonly string[]
   resourceTypes: readonly string[]
   scopes: Readonly<Record<string, Readonly<{ providerPermissions: Readonly<Record<string, string>> }>>>
-  operations: readonly Readonly<{ operationId: string; method: string; path: string; scope: string }>[]
+  operations:
+    | readonly Readonly<{ operationId: string; method: string; path: string; scope: string }>[]
+    | Readonly<{
+        mode: 'transparent'
+        upstream: string
+        openapi: string
+        transformations: readonly Readonly<{ method: string; path: string; behavior: string }>[]
+      }>
   revocationSignals: readonly string[]
   nativeReadinessGaps: readonly string[]
   retirementCondition: string

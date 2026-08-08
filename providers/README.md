@@ -17,9 +17,9 @@ Before implementation, each provider README must define:
 - installation and authorization flow;
 - credential lifecycle;
 - Realmroot Resource mapping;
-- scope and provider-permission mapping;
-- supported operations;
-- idempotency strategy;
+- provider permissions exposed as Realmroot scopes;
+- transparent upstream API boundary and the exceptional transformations;
+- provider-native retry and idempotency semantics;
 - revocation signals;
 - provider tier, review, or marketplace requirements;
 - known limitations that affect security or identity claims;

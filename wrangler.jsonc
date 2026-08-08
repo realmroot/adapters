@@ -11,7 +11,8 @@
     "REALMROOT_ISSUER": "https://id.realmroot.dev/api/auth",
     "REALMROOT_JWKS_URL": "https://id.realmroot.dev/api/auth/jwks",
     "REALMROOT_AGENT_PROFILE_URI_TEMPLATE": "https://id.realmroot.dev/api/public/agents/{subject}",
-    "GITHUB_API_ORIGIN": "https://api.github.com"
+    "GITHUB_API_ORIGIN": "https://api.github.com",
+    "GITHUB_UPLOADS_ORIGIN": "https://uploads.github.com"
   },
   "secrets": {
     "required": ["GITHUB_APP_ID", "GITHUB_PRIVATE_KEY", "GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET"]

@@ -5,10 +5,12 @@ describe('Provider connection migration', () => {
   it('upgrades a legacy GitHub binding without changing its broker reference or owner', async () => {
     const legacy = env.TEST_MIGRATIONS.slice(0, 2)
     const lifecycle = env.TEST_MIGRATIONS.slice(2, 3)
-    const installationOwnership = env.TEST_MIGRATIONS.slice(3)
+    const installationOwnership = env.TEST_MIGRATIONS.slice(3, 4)
+    const transparentScopes = env.TEST_MIGRATIONS.slice(4)
     expect(legacy).toHaveLength(2)
     expect(lifecycle).toHaveLength(1)
     expect(installationOwnership).toHaveLength(1)
+    expect(transparentScopes).toHaveLength(1)
     await applyD1Migrations(env.MIGRATION_DB, legacy)
     const now = Date.now()
     await env.MIGRATION_DB.batch([
@@ -59,6 +61,7 @@ describe('Provider connection migration', () => {
 
     await applyD1Migrations(env.MIGRATION_DB, lifecycle)
     await applyD1Migrations(env.MIGRATION_DB, installationOwnership)
+    await applyD1Migrations(env.MIGRATION_DB, transparentScopes)
 
     await expect(
       env.MIGRATION_DB.prepare(
@@ -68,6 +71,18 @@ describe('Provider connection migration', () => {
         .bind('broker-legacy')
         .first(),
     ).resolves.toEqual({ brokerReference: 'broker-legacy', ownerSubject: 'user-legacy' })
+    await expect(
+      env.MIGRATION_DB.prepare(
+        'SELECT scopes_json AS scopesJson FROM github_connection_binding WHERE broker_reference = ?',
+      )
+        .bind('broker-legacy')
+        .first(),
+    ).resolves.toEqual({ scopesJson: '["metadata:read"]' })
+    await expect(
+      env.MIGRATION_DB.prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'idempotency_response'",
+      ).first(),
+    ).resolves.toBeNull()
     await expect(
       env.MIGRATION_DB.prepare(
         'SELECT installation_id AS installationId FROM github_connection_context WHERE broker_reference = ?',
