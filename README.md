@@ -186,8 +186,11 @@ PKCS#1 keys and unencrypted PKCS#8 PEM keys are accepted.
 Configure the GitHub App callbacks as:
 
 ```text
-Callback URL: http://127.0.0.1:4103/github/oauth/callback
-Setup URL:    http://127.0.0.1:4103/github/account-connection-installations
+Local callback URL: http://127.0.0.1:4103/github/oauth/callback
+Local setup URL:    http://127.0.0.1:4103/github/account-connection-installations
+
+Production callback URL: https://adapters.realmroot.dev/github/oauth/callback
+Production setup URL:    https://adapters.realmroot.dev/github/account-connection-installations
 ```
 
 For deployment, store the key without putting it in source or Wrangler vars:
