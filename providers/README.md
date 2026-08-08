@@ -17,7 +17,9 @@ Before implementation, each provider README must define:
 - idempotency strategy;
 - revocation signals;
 - provider tier, review, or marketplace requirements;
-- known limitations that affect security or identity claims.
+- known limitations that affect security or identity claims;
+- gaps against the Agent-native access protocol profile;
+- the native capability that would make the adapter unnecessary.
 
 ## Status values
 
@@ -30,3 +32,10 @@ Before implementation, each provider README must define:
 
 No provider may be marked stable until it passes the shared conformance suite
 against a real isolated provider installation.
+
+## Adapter retirement
+
+Provider modules are intentionally removable. When a provider can satisfy the
+native protocol profile directly, maintainers publish a migration path, stop
+adding adapter-only surface area, deprecate the module, and remove it after the
+documented compatibility window.

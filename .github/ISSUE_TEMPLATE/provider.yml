@@ -69,6 +69,20 @@ body:
       description: Include product tiers, marketplace review, compliance, preview status, and known identity limitations.
     validations:
       required: true
+  - type: textarea
+    id: native-readiness
+    attributes:
+      label: Native-readiness gaps
+      description: Which Agent-native protocol capabilities does the provider not yet implement directly?
+    validations:
+      required: true
+  - type: textarea
+    id: retirement
+    attributes:
+      label: Adapter retirement condition
+      description: What observable provider capability would let users migrate to direct Agent access and remove this adapter?
+    validations:
+      required: true
   - type: checkboxes
     id: terms
     attributes:

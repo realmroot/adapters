@@ -7,6 +7,30 @@ platforms that do not implement the Realmroot-native Resource Server contract.
 The bridge must preserve the Agent identity and approved authority without
 misrepresenting what the provider can natively enforce or display.
 
+This is a transitional architecture. Its intended outcome is for the provider
+to implement the Agent-facing protocol boundary itself, after which the
+provider adapter leaves the request path.
+
+## Target architecture
+
+```text
+Transitional path
+
+Realmroot Agent -> provider adapter -> legacy provider API
+
+Target path
+
+Realmroot Agent -> provider-native Agent protocol boundary
+                    authenticate Agent
+                    authorize Resource and scopes
+                    record native Agent actor
+                    enforce revocation and audit
+```
+
+The target keeps business authorization with the platform that owns the
+Resource. Realmroot supplies stable Agent identity and delegated authority; it
+does not become a permanent proxy or a central catalog of provider permissions.
+
 ## Trust boundaries
 
 ```text
@@ -114,6 +138,10 @@ The manifest is descriptive, not self-authorizing. Runtime behavior must still
 validate every Agent request, Resource, scope, provider credential, and
 provider response.
 
+The manifest also records `nativeReadinessGaps` and `retirementCondition`.
+These fields make adapter removal part of the provider contract rather than an
+informal future intention.
+
 ## Request lifecycle
 
 1. Authenticate the DPoP-bound Agent request.
@@ -176,3 +204,7 @@ Every provider will run the same contract suite for:
 Provider-specific tests then prove the real external boundary against an
 isolated test installation or recorded contract fixture. Live-provider tests
 must never depend on contributor personal accounts in normal pull-request CI.
+
+The same conformance suite should eventually run against a provider's native
+implementation. Passing it without an adapter is the technical entry condition
+for migration to the direct path.

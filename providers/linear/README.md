@@ -59,3 +59,15 @@ remain correlated throughout the journey.
 Linear's Agent APIs are currently documented as Developer Preview. The adapter
 will remain experimental until the upstream contract is stable enough for a
 supported compatibility promise.
+
+## Native-readiness gaps and retirement
+
+Linear provides the strongest initial product-native Agent experience, but the
+adapter still translates Realmroot identity and authority into a Linear OAuth
+App actor and provider credential. Linear does not yet directly validate the
+external stable Agent principal and proof-bound Realmroot authority at its API
+Resource boundary.
+
+This adapter can be retired when Linear accepts that identity and authority
+directly while retaining its native Agent member, delegation, session, display,
+audit, and revocation experience.

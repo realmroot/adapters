@@ -26,11 +26,18 @@ documentation for:
 7. webhook or polling signals for permission and installation changes;
 8. provider idempotency guarantees and remaining deduplication needs;
 9. the smallest representative read and write operations;
-10. known product-tier, review, marketplace, or compliance requirements.
+10. known product-tier, review, marketplace, or compliance requirements;
+11. the provider's gaps against the native Agent protocol profile;
+12. the observable condition under which the adapter can be deprecated.
 
 A provider that only supports a shared application actor is still welcome, but
 must declare `brokered` identity rather than presenting display attribution as
 a native Agent principal.
+
+Contributions that help a platform adopt the native protocol profile are as
+valuable as adapter implementations. The project prefers a smaller removable
+adapter and a credible direct-integration path over a permanent feature-complete
+proxy.
 
 ## Development principles
 

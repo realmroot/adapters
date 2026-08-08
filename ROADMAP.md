@@ -4,6 +4,11 @@ This roadmap communicates direction, not a compatibility or delivery-date
 promise. Provider APIs and identity products change independently; milestones
 may move when their security semantics change.
 
+The roadmap has a deliberate terminal condition: a provider adapter is
+deprecated when the provider implements compatible native Agent identity,
+authorization, discovery, audit, and revocation. Adapter removal is a success
+metric, not a loss of project scope.
+
 ## Project status
 
 The project is being bootstrapped. No adapter is currently supported for
@@ -27,6 +32,25 @@ production use.
 
 Exit criteria: a provider can declare its real identity capabilities and pass
 the shared security contract without provider-specific exceptions in the core.
+
+## Protocol publication and platform adoption
+
+The adapter implementations will produce an open Agent-native access protocol
+profile rather than a Realmroot-only integration convention.
+
+- Separate normative protocol requirements from Realmroot implementation
+  details.
+- Publish versioned metadata, token, Agent principal, Resource, scope, audit,
+  revocation, and migration requirements.
+- Publish a provider adoption guide and minimal native Resource Server example.
+- Make the conformance suite runnable by platform vendors without deploying an
+  adapter.
+- Establish public compatibility and change-governance rules.
+- Work with providers to replace adapter paths with direct native paths.
+
+Exit criteria: a platform team can implement and verify direct Agent access
+from the public protocol profile and conformance suite without depending on
+provider-specific Realmroot adapter code.
 
 ## Phase 1 — GitHub vertical slice
 
@@ -102,7 +126,8 @@ Future providers are evaluated by identity fidelity before API breadth.
 
 A candidate moves into the committed roadmap only after a provider proposal
 documents its actor semantics, Resource model, credential lifecycle, audit
-surface, revocation behavior, and a safe initial operation set.
+surface, revocation behavior, safe initial operation set, native-readiness gaps,
+and the condition under which its adapter can be retired.
 
 ## Non-goals
 
@@ -114,3 +139,5 @@ surface, revocation behavior, and a safe initial operation set.
 - Silently weakening DPoP or provider permission boundaries.
 - Permanently proxying a provider after it supports a compatible native
   Realmroot Resource Server integration.
+- Treating adapter count or proxied API breadth as the project's primary
+  success metric.
