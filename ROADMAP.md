@@ -124,36 +124,72 @@ Exit criteria: a Realmroot Agent is visible in Linear without content footers,
 can participate in a native Agent workflow, and remains correlated with its
 Realmroot principal and authority.
 
-## Candidate providers
+## Provider waves
 
-Future providers are evaluated by identity fidelity before API breadth.
+All providers previously discussed by the project are part of the visible
+portfolio. A wave expresses evaluation order and the identity question it is
+intended to answer; it is not a delivery-date commitment.
 
-### Native Agent candidates
+### Wave 1 — Identity-model baseline
 
-- Platforms that introduce installable Agent members, Agent sessions, or
-  trusted per-operation Agent attribution.
+- **GitHub** — brokered application identity and trusted visible attribution.
+- **Linear** — installable native Agent experience, delegation, and Agent
+  Sessions.
+- **Cloudflare** — dedicated service-principal identity and provider-side audit.
 
-### Native service-principal candidates
+These three establish the conformance and implementation patterns used by all
+later provider proposals.
 
-- AWS IAM roles and role sessions
-- Microsoft Entra service principals and workload identities
-- Google Cloud service accounts and workload identity federation
-- GitLab project/group bot users and service accounts
-- Bitbucket repository/project/workspace access-token users
-- Vercel integrations
+### Wave 2 — Developer platform identities
 
-### Brokered adapter candidates
+- **GitLab** — project/group service accounts and bot users.
+- **Bitbucket** — repository/project/workspace access-token users.
+- **Vercel** — integration identity, scoped project access, and audit
+  correlation.
 
-- Slack apps
-- Microsoft Teams bots
-- Jira and Confluence apps
-- Notion connections
-- Asana OAuth applications
+Exit criteria: each proposal proves whether a dedicated provider principal can
+be provisioned per Realmroot Agent without simulating a human account, and
+documents the operational cost of that identity lifecycle.
 
-A candidate moves into the committed roadmap only after a provider proposal
-documents its actor semantics, Resource model, credential lifecycle, audit
-surface, revocation behavior, safe initial operation set, native-readiness gaps,
-and the condition under which its adapter can be retired.
+### Wave 3 — Collaboration applications
+
+- **Slack** apps and bot actors.
+- **Microsoft Teams** bots and application actors.
+- **Jira** apps.
+- **Confluence** apps.
+- **Notion** connections and integration actors.
+- **Asana** OAuth applications.
+
+Exit criteria: each proposal distinguishes the provider's security principal
+from UI display attribution, identifies the exact operations that need trusted
+identity transformation, and preserves the provider's original API rather than
+introducing adapter-owned business endpoints.
+
+### Wave 4 — Cloud workload identities
+
+- **AWS** IAM roles and role sessions.
+- **Microsoft Entra** service principals and workload identities.
+- **Google Cloud** service accounts and workload identity federation.
+
+Exit criteria: each proposal maps a Realmroot Agent to a short-lived workload
+principal, scopes it to exact cloud Resources, and correlates it with the
+provider's native audit log without long-lived credentials reaching the Agent.
+
+## Proposal gate
+
+A provider moves from `proposal` to `design` only after its provider report
+documents:
+
+- actor semantics and identity fidelity;
+- Resource and provider-permission models;
+- installation, credential, rotation, and revocation lifecycle;
+- product UI and audit visibility;
+- a safe transparent-proxy vertical slice;
+- native-readiness gaps and adapter retirement condition;
+- provider tier, marketplace review, quota, and operational constraints.
+
+Identity fidelity is evaluated before API breadth. A large API surface never
+compensates for an identity claim the provider cannot enforce or audit.
 
 ## Non-goals
 
