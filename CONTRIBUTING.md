@@ -63,6 +63,13 @@ Maintainers may ask to split a provider contribution when identity,
 authorization, discovery, and operation changes cannot be reviewed safely as
 one unit.
 
+Run the repository's documentation checks before submitting a documentation-
+only change:
+
+```bash
+ruby scripts/check-docs.rb
+```
+
 ## Commit messages
 
 Use clear, imperative commits. Conventional Commit prefixes are encouraged:

@@ -49,9 +49,9 @@ is officially representing the community in public spaces.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported privately through the contact methods listed in the Realmroot
-organization profile. All complaints will be reviewed and investigated
-promptly and fairly. The privacy and security of reporters will be respected.
+reported privately to `saltbo@foxmail.com`. All complaints will be reviewed
+and investigated promptly and fairly. The privacy and security of reporters
+will be respected.
 
 ## Attribution
 
