@@ -1,12 +1,15 @@
 import { generateKeyPairSync } from 'node:crypto'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { createGitHubProvider } from '../../src/providers/github/client.js'
+import { createGitHubConnectionProvider, createGitHubProvider } from '../../src/providers/github/client.js'
 
 type SeenRequest = { method: string; url: string; authorization: string | undefined; body: unknown }
 let closeServer: (() => Promise<void>) | undefined
 
-afterEach(async () => closeServer?.())
+afterEach(async () => {
+  await closeServer?.()
+  closeServer = undefined
+})
 
 describe('GitHub provider HTTP boundary', () => {
   let apiOrigin: string
@@ -61,6 +64,46 @@ describe('GitHub provider HTTP boundary', () => {
     await expect(provider.listRepositories(42, 1, 30)).resolves.toMatchObject({
       items: [{ id: 99, fullName: 'realmroot/example' }],
     })
+  })
+})
+
+describe('GitHub account connection OAuth boundary', () => {
+  it('selects the adapter callback when the GitHub App has multiple callback URLs', async () => {
+    const privateKey = generateKeyPairSync('rsa', { modulusLength: 2048 })
+      .privateKey.export({ type: 'pkcs8', format: 'pem' })
+      .toString()
+    const requests: Array<{ url: string; body: unknown }> = []
+    const provider = createGitHubConnectionProvider({
+      appId: '123',
+      privateKey,
+      clientId: 'client-id',
+      clientSecret: 'client-secret',
+      redirectUri: 'https://adapters.realmroot.dev/github/oauth/callback',
+      apiOrigin: 'https://api.github.test',
+      fetcher: async (input, init) => {
+        requests.push({
+          url: String(input),
+          body: init?.body ? JSON.parse(String(init.body)) : undefined,
+        })
+        return Response.json({ access_token: 'user-token' })
+      },
+    })
+
+    const authorization = new URL(provider.authorizationUrl('provider-state'))
+    expect(authorization.searchParams.get('redirect_uri')).toBe('https://adapters.realmroot.dev/github/oauth/callback')
+
+    await expect(provider.exchangeUserCode('authorization-code')).resolves.toBe('user-token')
+    expect(requests).toEqual([
+      {
+        url: 'https://github.com/login/oauth/access_token',
+        body: {
+          client_id: 'client-id',
+          client_secret: 'client-secret',
+          code: 'authorization-code',
+          redirect_uri: 'https://adapters.realmroot.dev/github/oauth/callback',
+        },
+      },
+    ])
   })
 })
 

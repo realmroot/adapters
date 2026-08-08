@@ -159,6 +159,7 @@ export function createGitHubConnectionProvider(input: {
   privateKey: string
   clientId: string
   clientSecret: string
+  redirectUri: string
   apiOrigin: string
   fetcher?: typeof fetch
   now?: () => number
@@ -170,6 +171,7 @@ export function createGitHubConnectionProvider(input: {
     authorizationUrl(state) {
       const url = new URL('https://github.com/login/oauth/authorize')
       url.searchParams.set('client_id', input.clientId)
+      url.searchParams.set('redirect_uri', input.redirectUri)
       url.searchParams.set('state', state)
       return url.toString()
     },
@@ -177,7 +179,12 @@ export function createGitHubConnectionProvider(input: {
       const response = await fetcher('https://github.com/login/oauth/access_token', {
         method: 'POST',
         headers: { accept: 'application/json', 'content-type': 'application/json', 'user-agent': userAgent },
-        body: JSON.stringify({ client_id: input.clientId, client_secret: input.clientSecret, code }),
+        body: JSON.stringify({
+          client_id: input.clientId,
+          client_secret: input.clientSecret,
+          code,
+          redirect_uri: input.redirectUri,
+        }),
         signal: AbortSignal.timeout(10_000),
       })
       if (!response.ok) throw failedDependency(`GitHub rejected OAuth authorization with ${response.status}.`)

@@ -361,6 +361,7 @@ function configuredGitHubConnection(config: AppConfig): GitHubConnectionProvider
     privateKey: config.githubPrivateKey,
     clientId: config.githubClientId,
     clientSecret: config.githubClientSecret,
+    redirectUri: `${githubResource(config.origin)}/oauth/callback`,
     apiOrigin: config.githubApiOrigin,
   })
 }
