@@ -22,7 +22,12 @@ production use.
 
 ## Phase 0 — Contract and security baseline
 
-- Define the versioned provider capability manifest.
+- [x] Publish Agent-native Resource Server Profile 0.1 in the Realmroot main
+  repository.
+- [x] Add date-stamped Profile 0.1 capability reports for the initial three
+  providers.
+- [ ] Define the machine-readable provider capability manifest from the stable
+  profile IDs.
 - Define the canonical provider module contract around identity, authorization,
   discovery, credentials, operations, revocation, idempotency, and audit.
 - Define conformance tests shared by every provider.
@@ -35,8 +40,11 @@ the shared security contract without provider-specific exceptions in the core.
 
 ## Protocol publication and platform adoption
 
-The adapter implementations will produce an open Agent-native access protocol
-profile rather than a Realmroot-only integration convention.
+The canonical implementation baseline is Realmroot's
+[Agent-native Resource Server Profile](https://github.com/realmroot/realmroot/blob/main/docs/integrations/agent-native-resource-server-profile.md).
+Adapter implementations and provider evidence will evolve it toward an open
+Agent-native access profile rather than a Realmroot-only integration
+convention.
 
 - Separate normative protocol requirements from Realmroot implementation
   details.

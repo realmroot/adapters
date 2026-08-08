@@ -73,7 +73,7 @@ body:
     id: native-readiness
     attributes:
       label: Native-readiness gaps
-      description: Which Agent-native protocol capabilities does the provider not yet implement directly?
+      description: Assess every Profile 0.1 capability ID as provider-native, adapter-bridged, missing, preview, or not applicable, and cite official evidence.
     validations:
       required: true
   - type: textarea

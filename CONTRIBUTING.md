@@ -27,7 +27,10 @@ documentation for:
 8. provider idempotency guarantees and remaining deduplication needs;
 9. the smallest representative read and write operations;
 10. known product-tier, review, marketplace, or compliance requirements;
-11. the provider's gaps against the native Agent protocol profile;
+11. a date-stamped matrix for every stable capability ID in the
+    [Agent-native Resource Server Profile](https://github.com/realmroot/realmroot/blob/main/docs/integrations/agent-native-resource-server-profile.md),
+    with official evidence and an explicit distinction between native support,
+    adapter bridging, missing support, and non-applicability;
 12. the observable condition under which the adapter can be deprecated.
 
 A provider that only supports a shared application actor is still welcome, but
