@@ -31,7 +31,7 @@ export default defineConfig({
                 TEST_MIGRATIONS: await readD1Migrations(path.join(import.meta.dirname, 'migrations')),
                 REALMROOT_ISSUER: 'https://id.example/api/auth',
                 REALMROOT_JWKS_URL: 'https://id.example/api/auth/jwks',
-                REALMROOT_AGENTINFO_ENDPOINT: 'https://id.example/api/auth/agentinfo',
+                REALMROOT_AGENT_PROFILE_URI_TEMPLATE: 'https://id.example/api/public/agents/{subject}',
                 GITHUB_API_ORIGIN: 'https://api.github.com',
               },
             },

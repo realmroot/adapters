@@ -10,7 +10,7 @@
   "vars": {
     "REALMROOT_ISSUER": "https://id.realmroot.dev/api/auth",
     "REALMROOT_JWKS_URL": "https://id.realmroot.dev/api/auth/jwks",
-    "REALMROOT_AGENTINFO_ENDPOINT": "https://id.realmroot.dev/api/auth/agentinfo",
+    "REALMROOT_AGENT_PROFILE_URI_TEMPLATE": "https://id.realmroot.dev/api/public/agents/{subject}",
     "GITHUB_API_ORIGIN": "https://api.github.com"
   },
   "secrets": {

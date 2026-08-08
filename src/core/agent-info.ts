@@ -2,10 +2,12 @@ import { z } from 'zod'
 import { failedDependency } from './problem.js'
 import type { AgentPrincipal } from './realmroot-auth.js'
 
-const discoverySchema = z.object({ agentinfo_endpoint: z.url() })
+const discoverySchema = z.object({ agent_profile_uri_template: z.string().trim().min(1) })
 const agentInfoSchema = z.object({
-  iss: z.string(),
-  sub: z.string(),
+  type: z.literal('agent'),
+  view: z.literal('summary'),
+  issuer: z.string(),
+  subject: z.string(),
   name: z.string().min(1).max(200),
   picture: z.url(),
 })
@@ -13,27 +15,45 @@ const agentInfoSchema = z.object({
 export type AgentDisplay = Readonly<{ name: string; picture: string; identityUrl: string }>
 export type AgentInfoResolver = { resolve(principal: AgentPrincipal): Promise<AgentDisplay> }
 
-export function createAgentInfoResolver(fetcher: typeof fetch = fetch, configuredEndpoint?: string): AgentInfoResolver {
-  const endpoints = new Map<string, string>()
+export function createAgentInfoResolver(fetcher: typeof fetch = fetch, configuredTemplate?: string): AgentInfoResolver {
+  const templates = new Map<string, string>()
   return {
     async resolve(principal) {
-      let endpoint = configuredEndpoint ?? endpoints.get(principal.actor.issuer)
-      if (!endpoint) {
-        const discoveryUrl = `${principal.actor.issuer}/.well-known/openid-configuration`
+      let template = configuredTemplate ?? templates.get(principal.actor.issuer)
+      if (!template) {
+        const discoveryUrl = new URL('/.well-known/agent-configuration', principal.actor.issuer)
         const response = await fetcher(discoveryUrl, { signal: AbortSignal.timeout(5_000) })
-        if (!response.ok) throw failedDependency('Realmroot AgentInfo discovery failed.')
-        endpoint = discoverySchema.parse(await response.json()).agentinfo_endpoint
-        endpoints.set(principal.actor.issuer, endpoint)
+        if (!response.ok) throw failedDependency('Realmroot Agent Profile discovery failed.')
+        template = discoverySchema.parse(await response.json()).agent_profile_uri_template
+        templates.set(principal.actor.issuer, template)
       }
-      const url = new URL(endpoint)
-      url.searchParams.set('sub', principal.actor.subject)
+      const url = profileUrl(template, principal.actor.issuer, principal.actor.subject)
       const response = await fetcher(url, { signal: AbortSignal.timeout(5_000) })
-      if (!response.ok) throw failedDependency('Realmroot AgentInfo resolution failed.')
+      if (!response.ok) throw failedDependency('Realmroot Agent Profile resolution failed.')
       const info = agentInfoSchema.parse(await response.json())
-      if (info.iss !== principal.actor.issuer || info.sub !== principal.actor.subject) {
-        throw failedDependency('Realmroot AgentInfo did not match the authenticated Agent.')
+      if (info.issuer !== principal.actor.issuer || info.subject !== principal.actor.subject) {
+        throw failedDependency('Realmroot Agent Profile did not match the authenticated Agent.')
       }
-      return Object.freeze({ name: info.name, picture: info.picture, identityUrl: url.toString() })
+      return Object.freeze({
+        name: info.name,
+        picture: info.picture,
+        identityUrl: publicProfilePageUrl(principal.actor.issuer, principal.actor.subject),
+      })
     },
   }
+}
+
+function publicProfilePageUrl(issuer: string, subject: string) {
+  return new URL(`/agents/${encodeURIComponent(subject)}`, issuer).toString()
+}
+
+function profileUrl(template: string, issuer: string, subject: string) {
+  if (template.split('{subject}').length !== 2) {
+    throw failedDependency('Realmroot Agent Profile URI template is invalid.')
+  }
+  const url = new URL(template.replace('{subject}', encodeURIComponent(subject)))
+  if (url.origin !== new URL(issuer).origin) {
+    throw failedDependency('Realmroot Agent Profile URI template has a different origin.')
+  }
+  return url
 }

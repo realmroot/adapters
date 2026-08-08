@@ -100,8 +100,9 @@ gaps, and the adapter retirement condition.
 
 GitHub displays the GitHub App bot as the native actor. For body-bearing writes,
 the adapter appends a visible Realmroot Agent footer and a machine-readable HTML
-comment derived from the verified `act` claim and AgentInfo. Caller-supplied
-reserved markers are rejected.
+comment derived from the verified `act` claim and Realmroot public Agent Profile. The visible Agent link points to the
+human-readable profile page, while the adapter resolves the machine-readable profile resource for verification.
+Caller-supplied reserved markers are rejected.
 
 This yields an explicit chain:
 

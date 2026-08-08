@@ -7,7 +7,7 @@ describe('adapter Worker configuration', () => {
       {
         REALMROOT_ISSUER: 'https://local.realmroot.dev/api/auth/',
         REALMROOT_JWKS_URL: 'https://local.realmroot.dev/api/auth/jwks',
-        REALMROOT_AGENTINFO_ENDPOINT: 'https://local.realmroot.dev/api/auth/agentinfo',
+        REALMROOT_AGENT_PROFILE_URI_TEMPLATE: 'https://local.realmroot.dev/api/public/agents/{subject}',
         GITHUB_API_ORIGIN: 'https://api.github.com/',
         GITHUB_APP_ID: '123',
         GITHUB_PRIVATE_KEY: 'private-key',
@@ -19,7 +19,7 @@ describe('adapter Worker configuration', () => {
       origin: 'https://adapter.example',
       realmrootIssuer: 'https://local.realmroot.dev/api/auth',
       realmrootJwksUrl: 'https://local.realmroot.dev/api/auth/jwks',
-      realmrootAgentInfoEndpoint: 'https://local.realmroot.dev/api/auth/agentinfo',
+      realmrootAgentProfileUriTemplate: 'https://local.realmroot.dev/api/public/agents/{subject}',
       githubApiOrigin: 'https://api.github.com',
       githubAppId: '123',
       githubPrivateKey: 'private-key',

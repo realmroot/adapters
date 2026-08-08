@@ -1,0 +1,2 @@
+CREATE UNIQUE INDEX github_connection_context_installation_id_unique
+ON github_connection_context (installation_id);

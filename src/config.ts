@@ -4,7 +4,7 @@ const environmentSchema = z.object({
   ADAPTER_ORIGIN: z.url().optional(),
   REALMROOT_ISSUER: z.url(),
   REALMROOT_JWKS_URL: z.url(),
-  REALMROOT_AGENTINFO_ENDPOINT: z.url().optional(),
+  REALMROOT_AGENT_PROFILE_URI_TEMPLATE: z.string().trim().min(1).optional(),
   GITHUB_API_ORIGIN: z.url().default('https://api.github.com'),
   GITHUB_APP_ID: z.string().trim().min(1).optional(),
   GITHUB_PRIVATE_KEY: z.string().trim().min(1).optional(),
@@ -16,7 +16,7 @@ export type AppConfig = {
   origin: string
   realmrootIssuer: string
   realmrootJwksUrl: string
-  realmrootAgentInfoEndpoint?: string
+  realmrootAgentProfileUriTemplate?: string
   githubApiOrigin: string
   githubAppId?: string
   githubPrivateKey?: string
@@ -31,7 +31,9 @@ export function loadConfig(environment: unknown, requestUrl: string): AppConfig 
     realmrootIssuer: stripTrailingSlash(parsed.REALMROOT_ISSUER),
     realmrootJwksUrl: parsed.REALMROOT_JWKS_URL,
     githubApiOrigin: stripTrailingSlash(parsed.GITHUB_API_ORIGIN),
-    ...(parsed.REALMROOT_AGENTINFO_ENDPOINT ? { realmrootAgentInfoEndpoint: parsed.REALMROOT_AGENTINFO_ENDPOINT } : {}),
+    ...(parsed.REALMROOT_AGENT_PROFILE_URI_TEMPLATE
+      ? { realmrootAgentProfileUriTemplate: parsed.REALMROOT_AGENT_PROFILE_URI_TEMPLATE }
+      : {}),
     ...(parsed.GITHUB_APP_ID ? { githubAppId: parsed.GITHUB_APP_ID } : {}),
     ...(parsed.GITHUB_PRIVATE_KEY ? { githubPrivateKey: parsed.GITHUB_PRIVATE_KEY } : {}),
     ...(parsed.GITHUB_CLIENT_ID ? { githubClientId: parsed.GITHUB_CLIENT_ID } : {}),
