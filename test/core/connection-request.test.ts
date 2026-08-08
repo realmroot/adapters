@@ -25,7 +25,6 @@ describe('Realmroot broker request authentication', () => {
       origin: 'https://adapter.example',
       realmrootIssuer: 'https://id.example/api/auth',
       realmrootJwksUrl: `http://127.0.0.1:${address.port}/jwks`,
-      githubApiOrigin: 'https://api.github.com',
     }
     const verifier = createBrokerRequestVerifiers(config)
     const now = Math.floor(Date.now() / 1000)

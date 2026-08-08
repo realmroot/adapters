@@ -29,7 +29,7 @@ const revocationRequestSchema = z.object({
 export type BrokeredConnectionRequest = z.infer<typeof requestSchema>
 export type BrokeredRevocationRequest = z.infer<typeof revocationRequestSchema>
 
-export function createBrokerRequestVerifiers(config: AppConfig) {
+export function createBrokerRequestVerifiers(config: AppConfig, resource = `${config.origin}/github`) {
   const keys = createRemoteJWKSet(new URL(config.realmrootJwksUrl))
   return {
     verifyConnection: (request: string) =>
@@ -43,7 +43,7 @@ export function createBrokerRequestVerifiers(config: AppConfig) {
       const verified = await jwtVerify(request, keys, {
         algorithms: ['RS256'],
         issuer: config.realmrootIssuer,
-        audience: `${config.origin}/github`,
+        audience: resource,
         maxTokenAge,
       })
       return schema.parse(verified.payload)

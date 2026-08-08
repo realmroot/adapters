@@ -7,7 +7,7 @@
 
 > [!IMPORTANT]
 > 项目目前处于 Alpha 阶段。GitHub 纵向切片已经作为独立 Cloudflare Worker
-> 运行，并使用独立 D1 持久化 DPoP 防重放、幂等结果、审计记录和签名 broker
+> 运行，并使用独立 D1 持久化 DPoP 防重放、审计记录和签名 broker
 > 撤销；平台 webhook 生命周期处理尚未达到生产要求。
 
 Realmroot 原生 Resource Server 能识别执行操作的具体 Agent，但大多数外部平台
@@ -74,10 +74,10 @@ adapter 不得声称超过平台真实授权与审计能力的身份等级。
 - 验证使用 DPoP 的 Realmroot Agent 请求；
 - 在平台支持时，把已认证 Agent 映射到平台原生 actor；
 - 对 Agent 和 CLI 隐藏 provider credential 与 refresh credential；
-- 发现平台资源并映射为 Realmroot Resource；
-- 将 Realmroot scope 映射到平台权限与资源边界；
+- 直接把平台权限表达为 Realmroot scope，不再发明第二套权限词汇；
+- 透明转发平台原有 API，保持 method、path、query、body 与 response 语义；
 - 获取、轮换、撤销并安全存储平台凭证；
-- 保证平台写操作的幂等性；
+- 只为身份角标等平台暂不支持的能力维护少量 transformation；
 - 关联 Realmroot 审计记录、平台 actor 与最终资源；
 - 声明 Agent 身份在产品 UI、审计日志或其他位置的可见性；
 - 发布平台的 native-readiness gap，以及 adapter 可以退出的明确条件。

@@ -1,43 +1,26 @@
-export type GitHubRepository = Readonly<{
-  id: number
-  name: string
-  fullName: string
-  private: boolean
-  htmlUrl: string
-  owner: string
-}>
+export type GitHubPermissionAccess = 'read' | 'write' | 'admin'
+export type GitHubPermissions = Readonly<Record<string, GitHubPermissionAccess>>
 
-export type GitHubIssue = Readonly<{
-  id: number
-  number: number
-  title: string
-  body: string | null
-  state: string
-  htmlUrl: string
-}>
-
-export type CreateIssueInput = Readonly<{
+export type GitHubInstallationTokenRequest = Readonly<{
   installationId: number
-  owner: string
-  repository: string
-  title: string
-  body: string
+  permissions: GitHubPermissions
+  repositories?: readonly string[]
 }>
 
 export interface GitHubProvider {
-  listRepositories(
-    installationId: number,
-    page: number,
-    perPage: number,
-  ): Promise<{
-    items: GitHubRepository[]
-    total: number
-  }>
-  createIssue(input: CreateIssueInput): Promise<GitHubIssue>
+  appPermissions(): Promise<GitHubPermissions>
+  openApiDocument(): Promise<Response>
+  installationToken(input: GitHubInstallationTokenRequest): Promise<string>
+  request(request: Request, installationToken: string): Promise<Response>
 }
 
 export type GitHubUser = Readonly<{ id: number; login: string; name: string | null }>
-export type GitHubInstallation = Readonly<{ id: number; accountLogin: string; targetType: string }>
+export type GitHubInstallation = Readonly<{
+  id: number
+  accountLogin: string
+  targetType: string
+  permissions: GitHubPermissions
+}>
 
 export interface GitHubConnectionProvider {
   authorizationUrl(state: string): string

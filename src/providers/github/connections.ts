@@ -1,8 +1,9 @@
 import { z } from 'zod'
-import type { BrokeredConnectionRequest } from '../core/connection-request.js'
-import { sha256Base64Url } from '../core/digest.js'
-import { badRequest, forbidden, unauthorized } from '../core/problem.js'
-import type { GitHubInstallation, GitHubUser } from '../providers/github/types.js'
+import type { BrokeredConnectionRequest } from '../../core/connection-request.js'
+import { sha256Base64Url } from '../../core/digest.js'
+import { badRequest, forbidden, unauthorized } from '../../core/problem.js'
+import { mergePermissions, permissionsToScopes } from './permissions.js'
+import type { GitHubInstallation, GitHubUser } from './types.js'
 
 const intentSchema = z.object({
   requestId: z.string(),
@@ -48,7 +49,9 @@ export interface GitHubConnectionStore {
     binding: { githubUserId: number; githubLogin: string; displayName: string; scopesJson: string }
     contexts: Array<{ installationId: number; accountLogin: string; targetType: string }>
   }>
-  activeInstallationIdsForOwner(ownerSubject: string): Promise<number[]>
+  activeInstallationsForOwner(
+    ownerSubject: string,
+  ): Promise<Array<{ installationId: number; accountLogin: string; targetType: string }>>
   revoke(input: { brokerReference: string; ownerSubject: string; jti: string; expiresAt: number }): Promise<void>
 }
 
@@ -118,6 +121,9 @@ export class D1GitHubConnections implements GitHubConnectionStore {
 
   async complete(intent: GitHubConnectionIntent, user: GitHubUser, installations: GitHubInstallation[], code: string) {
     const now = Date.now()
+    const grantedScopes = permissionsToScopes(
+      mergePermissions(installations.map((installation) => installation.permissions)),
+    )
     const existing = await this.db
       .prepare(
         `SELECT broker_reference AS brokerReference, github_user_id AS githubUserId
@@ -149,7 +155,7 @@ export class D1GitHubConnections implements GitHubConnectionStore {
           user.id,
           user.login,
           user.name ?? user.login,
-          intent.scopesJson,
+          JSON.stringify(grantedScopes),
           now,
           now,
         ),
@@ -220,7 +226,7 @@ export class D1GitHubConnections implements GitHubConnectionStore {
     return { intent, brokerReference: binding.brokerReference, binding, contexts }
   }
 
-  async activeInstallationIdsForOwner(ownerSubject: string) {
+  async activeInstallationsForOwner(ownerSubject: string) {
     const binding = await this.db
       .prepare(
         "SELECT broker_reference AS brokerReference FROM github_connection_binding WHERE owner_subject = ? AND status = 'active'",
@@ -228,7 +234,7 @@ export class D1GitHubConnections implements GitHubConnectionStore {
       .bind(ownerSubject)
       .first<{ brokerReference: string }>()
     if (!binding) throw forbidden('Active GitHub account connection is required.')
-    return (await this.contexts(binding.brokerReference)).map((context) => context.installationId)
+    return this.contexts(binding.brokerReference)
   }
 
   async revoke(input: { brokerReference: string; ownerSubject: string; jti: string; expiresAt: number }) {

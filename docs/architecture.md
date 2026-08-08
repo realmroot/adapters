@@ -62,7 +62,7 @@ The adapter is deployed as an independent Cloudflare Worker. It does not run
 inside the Realmroot Worker and does not share Realmroot's database. Each
 deployment owns its provider secrets and a D1 database containing only adapter
 runtime state: provider account bindings and contexts, one-time broker intents,
-DPoP replay claims, idempotent write outcomes, and correlated audit events.
+DPoP replay claims, and correlated audit events.
 Provider credentials never cross into Realmroot. The Worker runtime uses Web
 Crypto and Fetch APIs without a Node process or filesystem.
 
@@ -102,16 +102,14 @@ is stabilized. It is expected to contain these cohesive capabilities:
   Agent and state the identity fidelity.
 - **Authorization** — complete provider installation or delegation and retain
   the grant outside Agent visibility.
-- **Discovery** — enumerate provider-owned objects and map them to canonical
-  Realmroot Resources.
-- **Scope mapping** — map approved Realmroot scopes to provider permissions and
-  operation constraints.
+- **Scope mapping** — expose provider permissions in Realmroot's scope model and
+  translate approved scopes back to the provider credential.
 - **Credentials** — acquire, cache, rotate, revoke, and destroy provider
   credentials according to provider semantics.
-- **Operations** — implement an explicit supported operation set. No
-  unrestricted provider pass-through is assumed.
-- **Idempotency** — own provider-specific deduplication for complete write
-  operations.
+- **Proxy** — preserve the provider's original method, path, query, body,
+  response, and error semantics wherever the provider credential permits.
+- **Transformations** — isolate the small operation set that requires
+  compatibility behavior such as content attribution.
 - **Revocation** — consume webhooks or verify provider state so removed
   authority stops access.
 - **Audit** — correlate Agent, controller authority, Resource, scopes, provider
@@ -156,13 +154,14 @@ informal future intention.
 
 1. Authenticate the DPoP-bound Agent request.
 2. Resolve the immutable Realmroot Agent principal.
-3. Validate the requested operation against the approved Resource and scopes.
+3. Translate approved scopes into the provider's native permission model.
 4. Resolve the connected provider account and provider-native actor.
 5. Acquire the narrowest valid provider credential without exposing it.
-6. Execute one explicitly supported provider operation.
-7. Apply provider-specific idempotency to writes.
+6. Apply a provider-owned transformer only when the operation requires one.
+7. Stream the original operation to the provider and let it enforce endpoint
+   permissions.
 8. Record one correlated execution result at the request boundary.
-9. Return a normalized result without provider credentials or internal
+9. Return the provider response without exposing credentials or internal
    principal data.
 
 ## Failure and revocation
@@ -171,9 +170,9 @@ Provider failures are translated into a finite stable taxonomy. Adapters retain
 the original cause for boundary diagnostics but do not leak provider SDK error
 types inward.
 
-Only transient provider failures may be retried. The operation owner controls a
-finite retry policy and retries writes only when their idempotency semantics are
-proven.
+The adapter does not retry writes or introduce an idempotency contract that the
+provider API does not have. Clients follow the provider's documented retry and
+idempotency semantics.
 
 Revocation is fail-closed. A removed installation, disabled principal, reduced
 permission, removed Resource, expired grant, or failed credential renewal stops
@@ -189,7 +188,7 @@ Every provider write and security-sensitive operation records:
 - provider account and provider Resource;
 - provider actor type and stable identifier;
 - identity level and visibility claims;
-- operation and idempotency key;
+- provider method and path;
 - provider request correlation when available;
 - result, resulting provider identifier, and URL;
 - trace ID and timestamp.
@@ -206,7 +205,7 @@ Every provider will run the same contract suite for:
 - credential non-disclosure;
 - identity capability accuracy;
 - reserved attribution-field rejection;
-- idempotent representative writes;
+- transparent request and response forwarding;
 - revocation and permission reduction;
 - normalized error behavior;
 - audit completeness.
