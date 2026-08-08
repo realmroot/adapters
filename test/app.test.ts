@@ -1,12 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createApp } from '../src/app.js'
 import type { AppConfig } from '../src/config.js'
+import type { IdempotencyStore } from '../src/core/idempotency.js'
 import { adapterApiVersion } from '../src/providers/github/openapi.js'
 
 const config: AppConfig = {
-  port: 4103,
   origin: 'http://127.0.0.1:4103',
-  realmrootOrigin: 'http://127.0.0.1:4189',
   realmrootIssuer: 'http://127.0.0.1:4189/api/auth',
   realmrootJwksUrl: 'http://127.0.0.1:4189/api/auth/jwks',
   githubApiOrigin: 'https://api.github.com',
@@ -46,7 +45,7 @@ describe('GitHub adapter contract', () => {
       state: 'open',
       htmlUrl: 'https://github.test/issues/2',
     }))
-    const audit = vi.fn()
+    const audit = vi.fn(async () => {})
     const app = testApp({ github: { listRepositories: vi.fn(), createIssue }, audit })
     const request = () =>
       app.request('/github/installations/42/repos/realmroot/example/issues', {
@@ -138,6 +137,7 @@ describe('GitHub adapter contract', () => {
   it('keeps discovery available but fails provider operations when GitHub credentials are absent', async () => {
     const app = createApp(config, {
       authenticator: { authenticate: vi.fn(async () => principal) },
+      idempotency: new FakeIdempotencyStore(),
       agentInfo: {
         resolve: vi.fn(async () => ({
           name: 'Build Agent',
@@ -164,7 +164,7 @@ describe('GitHub adapter contract', () => {
   })
 })
 
-function testApp(overrides: Parameters<typeof createApp>[1] = {}) {
+function testApp(overrides: Partial<Parameters<typeof createApp>[1]> = {}) {
   return createApp(config, {
     authenticator: { authenticate: vi.fn(async () => principal) },
     agentInfo: {
@@ -178,6 +178,21 @@ function testApp(overrides: Parameters<typeof createApp>[1] = {}) {
       listRepositories: vi.fn(async () => ({ items: [], total: 0 })),
       createIssue: vi.fn(),
     },
+    idempotency: new FakeIdempotencyStore(),
     ...overrides,
   })
+}
+
+class FakeIdempotencyStore implements IdempotencyStore {
+  readonly responses = new Map<string, Response>()
+
+  async execute(key: string | null, namespace: string, _input: unknown, operation: () => Promise<Response>) {
+    if (!key) throw new Error('Idempotency-Key is required.')
+    const storageKey = `${namespace}:${key}`
+    const stored = this.responses.get(storageKey)
+    if (stored) return stored.clone()
+    const response = await operation()
+    this.responses.set(storageKey, response.clone())
+    return response
+  }
 }

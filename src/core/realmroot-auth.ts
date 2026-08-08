@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import {
   calculateJwkThumbprint,
   createLocalJWKSet,
@@ -8,6 +7,7 @@ import {
   type JSONWebKeySet,
   jwtVerify,
 } from 'jose'
+import { sha256Base64Url } from './digest.js'
 import { unauthorized } from './problem.js'
 
 export type AgentPrincipal = Readonly<{
@@ -21,16 +21,20 @@ export type RealmrootAuthenticator = {
   authenticate(request: Request, audience: string): Promise<AgentPrincipal>
 }
 
+export interface DpopReplayStore {
+  claim(input: { keyThumbprint: string; jti: string; expiresAt: number; now: number }): Promise<boolean>
+}
+
 export function createRealmrootAuthenticator(input: {
   issuer: string
   jwksUrl?: string
   jwks?: JSONWebKeySet
+  replayStore: DpopReplayStore
   now?: () => number
 }): RealmrootAuthenticator {
   const keySet = input.jwks
     ? createLocalJWKSet(input.jwks)
     : createRemoteJWKSet(new URL(input.jwksUrl ?? `${input.issuer}/jwks`))
-  const usedProofs = new Map<string, number>()
   const now = input.now ?? Date.now
 
   return {
@@ -45,7 +49,7 @@ export function createRealmrootAuthenticator(input: {
         throw unauthorized('The Realmroot access token is invalid.')
       })
 
-      const proof = await verifyProof(request, token, usedProofs, now)
+      const proof = await verifyProof(request, token, input.replayStore, now)
       const confirmation = access.payload.cnf as { jkt?: unknown } | undefined
       if (confirmation?.jkt !== proof.jkt) throw unauthorized('The DPoP key does not match the access token.')
 
@@ -71,7 +75,7 @@ export function createRealmrootAuthenticator(input: {
   }
 }
 
-async function verifyProof(request: Request, token: string, usedProofs: Map<string, number>, now: () => number) {
+async function verifyProof(request: Request, token: string, replayStore: DpopReplayStore, now: () => number) {
   const compact = request.headers.get('dpop')
   if (!compact) throw unauthorized('A DPoP proof is required.', 'invalid_dpop_proof')
 
@@ -99,16 +103,18 @@ async function verifyProof(request: Request, token: string, usedProofs: Map<stri
   ) {
     throw unauthorized('The DPoP proof target or lifetime is invalid.', 'invalid_dpop_proof')
   }
-  if (verified.payload.ath !== createHash('sha256').update(token).digest('base64url')) {
+  if (verified.payload.ath !== (await sha256Base64Url(token))) {
     throw unauthorized('The DPoP access-token hash is invalid.', 'invalid_dpop_proof')
   }
 
   const jkt = await calculateJwkThumbprint(jwk)
-  const current = Math.floor(now() / 1000)
-  for (const [key, expiresAt] of usedProofs) if (expiresAt <= current) usedProofs.delete(key)
-  const replayKey = `${jkt}:${jti}`
-  if (usedProofs.has(replayKey)) throw unauthorized('The DPoP proof was already used.', 'invalid_dpop_proof')
-  usedProofs.set(replayKey, issuedAt + 300)
+  const claimed = await replayStore.claim({
+    keyThumbprint: jkt,
+    jti,
+    expiresAt: (issuedAt + 300) * 1000,
+    now: now(),
+  })
+  if (!claimed) throw unauthorized('The DPoP proof was already used.', 'invalid_dpop_proof')
   return { jkt }
 }
 

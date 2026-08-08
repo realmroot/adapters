@@ -6,8 +6,9 @@
 [贡献指南](CONTRIBUTING.md) · [安全策略](SECURITY.md)
 
 > [!IMPORTANT]
-> 项目目前处于 Alpha 阶段。GitHub 纵向切片已可在本地运行，但持久化的
-> DPoP 防重放和幂等存储尚未完成，因此还不可用于生产环境。
+> 项目目前处于 Alpha 阶段。GitHub 纵向切片已经作为独立 Cloudflare Worker
+> 运行，并使用独立 D1 持久化 DPoP 防重放、幂等结果和审计记录；平台生命周期
+> 与撤销处理尚未达到生产要求。
 
 Realmroot 原生 Resource Server 能识别执行操作的具体 Agent，但大多数外部平台
 暂时无法直接消费这种身份。本项目为外部平台提供 adapter，在保持 Realmroot

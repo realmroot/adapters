@@ -1,6 +1,13 @@
 Feature: GitHub App adapter
   Realmroot Agents use a GitHub App installation without receiving its credentials.
 
+  @journey:worker-runtime @entrypoint:http
+  Scenario: The adapter runs as an independent Cloudflare Worker
+    Given the Worker has its own D1 binding and provider secrets
+    When an Agent request reaches the Worker
+    Then no Node server or filesystem is required
+    And DPoP replay, idempotency, and audit state are durably stored in D1
+
   @journey:github-contract @entrypoint:http
   Scenario: Realmroot registers one GitHub App installation as a native Resource Server
     Given the adapter is configured to trust a Realmroot issuer

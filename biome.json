@@ -1,7 +1,7 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.5.7/schema.json",
   "files": {
-    "includes": ["**", "!!dist", "!!coverage"]
+    "includes": ["**", "!!dist", "!!coverage", "!!worker-configuration.d.ts"]
   },
   "formatter": {
     "enabled": true,

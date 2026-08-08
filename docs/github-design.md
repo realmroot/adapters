@@ -22,6 +22,12 @@ The shared runtime owns RFC 9728 and RFC 8631 discovery, Realmroot token and
 DPoP validation, scope enforcement, idempotency, attribution, Problem Details,
 request correlation, and audit records.
 
+The runtime is an independent Cloudflare Worker. It reads provider credentials
+from Worker secrets and owns a dedicated D1 database for DPoP replay claims,
+idempotent response records, and audit events. Production code uses Web Crypto,
+standard Fetch APIs, and Cloudflare bindings; it has no Node server or
+filesystem dependency.
+
 The GitHub provider owns GitHub App JWTs, installation-token downscoping,
 installation and repository discovery, GitHub permission mapping, and outbound
 HTTP translation. It does not expose provider credentials or SDK types.

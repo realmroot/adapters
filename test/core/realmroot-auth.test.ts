@@ -1,6 +1,6 @@
-import { createHash } from 'node:crypto'
 import { calculateJwkThumbprint, exportJWK, generateKeyPair, SignJWT } from 'jose'
 import { describe, expect, it } from 'vitest'
+import { sha256Base64Url } from '../../src/core/digest.js'
 import { createRealmrootAuthenticator } from '../../src/core/realmroot-auth.js'
 
 describe('Realmroot DPoP authentication', () => {
@@ -28,7 +28,7 @@ describe('Realmroot DPoP authentication', () => {
     const proof = await new SignJWT({
       htu: url,
       htm: 'GET',
-      ath: createHash('sha256').update(token).digest('base64url'),
+      ath: await sha256Base64Url(token),
     })
       .setProtectedHeader({ alg: 'ES256', typ: 'dpop+jwt', jwk: dpopJwk })
       .setIssuedAt(now / 1000)
@@ -38,6 +38,7 @@ describe('Realmroot DPoP authentication', () => {
     const authenticator = createRealmrootAuthenticator({
       issuer,
       jwks: { keys: [accessJwk] },
+      replayStore: replayStore(),
       now: () => now,
     })
 
@@ -54,6 +55,7 @@ describe('Realmroot DPoP authentication', () => {
     const authenticator = createRealmrootAuthenticator({
       issuer: 'https://id.example/api/auth',
       jwks: { keys: [accessJwk] },
+      replayStore: replayStore(),
     })
     const url = 'https://adapter.example/github/installations/42/repositories'
 
@@ -63,3 +65,15 @@ describe('Realmroot DPoP authentication', () => {
     ).rejects.toThrow('access token is invalid')
   })
 })
+
+function replayStore() {
+  const proofs = new Set<string>()
+  return {
+    async claim(input: { keyThumbprint: string; jti: string }) {
+      const key = `${input.keyThumbprint}:${input.jti}`
+      if (proofs.has(key)) return false
+      proofs.add(key)
+      return true
+    },
+  }
+}

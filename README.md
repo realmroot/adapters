@@ -6,8 +6,9 @@ Bring trusted Realmroot Agent identities to external platforms.
 [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
 
 > [!IMPORTANT]
-> This project is in alpha. The GitHub vertical slice runs locally but is not
-> production-ready; durable replay and idempotency storage are still pending.
+> This project is in alpha. The GitHub vertical slice runs as an independent
+> Cloudflare Worker with durable D1 state, but provider lifecycle and
+> revocation handling are not production-ready yet.
 
 Realmroot-native resource servers can authenticate the exact Agent performing
 an operation. Most external platforms cannot consume that identity directly.
@@ -142,21 +143,26 @@ specs/
 src/
   core/         Shared DPoP, AgentInfo, attribution, errors, and idempotency
   providers/    Thin provider credential and HTTP boundaries
+  storage/      Worker-owned D1 runtime state
+  worker.ts     Cloudflare Worker entrypoint
+migrations/     D1 schema
 ```
 
 ## Run the GitHub vertical slice
 
-Requirements: Node 24, pnpm 10, a running Realmroot deployment, and eventually
-a GitHub App installation.
+The runtime is a Cloudflare Worker, not a Node server. Node 24 and pnpm 10 are
+development tools only. Local operation also needs a running Realmroot
+deployment and a GitHub App installation.
 
 ```bash
 pnpm install
-cp .env.example .env
-pnpm dev
+cp .dev.vars.example .dev.vars
+pnpm exec wrangler d1 migrations apply realmroot-adapters-db --local
+pnpm dev -- --port 4103
 ```
 
-Discovery is available before GitHub credentials are configured. For
-installation `42`, register this native Resource Server in Realmroot:
+After configuring the GitHub App credentials, register installation `42` as a
+native Resource Server in Realmroot:
 
 ```json
 {
@@ -169,10 +175,23 @@ installation `42`, register this native Resource Server in Realmroot:
 }
 ```
 
-Set `GITHUB_APP_ID` and `GITHUB_PRIVATE_KEY_PATH` after creating and installing
-the GitHub App. The first slice needs repository Metadata read and Issues
-read/write. Install it only on the repositories that should form this Resource
-boundary.
+Set `GITHUB_APP_ID` and `GITHUB_PRIVATE_KEY` in the ignored `.dev.vars` file.
+The private key must be unencrypted PKCS#8 PEM. A GitHub-downloaded PKCS#1 key
+can be converted locally with:
+
+```bash
+openssl pkcs8 -topk8 -nocrypt -in github-app.private-key.pem -out github-app.pkcs8.pem
+```
+
+For deployment, store the key without putting it in source or Wrangler vars:
+
+```bash
+pnpm exec wrangler secret put GITHUB_APP_ID
+pnpm exec wrangler secret put GITHUB_PRIVATE_KEY < github-app.pkcs8.pem
+```
+
+The first slice needs repository Metadata read and Issues read/write. Install
+the App only on repositories that should form this Resource boundary.
 
 The current operations are intentionally narrow:
 
@@ -186,6 +205,7 @@ Run the project checks with:
 ```bash
 pnpm run typecheck
 pnpm test
+pnpm run types:check
 pnpm run lint
 pnpm run build
 pnpm run docs:check

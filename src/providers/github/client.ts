@@ -1,5 +1,4 @@
-import { createPrivateKey } from 'node:crypto'
-import { SignJWT } from 'jose'
+import { importPKCS8, SignJWT } from 'jose'
 import { z } from 'zod'
 import { failedDependency } from '../../core/problem.js'
 import type { GitHubProvider, GitHubRepository } from './types.js'
@@ -110,7 +109,7 @@ export function createGitHubProvider(input: {
 
   async function appJwt() {
     const current = Math.floor(now() / 1000)
-    const privateKey = createPrivateKey(input.privateKey)
+    const privateKey = await importPKCS8(input.privateKey, 'RS256')
     return new SignJWT({})
       .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
       .setIssuer(input.appId)

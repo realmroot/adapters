@@ -3,9 +3,9 @@ import { z } from 'zod'
 import type { AppConfig } from './config.js'
 import { type AgentInfoResolver, createAgentInfoResolver } from './core/agent-info.js'
 import { attributedBody } from './core/attribution.js'
-import { MemoryIdempotencyStore } from './core/idempotency.js'
+import type { IdempotencyStore } from './core/idempotency.js'
 import { badRequest, forbidden, HttpProblem } from './core/problem.js'
-import { createRealmrootAuthenticator, type RealmrootAuthenticator } from './core/realmroot-auth.js'
+import type { RealmrootAuthenticator } from './core/realmroot-auth.js'
 import { createGitHubProvider } from './providers/github/client.js'
 import { githubManifest } from './providers/github/manifest.js'
 import { adapterApiVersion, githubOpenApi, githubScopes } from './providers/github/openapi.js'
@@ -21,25 +21,24 @@ const paginationSchema = z.object({
 })
 
 export type AppDependencies = {
-  authenticator?: RealmrootAuthenticator
+  authenticator: RealmrootAuthenticator
   agentInfo?: AgentInfoResolver
   github?: GitHubProvider
-  idempotency?: MemoryIdempotencyStore
-  audit?: (record: Record<string, unknown>) => void
+  idempotency: IdempotencyStore
+  audit?: (record: Record<string, unknown>) => Promise<void>
 }
 
-export function createApp(config: AppConfig, dependencies: AppDependencies = {}) {
+export function createApp(config: AppConfig, dependencies: AppDependencies) {
   const app = new Hono<{ Variables: Variables }>()
-  const authenticator =
-    dependencies.authenticator ??
-    createRealmrootAuthenticator({
-      issuer: config.realmrootIssuer,
-      jwksUrl: config.realmrootJwksUrl,
-    })
+  const authenticator = dependencies.authenticator
   const agentInfo = dependencies.agentInfo ?? createAgentInfoResolver(fetch, config.realmrootAgentInfoEndpoint)
   const github = dependencies.github ?? configuredGitHub(config)
-  const idempotency = dependencies.idempotency ?? new MemoryIdempotencyStore()
-  const audit = dependencies.audit ?? ((record) => console.info(JSON.stringify(record)))
+  const idempotency = dependencies.idempotency
+  const audit =
+    dependencies.audit ??
+    (async (record) => {
+      console.info(JSON.stringify(record))
+    })
 
   app.use('*', async (c, next) => {
     c.set('requestId', crypto.randomUUID())
@@ -126,7 +125,7 @@ export function createApp(config: AppConfig, dependencies: AppDependencies = {})
           title: input.title,
           body: attributedBody(input.body, principal, display, c.get('requestId')),
         })
-        audit({
+        await audit({
           event: 'provider.operation',
           requestId: c.get('requestId'),
           provider: 'github',

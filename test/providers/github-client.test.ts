@@ -24,7 +24,7 @@ describe('GitHub provider HTTP boundary', () => {
 
   it('discovers installation repositories and downscopes issue credentials to one repository', async () => {
     const privateKey = generateKeyPairSync('rsa', { modulusLength: 2048 })
-      .privateKey.export({ type: 'pkcs1', format: 'pem' })
+      .privateKey.export({ type: 'pkcs8', format: 'pem' })
       .toString()
     const provider = createGitHubProvider({ appId: '123', privateKey, apiOrigin, now: () => 1_800_000_000_000 })
 

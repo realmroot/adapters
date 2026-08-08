@@ -27,6 +27,8 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Check Worker binding types
+        run: pnpm run types:check
       - name: Typecheck
         run: pnpm run typecheck
       - name: Test

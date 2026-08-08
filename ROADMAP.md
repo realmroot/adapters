@@ -80,11 +80,11 @@ Implemented in the alpha slice:
 - [x] repository discovery through short-lived installation credentials;
 - [x] repository-downscoped issue creation;
 - [x] trusted visible and machine-readable Agent attribution;
-- [x] local idempotent replay and correlated audit output.
+- [x] Cloudflare Worker runtime with durable D1 replay, idempotency, and audit state.
 
 Remaining before production readiness:
 
-- [ ] durable DPoP replay, idempotency, and audit storage;
+- [ ] audit retention, operational queries, and production observability policy;
 - [ ] installation/repository lifecycle webhooks and fail-closed revocation;
 - [ ] pull requests, comments, reviews, and delegated-user mode;
 - [ ] deployment, secret rotation, and live-provider conformance automation.

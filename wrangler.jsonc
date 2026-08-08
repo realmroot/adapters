@@ -1,0 +1,29 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "realmroot-adapters",
+  "main": "./src/worker.ts",
+  "compatibility_date": "2026-08-07",
+  "workers_dev": true,
+  "preview_urls": true,
+  "vars": {
+    "REALMROOT_ISSUER": "https://id.realmroot.dev/api/auth",
+    "REALMROOT_JWKS_URL": "https://id.realmroot.dev/api/auth/jwks",
+    "REALMROOT_AGENTINFO_ENDPOINT": "https://id.realmroot.dev/api/auth/agentinfo",
+    "GITHUB_API_ORIGIN": "https://api.github.com"
+  },
+  "secrets": {
+    "required": ["GITHUB_APP_ID", "GITHUB_PRIVATE_KEY"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "realmroot-adapters-db",
+      "migrations_dir": "./migrations"
+    }
+  ],
+  "observability": {
+    "enabled": true,
+    "logs": { "head_sampling_rate": 1 },
+    "traces": { "enabled": true, "head_sampling_rate": 0.1 }
+  }
+}
