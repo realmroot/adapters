@@ -16,7 +16,7 @@ production use.
 
 | Provider | Identity level | Product UI | Provider audit | Status |
 | --- | --- | ---: | ---: | --- |
-| GitHub | Brokered | Shared App actor | Shared App actor | Design |
+| GitHub | Brokered | Shared App actor + content attribution | Shared App actor | Alpha vertical slice |
 | Cloudflare | Native service principal | Token management | Per-Agent token actor | Design |
 | Linear | Native Agent | Per-Agent name/avatar | App/Agent actor | Design |
 
@@ -26,7 +26,7 @@ production use.
   repository.
 - [x] Add date-stamped Profile 0.1 capability reports for the initial three
   providers.
-- [ ] Define the machine-readable provider capability manifest from the stable
+- [x] Define the machine-readable provider capability manifest from the stable
   profile IDs.
 - Define the canonical provider module contract around identity, authorization,
   discovery, credentials, operations, revocation, idempotency, and audit.
@@ -72,6 +72,22 @@ represent each Realmroot Agent as a native actor.
 - DPoP Agent boundary and provider credential isolation.
 - Idempotent writes and audit correlation.
 - Explicit brokered identity declaration; no false native-Agent claim.
+
+Implemented in the alpha slice:
+
+- [x] installation-specific RFC 9728 Resource boundary and OpenAPI discovery;
+- [x] Realmroot JWT and DPoP validation;
+- [x] repository discovery through short-lived installation credentials;
+- [x] repository-downscoped issue creation;
+- [x] trusted visible and machine-readable Agent attribution;
+- [x] local idempotent replay and correlated audit output.
+
+Remaining before production readiness:
+
+- [ ] durable DPoP replay, idempotency, and audit storage;
+- [ ] installation/repository lifecycle webhooks and fail-closed revocation;
+- [ ] pull requests, comments, reviews, and delegated-user mode;
+- [ ] deployment, secret rotation, and live-provider conformance automation.
 
 Exit criteria: every write can be traced from the Realmroot Agent and approved
 Resource to the GitHub App/user actor, provider request, and resulting URL.

@@ -6,8 +6,8 @@ Bring trusted Realmroot Agent identities to external platforms.
 [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
 
 > [!IMPORTANT]
-> This project is in its architecture and bootstrap phase. No provider adapter
-> is production-ready yet.
+> This project is in alpha. The GitHub vertical slice runs locally but is not
+> production-ready; durable replay and idempotency storage are still pending.
 
 Realmroot-native resource servers can authenticate the exact Agent performing
 an operation. Most external platforms cannot consume that identity directly.
@@ -53,7 +53,7 @@ for the platform contract, adoption path, and current standards foundation.
 
 | Provider | Identity model | Provider-visible result | Status |
 | --- | --- | --- | --- |
-| GitHub | Brokered application actor | GitHub records the Realmroot GitHub App; Realmroot records the originating Agent | Planned |
+| GitHub | Brokered application actor | GitHub records the Realmroot GitHub App; issue bodies identify the originating Agent | Alpha |
 | Cloudflare | Native service principal | A dedicated account-owned token identifies the Agent in Cloudflare audit logs | Planned |
 | Linear | Native Agent actor | The Agent appears in Linear with its name and avatar and can participate in Agent workflows | Planned |
 
@@ -130,17 +130,66 @@ for the adapter-free end state.
 
 ```text
 providers/
-  github/       Provider design and implementation
+  github/       Provider capability report
   cloudflare/   Provider design and implementation
   linear/       Provider design and implementation
 docs/
   architecture.md
+  github-design.md
   native-agent-protocol.md
+specs/
+  github-adapter.feature
+src/
+  core/         Shared DPoP, AgentInfo, attribution, errors, and idempotency
+  providers/    Thin provider credential and HTTP boundaries
 ```
 
-The runtime and package layout will be introduced with the first vertical
-provider slice. We deliberately avoid freezing a framework-oriented directory
-structure before the canonical provider contract is proven.
+## Run the GitHub vertical slice
+
+Requirements: Node 24, pnpm 10, a running Realmroot deployment, and eventually
+a GitHub App installation.
+
+```bash
+pnpm install
+cp .env.example .env
+pnpm dev
+```
+
+Discovery is available before GitHub credentials are configured. For
+installation `42`, register this native Resource Server in Realmroot:
+
+```json
+{
+  "identifier": "github-installation-42",
+  "resourceUrl": "http://127.0.0.1:4103/github/installations/42",
+  "ownerOrganizationId": "org_platform",
+  "enabled": true,
+  "availableToAgents": true,
+  "visibility": "public"
+}
+```
+
+Set `GITHUB_APP_ID` and `GITHUB_PRIVATE_KEY_PATH` after creating and installing
+the GitHub App. The first slice needs repository Metadata read and Issues
+read/write. Install it only on the repositories that should form this Resource
+boundary.
+
+The current operations are intentionally narrow:
+
+```text
+GET  /repositories
+POST /repos/{owner}/{repository}/issues
+```
+
+Run the project checks with:
+
+```bash
+pnpm run typecheck
+pnpm test
+pnpm run lint
+pnpm run build
+pnpm run docs:check
+```
 
 ## Contributing
 

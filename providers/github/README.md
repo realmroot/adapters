@@ -1,6 +1,6 @@
 # GitHub provider
 
-Status: **design**
+Status: **alpha implementation**
 
 Identity level: **brokered**
 
@@ -34,6 +34,10 @@ GitHub App installation
 - create issue and pull-request comments;
 - create review comments;
 - read representative repository and collaboration resources.
+
+The current executable slice supports installation repository discovery and
+issue creation. Pull requests, comments, reviews, user-token mode, and webhook
+revocation remain roadmap work.
 
 ## Initial credential modes
 
