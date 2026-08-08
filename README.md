@@ -141,7 +141,7 @@ docs/
 specs/
   github-adapter.feature
 src/
-  core/         Shared DPoP, AgentInfo, attribution, errors, and idempotency
+  core/         Shared DPoP, Agent Profile, attribution, errors, and idempotency
   providers/    Thin provider credential and HTTP boundaries
   storage/      Worker-owned D1 runtime state
   worker.ts     Cloudflare Worker entrypoint

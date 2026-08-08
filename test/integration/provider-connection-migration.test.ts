@@ -4,9 +4,11 @@ import { describe, expect, it } from 'vitest'
 describe('Provider connection migration', () => {
   it('upgrades a legacy GitHub binding without changing its broker reference or owner', async () => {
     const legacy = env.TEST_MIGRATIONS.slice(0, 2)
-    const lifecycle = env.TEST_MIGRATIONS.slice(2)
+    const lifecycle = env.TEST_MIGRATIONS.slice(2, 3)
+    const installationOwnership = env.TEST_MIGRATIONS.slice(3)
     expect(legacy).toHaveLength(2)
     expect(lifecycle).toHaveLength(1)
+    expect(installationOwnership).toHaveLength(1)
     await applyD1Migrations(env.MIGRATION_DB, legacy)
     const now = Date.now()
     await env.MIGRATION_DB.batch([
@@ -56,6 +58,7 @@ describe('Provider connection migration', () => {
     ])
 
     await applyD1Migrations(env.MIGRATION_DB, lifecycle)
+    await applyD1Migrations(env.MIGRATION_DB, installationOwnership)
 
     await expect(
       env.MIGRATION_DB.prepare(
@@ -84,6 +87,22 @@ describe('Provider connection migration', () => {
          VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
       )
         .bind('broker-conflict', 'user-legacy', 8, 'other', 'Other', '[]', now, now)
+        .run(),
+    ).rejects.toThrow()
+    await env.MIGRATION_DB.prepare(
+      `INSERT INTO github_connection_binding
+        (broker_reference, owner_subject, github_user_id, github_login, display_name, scopes_json, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
+    )
+      .bind('broker-installation-conflict', 'other-user', 8, 'other', 'Other', '[]', now, now)
+      .run()
+    await expect(
+      env.MIGRATION_DB.prepare(
+        `INSERT INTO github_connection_context
+          (broker_reference, installation_id, account_login, target_type, created_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+        .bind('broker-installation-conflict', 101, 'realmroot', 'Organization', now)
         .run(),
     ).rejects.toThrow()
     await expect(env.MIGRATION_DB.prepare('PRAGMA foreign_key_check').all()).resolves.toMatchObject({ results: [] })

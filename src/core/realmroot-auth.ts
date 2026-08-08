@@ -107,7 +107,7 @@ async function verifyProof(request: Request, token: string, replayStore: DpopRep
   const issuedAt = verified.payload.iat
   const jti = verified.payload.jti
   if (
-    verified.payload.htu !== request.url ||
+    verified.payload.htu !== dpopTargetUri(request.url) ||
     verified.payload.htm !== request.method ||
     typeof issuedAt !== 'number' ||
     Math.abs(now() / 1000 - issuedAt) > 300 ||
@@ -128,6 +128,13 @@ async function verifyProof(request: Request, token: string, replayStore: DpopRep
   })
   if (!claimed) throw unauthorized('The DPoP proof was already used.', 'invalid_dpop_proof')
   return { jkt }
+}
+
+function dpopTargetUri(requestUrl: string) {
+  const target = new URL(requestUrl)
+  target.search = ''
+  target.hash = ''
+  return target.toString()
 }
 
 function parseDpopHeader(compact: string) {

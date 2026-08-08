@@ -24,9 +24,10 @@ describe('Realmroot DPoP authentication', () => {
       .setIssuedAt(now / 1000)
       .setExpirationTime(now / 1000 + 300)
       .sign(accessKeys.privateKey)
-    const url = `${audience}/repositories`
+    const targetUrl = `${audience}/repositories`
+    const requestUrl = `${targetUrl}?perPage=10`
     const proof = await new SignJWT({
-      htu: url,
+      htu: targetUrl,
       htm: 'GET',
       ath: await sha256Base64Url(token),
     })
@@ -34,7 +35,7 @@ describe('Realmroot DPoP authentication', () => {
       .setIssuedAt(now / 1000)
       .setJti('proof-1')
       .sign(dpopKeys.privateKey)
-    const request = new Request(url, { headers: { authorization: `DPoP ${token}`, dpop: proof } })
+    const request = new Request(requestUrl, { headers: { authorization: `DPoP ${token}`, dpop: proof } })
     const authenticator = createRealmrootAuthenticator({
       issuer,
       jwks: { keys: [accessJwk] },

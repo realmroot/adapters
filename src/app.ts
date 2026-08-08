@@ -38,7 +38,7 @@ export type AppDependencies = {
 export function createApp(config: AppConfig, dependencies: AppDependencies) {
   const app = new Hono<{ Variables: Variables }>()
   const authenticator = dependencies.authenticator
-  const agentInfo = dependencies.agentInfo ?? createAgentInfoResolver(fetch, config.realmrootAgentInfoEndpoint)
+  const agentInfo = dependencies.agentInfo ?? createAgentInfoResolver(fetch, config.realmrootAgentProfileUriTemplate)
   const github = dependencies.github ?? configuredGitHub(config)
   const githubConnection = dependencies.githubConnection ?? configuredGitHubConnection(config)
   const githubConnections = dependencies.githubConnections
