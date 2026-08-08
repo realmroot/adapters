@@ -12,8 +12,10 @@ The Worker exposes one GitHub Resource Server:
 http://127.0.0.1:4103/github
 ```
 
-One Realmroot owner has at most one Connection for that Resource Server. The
-Connection may contain any number of GitHub App installations. Installations
+One Realmroot owner has at most one Provider Connection for the GitHub
+Connector. The adapter resolves that connection from the verified owner `sub`
+and retains a stable opaque `broker_reference` across same-account
+reauthorization. The Connection may contain any number of GitHub App installations. Installations
 are concrete RFC 9396-style `github_installation` authorization details, not
 URLs supplied by the caller:
 
@@ -26,9 +28,10 @@ URLs supplied by the caller:
 }
 ```
 
-Realmroot signs the Connection ID and approved authorization details into each
-short-lived token. The Worker resolves repositories against only those signed
-installation contexts. A caller cannot select or substitute an installation
+Realmroot signs the Resource Authorization ID and approved authorization
+details into each short-lived token. The Worker resolves the one GitHub binding
+from the verified owner and intersects its installations with those signed
+authorization details. A caller cannot select or substitute an installation
 through a path parameter.
 
 ## Account connection
@@ -44,14 +47,20 @@ The Worker then:
 2. verifies the GitHub user and App installations visible to that user;
 3. sends users with no installation through the GitHub App setup URL and
    verifies the installation after returning;
-4. binds all verified installations to the one Connection in D1; and
+4. binds all verified installations to the owner's one active GitHub binding in D1; and
 5. returns a one-use authorization code to Realmroot's callback.
 
 The code exchange is PKCE-bound. Realmroot stores the Connection, subject hint,
 scopes, and concrete installation contexts. GitHub user tokens and installation
 credentials remain inside the Worker boundary. Reconnecting the same GitHub
-subject updates the existing Connection; a different subject is rejected until
-the current Connection is revoked.
+subject updates the existing binding without changing its broker reference; a
+different subject is rejected until the current Connection is revoked.
+
+Realmroot disconnects the Provider Connection by posting a short-lived signed
+request to the advertised revocation endpoint. The Worker validates the exact
+issuer and Resource audience, consumes the request `jti` once, revokes the
+matching broker reference, and deletes its installation contexts before
+returning `204`.
 
 ## Runtime ownership
 

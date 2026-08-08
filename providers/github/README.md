@@ -39,7 +39,8 @@ not a Resource Server URL or caller-selected path parameter.
 
 The current executable slice supports installation repository discovery and
 issue creation. Pull requests, comments, reviews, delegated user-token
-operations, and webhook revocation remain roadmap work.
+operations and webhook-driven installation lifecycle invalidation remain
+roadmap work. Realmroot-signed Provider Connection revocation is implemented.
 
 ## Initial credential modes
 

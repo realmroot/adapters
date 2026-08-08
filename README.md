@@ -7,8 +7,8 @@ Bring trusted Realmroot Agent identities to external platforms.
 
 > [!IMPORTANT]
 > This project is in alpha. The GitHub vertical slice runs as an independent
-> Cloudflare Worker with durable D1 state, but provider lifecycle and
-> revocation handling are not production-ready yet.
+> Cloudflare Worker with durable D1 state and signed broker revocation, but
+> provider webhook lifecycle handling is not production-ready yet.
 
 Realmroot-native resource servers can authenticate the exact Agent performing
 an operation. Most external platforms cannot consume that identity directly.
@@ -161,14 +161,16 @@ pnpm exec wrangler d1 migrations apply realmroot-adapters-db --local
 pnpm dev -- --port 4103
 ```
 
-After configuring the GitHub App credentials, register one native Resource
-Server for GitHub. Installations are account-connection contexts; they are not
-separate Resource Servers and never appear in the audience URL:
+After configuring the GitHub App credentials, register one brokered Resource
+Server for GitHub and select the Realmroot GitHub Connector. Installations are
+account-connection contexts; they are not separate Resource Servers and never
+appear in the audience URL:
 
 ```json
 {
   "identifier": "github",
   "resourceUrl": "http://127.0.0.1:4103/github",
+  "connectorId": "YOUR_GITHUB_CONNECTOR_ID",
   "ownerOrganizationId": "org_platform",
   "authorizationDetails": [{ "type": "github_installation" }],
   "enabled": true,

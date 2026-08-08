@@ -13,7 +13,22 @@ Feature: GitHub App adapter
     Given the adapter is configured to trust a Realmroot issuer
     When Realmroot discovers the installation Resource URL
     Then RFC 9728 metadata advertises the exact Resource and supported scopes
+    And the metadata advertises authorization, credential, and revocation endpoints
     And the Resource advertises its OpenAPI contract with a service-desc link
+
+  @journey:github-provider-connection @entrypoint:http
+  Scenario: One Realmroot owner keeps one GitHub Provider connection across reauthorization
+    Given a Realmroot owner has connected a GitHub account and its App installations
+    When the same owner reauthorizes that GitHub account
+    Then the adapter keeps one stable broker reference for the owner
+    And replaces the installation contexts with the newly authorized set
+
+  @journey:github-provider-revocation @entrypoint:http
+  Scenario: Realmroot disconnects a GitHub Provider connection
+    Given Realmroot signs a revocation request for the connected broker reference
+    When the adapter accepts that one-use request
+    Then the broker reference and its installation contexts become unusable
+    And replaying the signed revocation request is rejected
 
   @journey:github-repositories @entrypoint:http
   Scenario: An authorized Agent lists repositories in one installation

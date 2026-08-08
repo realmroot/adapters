@@ -81,11 +81,12 @@ Implemented in the alpha slice:
 - [x] repository-downscoped issue creation;
 - [x] trusted visible and machine-readable Agent attribution;
 - [x] Cloudflare Worker runtime with durable D1 replay, idempotency, and audit state.
+- [x] one Provider Connection per Realmroot owner with signed broker revocation;
 
 Remaining before production readiness:
 
 - [ ] audit retention, operational queries, and production observability policy;
-- [ ] installation/repository lifecycle webhooks and fail-closed revocation;
+- [ ] installation/repository lifecycle webhooks and provider-originated invalidation;
 - [ ] pull requests, comments, reviews, and delegated-user mode;
 - [ ] deployment, secret rotation, and live-provider conformance automation.
 

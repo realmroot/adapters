@@ -3,7 +3,7 @@ import { z } from 'zod'
 import type { AppConfig } from './config.js'
 import { type AgentInfoResolver, createAgentInfoResolver } from './core/agent-info.js'
 import { attributedBody } from './core/attribution.js'
-import type { BrokeredConnectionRequest } from './core/connection-request.js'
+import type { BrokeredConnectionRequest, BrokeredRevocationRequest } from './core/connection-request.js'
 import type { IdempotencyStore } from './core/idempotency.js'
 import { badRequest, forbidden, HttpProblem } from './core/problem.js'
 import type { RealmrootAuthenticator } from './core/realmroot-auth.js'
@@ -13,7 +13,8 @@ import { adapterApiVersion, githubOpenApi, githubScopes } from './providers/gith
 import type { GitHubConnectionProvider, GitHubProvider } from './providers/github/types.js'
 import type { GitHubConnectionIntent, GitHubConnectionStore } from './storage/d1-github-connections.js'
 
-type Variables = { requestId: string }
+type RequestFailure = { type: string; error?: { name: string; message: string; stack?: string } }
+type Variables = { requestId: string; failure?: RequestFailure }
 const issueInputSchema = z
   .object({ title: z.string().trim().min(1).max(256), body: z.string().max(65_536).optional() })
   .strict()
@@ -27,8 +28,9 @@ export type AppDependencies = {
   agentInfo?: AgentInfoResolver
   github?: GitHubProvider
   idempotency: IdempotencyStore
-  audit?: (record: Record<string, unknown>) => Promise<void>
+  audit: (record: Record<string, unknown>) => Promise<void>
   connectionRequestVerifier?: (request: string) => Promise<BrokeredConnectionRequest>
+  revocationRequestVerifier?: (request: string) => Promise<BrokeredRevocationRequest>
   githubConnection?: GitHubConnectionProvider
   githubConnections?: GitHubConnectionStore
 }
@@ -41,16 +43,28 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
   const githubConnection = dependencies.githubConnection ?? configuredGitHubConnection(config)
   const githubConnections = dependencies.githubConnections
   const idempotency = dependencies.idempotency
-  const audit =
-    dependencies.audit ??
-    (async (record) => {
-      console.info(JSON.stringify(record))
-    })
+  const audit = dependencies.audit
 
   app.use('*', async (c, next) => {
+    const startedAt = Date.now()
     c.set('requestId', crypto.randomUUID())
-    await next()
-    c.header('Request-Id', c.get('requestId'))
+    try {
+      await next()
+    } finally {
+      c.header('Request-Id', c.get('requestId'))
+      const failure = c.get('failure')
+      const record = JSON.stringify({
+        event: 'request.complete',
+        requestId: c.get('requestId'),
+        method: c.req.method,
+        path: new URL(c.req.url).pathname,
+        status: c.res.status,
+        durationMs: Date.now() - startedAt,
+        ...(failure ? { failure } : {}),
+      })
+      if (c.res.status >= 500) console.error(record)
+      else console.info(record)
+    }
   })
 
   app.get('/health', (c) => c.json({ status: 'ok' }))
@@ -66,6 +80,7 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
       account_connection_modes_supported: ['brokered'],
       account_connection_authorization_endpoint: `${resource}/account-connection-authorizations`,
       account_connection_token_endpoint: `${resource}/account-connection-credentials`,
+      account_connection_revocation_endpoint: `${resource}/account-connection-revocations`,
     })
   })
 
@@ -141,11 +156,12 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
     const form = await c.req.formData()
     const code = requiredForm(form, 'code')
     const verifier = requiredForm(form, 'code_verifier')
-    const { intent, binding, contexts } = await githubConnections.exchange(code, verifier)
+    const connectionRequestId = requiredForm(form, 'connection_id')
+    const { binding, brokerReference, contexts } = await githubConnections.exchange(code, verifier, connectionRequestId)
     return c.json({
       external_subject: String(binding.githubUserId),
       display_name: binding.displayName,
-      broker_reference: intent.connectionId,
+      broker_reference: brokerReference,
       scope: (JSON.parse(binding.scopesJson) as string[]).join(' '),
       authorization_details: contexts.map((context) => ({
         type: 'github_installation',
@@ -154,6 +170,20 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
         target_type: context.targetType,
       })),
     })
+  })
+
+  app.post('/github/account-connection-revocations', async (c) => {
+    if (!dependencies.revocationRequestVerifier || !githubConnections) throw notConfiguredConnection()
+    const form = await c.req.formData()
+    const signedRequest = requiredForm(form, 'request')
+    const revocation = await dependencies.revocationRequestVerifier(signedRequest)
+    await githubConnections.revoke({
+      brokerReference: revocation.broker_reference,
+      ownerSubject: revocation.sub,
+      jti: revocation.jti,
+      expiresAt: revocation.exp * 1000,
+    })
+    return c.body(null, 204)
   })
 
   app.get('/github/repositories', async (c) => {
@@ -228,7 +258,7 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
     if (!principal.connectionId || !githubConnections) {
       throw forbidden('A brokered GitHub account connection is required.')
     }
-    const ids = await githubConnections.activeInstallationIds(principal.connectionId)
+    const ids = await githubConnections.activeInstallationIdsForOwner(principal.subject)
     const selected = (principal.authorizationDetails ?? []).flatMap((detail) =>
       detail.type === 'github_installation' && typeof detail.installation_id === 'string'
         ? [installationId(detail.installation_id)]
@@ -287,17 +317,10 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
   )
   app.onError((error, c) => {
     const problem = normalizeProblem(error)
-    console.error(
-      JSON.stringify({
-        event: 'request.error',
-        requestId: c.get('requestId'),
-        method: c.req.method,
-        path: new URL(c.req.url).pathname,
-        status: problem.status,
-        type: problem.type,
-        detail: problem.message,
-      }),
-    )
+    c.set('failure', {
+      type: problem.type,
+      ...(problem.status >= 500 ? { error: serializedError(error) } : {}),
+    })
     return problemResponse(problem, c.req.url, c.get('requestId'))
   })
   return app
@@ -400,8 +423,14 @@ async function readJson(request: Request) {
 function normalizeProblem(error: unknown) {
   if (error instanceof HttpProblem) return error
   if (error instanceof z.ZodError) return badRequest(z.prettifyError(error))
-  console.error(error)
   return new HttpProblem(500, 'about:blank', 'Internal Server Error', 'The adapter could not complete the request.')
+}
+
+function serializedError(error: unknown) {
+  if (error instanceof Error) {
+    return { name: error.name, message: error.message, ...(error.stack ? { stack: error.stack } : {}) }
+  }
+  return { name: 'UnknownError', message: String(error) }
 }
 
 function problemResponse(problem: HttpProblem, instance: string, requestId: string) {

@@ -26,7 +26,7 @@ export default defineConfig({
             singleWorker: true,
             miniflare: {
               compatibilityDate: '2026-08-07',
-              d1Databases: ['DB'],
+              d1Databases: ['DB', 'MIGRATION_DB'],
               bindings: {
                 TEST_MIGRATIONS: await readD1Migrations(path.join(import.meta.dirname, 'migrations')),
                 REALMROOT_ISSUER: 'https://id.example/api/auth',

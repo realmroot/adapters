@@ -31,7 +31,7 @@ export const githubManifest = {
       scope: 'github:issues:write',
     },
   ],
-  revocationSignals: ['token-rejection'],
+  revocationSignals: ['realmroot-signed-broker-revocation', 'token-rejection'],
   nativeReadinessGaps: ['ACTOR-NATIVE', 'AGENT-DISPLAY', 'DPOP', 'TOKEN-EXCHANGE'],
   retirementCondition:
     'GitHub authenticates a stable external Agent, authorizes selected repositories and operations, and records that Agent as the native actor.',

@@ -31,6 +31,7 @@ describe('GitHub adapter contract', () => {
       authorization_servers: [config.realmrootIssuer],
       scopes_supported: ['github:metadata:read', 'github:issues:write'],
       account_connection_modes_supported: ['brokered'],
+      account_connection_revocation_endpoint: 'http://127.0.0.1:4103/github/account-connection-revocations',
     })
     const resource = await app.request('/github')
     expect(resource.headers.get('link')).toContain('rel="service-desc"')
@@ -38,6 +39,148 @@ describe('GitHub adapter contract', () => {
     const contract = (await openapi.json()) as { paths: Record<string, unknown> }
     expect(contract.paths).toHaveProperty('/repositories')
     expect(contract.paths).toHaveProperty('/repos/{owner}/{repository}/issues')
+  })
+
+  it('[spec: github-adapter/github-provider-revocation] accepts a signed one-use broker revocation', async () => {
+    const revoke = vi.fn(async () => {})
+    const app = testApp({
+      revocationRequestVerifier: vi.fn(async () => ({
+        sub: 'org_1',
+        jti: 'revocation-1',
+        exp: 1_800_000_060,
+        connection_id: 'provider-connection-1',
+        resource_authorization_id: 'resource-authorization-1',
+        broker_reference: 'broker-1',
+      })),
+      githubConnections: { ...fakeGitHubConnections(), revoke },
+    })
+    const response = await app.request('/github/account-connection-revocations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ request: 'signed-revocation' }),
+    })
+
+    expect(response.status).toBe(204)
+    expect(revoke).toHaveBeenCalledWith({
+      brokerReference: 'broker-1',
+      ownerSubject: 'org_1',
+      jti: 'revocation-1',
+      expiresAt: 1_800_000_060_000,
+    })
+  })
+
+  it('[spec: github-adapter/github-provider-connection] completes authorization and returns only broker metadata', async () => {
+    const store = fakeGitHubConnections()
+    const intent = {
+      requestId: 'request-1',
+      connectionId: 'provider-connection-1',
+      expectedExternalSubject: null,
+      ownerSubject: 'org_1',
+      realmrootState: 'realmroot-state',
+      callbackUri: 'https://id.example/api/account-connections/oauth/callback',
+      codeChallenge: 'challenge',
+      scopesJson: '["github:metadata:read"]',
+      expectedInstallationId: null,
+      status: 'pending_oauth' as const,
+      expiresAt: Date.now() + 60_000,
+    }
+    store.findByProviderState = vi.fn(async () => intent)
+    store.exchange = vi.fn(async () => ({
+      intent: { ...intent, status: 'completed' as const },
+      brokerReference: 'broker-1',
+      binding: {
+        githubUserId: 7,
+        githubLogin: 'controller',
+        displayName: 'Controller',
+        scopesJson: '["github:metadata:read"]',
+      },
+      contexts: [{ installationId: 42, accountLogin: 'realmroot', targetType: 'Organization' }],
+    }))
+    const app = testApp({
+      connectionRequestVerifier: vi.fn(async () => ({
+        sub: 'org_1',
+        jti: 'request-1',
+        state: 'realmroot-state',
+        connection_id: 'provider-connection-1',
+        expected_external_subject: null,
+        owner_type: 'organization' as const,
+        callback_uri: intent.callbackUri,
+        code_challenge: 'a'.repeat(43),
+        code_challenge_method: 'S256' as const,
+        scope: 'github:metadata:read',
+        authorization_details: [{ type: 'github_installation' }],
+      })),
+      githubConnection: {
+        authorizationUrl: vi.fn(() => 'https://github.com/login/oauth/authorize?state=provider-state'),
+        exchangeUserCode: vi.fn(async () => 'user-token'),
+        getUser: vi.fn(async () => ({ id: 7, login: 'controller', name: 'Controller' })),
+        listUserInstallations: vi.fn(async () => [{ id: 42, accountLogin: 'realmroot', targetType: 'Organization' }]),
+        newInstallationUrl: vi.fn(),
+      },
+      githubConnections: store,
+    })
+
+    const authorization = await app.request('/github/account-connection-authorizations?request=signed-request')
+    expect(authorization.status).toBe(302)
+    expect(authorization.headers.get('location')).toContain('github.com/login/oauth/authorize')
+    expect(store.create).toHaveBeenCalledWith(expect.objectContaining({ sub: 'org_1' }), expect.any(String))
+
+    const callback = await app.request('/github/oauth/callback?state=provider-state&code=github-code')
+    expect(callback.status).toBe(302)
+    expect(callback.headers.get('location')).toContain(`${intent.callbackUri}?state=realmroot-state&code=`)
+    expect(store.complete).toHaveBeenCalledWith(
+      intent,
+      expect.objectContaining({ id: 7 }),
+      [expect.objectContaining({ id: 42 })],
+      expect.any(String),
+    )
+
+    const credentials = await app.request('/github/account-connection-credentials', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ code: 'adapter-code', code_verifier: 'verifier', connection_id: 'request-1' }),
+    })
+    expect(credentials.status).toBe(200)
+    await expect(credentials.json()).resolves.toMatchObject({
+      external_subject: '7',
+      broker_reference: 'broker-1',
+      authorization_details: [{ type: 'github_installation', installation_id: '42' }],
+    })
+    expect(store.exchange).toHaveBeenCalledWith('adapter-code', 'verifier', 'request-1')
+  })
+
+  it('records one structured completion event for success and unexpected failure', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      expect((await testApp().request('/health')).status).toBe(200)
+      expect(info).toHaveBeenCalledOnce()
+      expect(JSON.parse(String(info.mock.calls[0]?.[0]))).toMatchObject({
+        event: 'request.complete',
+        method: 'GET',
+        path: '/health',
+        status: 200,
+      })
+
+      const failed = testApp({
+        githubConnections: {
+          ...fakeGitHubConnections(),
+          activeInstallationIdsForOwner: vi.fn(async () => {
+            throw new Error('storage unavailable')
+          }),
+        },
+      })
+      expect((await failed.request('/github/repositories')).status).toBe(500)
+      expect(error).toHaveBeenCalledOnce()
+      expect(JSON.parse(String(error.mock.calls[0]?.[0]))).toMatchObject({
+        event: 'request.complete',
+        status: 500,
+        failure: { type: 'about:blank', error: { message: 'storage unavailable' } },
+      })
+    } finally {
+      info.mockRestore()
+      error.mockRestore()
+    }
   })
 
   it('[spec: github-adapter/github-create-issue] injects attribution, audits, and replays one write', async () => {
@@ -176,6 +319,7 @@ describe('GitHub adapter contract', () => {
         })),
       },
       githubConnections: fakeGitHubConnections(),
+      audit: vi.fn(async () => {}),
     })
     const list = await app.request('/github/repositories', {
       headers: { 'API-Version': adapterApiVersion },
@@ -211,6 +355,7 @@ function testApp(overrides: Partial<Parameters<typeof createApp>[1]> = {}) {
     },
     idempotency: new FakeIdempotencyStore(),
     githubConnections: fakeGitHubConnections(),
+    audit: vi.fn(async () => {}),
     ...overrides,
   })
 }
@@ -222,7 +367,8 @@ function fakeGitHubConnections(): GitHubConnectionStore {
     rotateProviderState: vi.fn(async () => {}),
     complete: vi.fn(async () => {}),
     exchange: vi.fn(),
-    activeInstallationIds: vi.fn(async () => [42]),
+    activeInstallationIdsForOwner: vi.fn(async () => [42]),
+    revoke: vi.fn(async () => {}),
   }
 }
 

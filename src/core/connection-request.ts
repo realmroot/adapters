@@ -17,18 +17,38 @@ const requestSchema = z.object({
   authorization_details: z.array(z.record(z.string(), z.unknown())),
 })
 
-export type BrokeredConnectionRequest = z.infer<typeof requestSchema>
+const revocationRequestSchema = z.object({
+  sub: z.string().min(1),
+  jti: z.string().min(1),
+  exp: z.number().int().positive(),
+  connection_id: z.string().min(1),
+  resource_authorization_id: z.string().min(1),
+  broker_reference: z.string().min(1),
+})
 
-export function createConnectionRequestVerifier(config: AppConfig) {
+export type BrokeredConnectionRequest = z.infer<typeof requestSchema>
+export type BrokeredRevocationRequest = z.infer<typeof revocationRequestSchema>
+
+export function createBrokerRequestVerifiers(config: AppConfig) {
   const keys = createRemoteJWKSet(new URL(config.realmrootJwksUrl))
-  return async (request: string): Promise<BrokeredConnectionRequest> => {
-    const verified = await jwtVerify(request, keys, {
-      algorithms: ['RS256'],
-      issuer: config.realmrootIssuer,
-      audience: `${config.origin}/github`,
-    }).catch(() => {
-      throw unauthorized('The Realmroot account connection request is invalid.')
-    })
-    return requestSchema.parse(verified.payload)
+  return {
+    verifyConnection: (request: string) =>
+      verify(request, requestSchema, '11 minutes', 'The Realmroot account connection request is invalid.'),
+    verifyRevocation: (request: string) =>
+      verify(request, revocationRequestSchema, '2 minutes', 'The Realmroot account revocation request is invalid.'),
+  }
+
+  async function verify<T>(request: string, schema: z.ZodType<T>, maxTokenAge: string, detail: string): Promise<T> {
+    try {
+      const verified = await jwtVerify(request, keys, {
+        algorithms: ['RS256'],
+        issuer: config.realmrootIssuer,
+        audience: `${config.origin}/github`,
+        maxTokenAge,
+      })
+      return schema.parse(verified.payload)
+    } catch {
+      throw unauthorized(detail)
+    }
   }
 }

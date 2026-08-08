@@ -229,11 +229,7 @@ export function createGitHubConnectionProvider(input: {
     })
     if (!response.ok) {
       const requestId = response.headers.get('x-github-request-id')
-      const responseText = await response.text()
-      const message = responseText ? `: ${responseText.slice(0, 500)}` : ''
-      throw failedDependency(
-        `GitHub rejected ${path} with ${response.status}${requestId ? ` (${requestId})` : ''}${message}.`,
-      )
+      throw failedDependency(`GitHub rejected ${path} with ${response.status}${requestId ? ` (${requestId})` : ''}.`)
     }
     return response
   }
