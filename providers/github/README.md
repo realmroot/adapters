@@ -37,10 +37,20 @@ not a Resource Server URL or caller-selected path parameter.
 - discover connected installations and selected repositories;
 - create an issue with Agent attribution.
 
-The current executable slice supports installation repository discovery and
-issue creation. Pull requests, comments, reviews, delegated user-token
-operations and webhook-driven installation lifecycle invalidation remain
-roadmap work. Realmroot-signed Provider Connection revocation is implemented.
+The current executable slice supports installation repository discovery, issue
+creation, and webhook-driven installation lifecycle invalidation. Pull
+requests, comments, reviews, and delegated user-token operations remain roadmap
+work. Realmroot-signed Provider Connection revocation is implemented.
+
+GitHub sends lifecycle deliveries to `/github/webhooks`. The adapter verifies
+`X-Hub-Signature-256`, durably deduplicates `X-GitHub-Delivery`, updates only
+GitHub-private installation context, and translates supported actions into
+Realmroot's provider-agnostic Connection Events. Unrelated event families are
+ignored. Selected-repository membership remains in the GitHub-private schema;
+generic Connection Events carry complete opaque authorization details so
+Realmroot can revoke grants without adding GitHub fields to its core domain.
+Each accepted context change also carries a provider-agnostic monotonic
+connection revision so Realmroot can reject reversed same-time delivery.
 
 ## Initial credential modes
 

@@ -7,8 +7,8 @@ Bring trusted Realmroot Agent identities to external platforms.
 
 > [!IMPORTANT]
 > This project is in alpha. The GitHub vertical slice runs as an independent
-> Cloudflare Worker with durable D1 state and signed broker revocation, but
-> provider webhook lifecycle handling is not production-ready yet.
+> Cloudflare Worker with durable D1 state, signed broker revocation, and
+> webhook-driven GitHub installation lifecycle invalidation.
 
 Realmroot-native resource servers can authenticate the exact Agent performing
 an operation. Most external platforms cannot consume that identity directly.
@@ -218,6 +218,31 @@ Keep both production callback URLs on the same GitHub App. Realmroot uses its
 callback for Connector authentication, while the adapter explicitly selects
 its callback for brokered account connection authorization.
 
+Configure the GitHub App webhook URL as
+`https://adapters.realmroot.dev/github/webhooks`, select JSON payloads, and set
+`GITHUB_WEBHOOK_SECRET` to an App webhook secret of at least 32 characters. The
+adapter accepts only installation deletion, suspension, restoration, accepted
+permission changes, and installation repository add/remove lifecycle signals.
+Lifecycle request bodies are limited to 1 MiB. The adapter orders state by the
+installation's GitHub `updated_at` value. Delivery GUIDs are idempotent event
+identities, never ordering values. When GitHub emits distinct changes with the
+same timestamp, restrictive suspension, repository selection, permission, and
+repository-removal changes win; independent repository deltas are merged.
+Accepted context changes are serialized per broker connection and carry a
+monotonically increasing `revision` in the signed generic Connection Event.
+Realmroot uses that causal revision to reject reversed same-time delivery.
+
+Set `REALMROOT_CONNECTION_EVENT_SECRET` to the same value as Realmroot's
+`PROVIDER_CONNECTION_EVENT_SECRETS` JSON-map entry for the exact adapter
+Resource URI (at least 32 characters). Failed Connection Event delivery remains
+pending for a GitHub retry; an accepted delivery GUID is not emitted twice.
+Migration `0007` revokes pre-lifecycle GitHub connections because older schemas
+did not retain repository selection or selected repository membership. Reconnect
+those installations after applying the migration; the adapter will not widen
+unknown legacy authority to all repositories. The migration durably queues a
+generic revocation, and the Worker delivers it to Realmroot before serving
+requests so Connection and Agent-grant state cannot remain stale.
+
 For deployment, store the key without putting it in source or Wrangler vars:
 
 ```bash
@@ -225,6 +250,8 @@ pnpm exec wrangler secret put GITHUB_APP_ID
 pnpm exec wrangler secret put GITHUB_PRIVATE_KEY < github-app.private-key.pem
 pnpm exec wrangler secret put GITHUB_CLIENT_ID
 pnpm exec wrangler secret put GITHUB_CLIENT_SECRET
+pnpm exec wrangler secret put GITHUB_WEBHOOK_SECRET
+pnpm exec wrangler secret put REALMROOT_CONNECTION_EVENT_SECRET
 ```
 
 The first connected App currently needs repository Metadata read and Issues
@@ -244,10 +271,27 @@ PATCH /github/repos/{owner}/{repo}/labels/{name}
 
 Most requests are streamed transparently. The adapter parses a request body
 only for a small registry of operations that need Agent attribution. GitHub
-continues to define request and response schemas, endpoint behavior, and
-permission enforcement. OpenAPI discovery publishes the subset GitHub documents
-for installation access tokens and the permissions currently configured on the
-App.
+continues to define request and response schemas and endpoint behavior. OpenAPI
+discovery publishes the subset GitHub documents for installation access tokens,
+preserving alternative permission sets as OR and each set's required permissions
+as AND. For every request, the adapter resolves the original method and path and
+mints only one least-privileged permission set satisfied by the Realmroot token.
+
+GitHub requires both `contents:write` and `workflows:write` when the Contents API
+writes under `.github/workflows`; the adapter enforces that condition from the
+actual upstream path. Standard OpenAPI security requirements cannot make a scope
+conditional on a path-parameter value, so discovery advertises GitHub's two
+static alternatives and adds `x-restish-security-alternatives` to select the
+conjunction for a `.github/workflows/` path. Clients that ignore the extension
+can ask for only `contents:write` on their first workflow-file request; the
+adapter rejects that request until its Realmroot token contains both scopes.
+
+GitHub's structured permission data also lists a `contents:write` plus
+`workflows:write` alternative for reference and release writes. For releases,
+GitHub documents that the condition depends on whether the resolved target
+commit changes workflow files relative to the default branch; that fact is not
+present in the proxy request. The adapter preserves GitHub's alternatives in
+discovery and does not invent a request predicate or retry a provider write.
 
 ### Linear experimental slice
 

@@ -20,7 +20,12 @@ export type GitHubInstallation = Readonly<{
   accountLogin: string
   targetType: string
   permissions: GitHubPermissions
+  repositorySelection: 'all' | 'selected'
+  repositories: readonly GitHubRepository[]
+  updatedAt: string
 }>
+
+export type GitHubRepository = Readonly<{ id: number; fullName: string }>
 
 export interface GitHubConnectionProvider {
   authorizationUrl(state: string): string

@@ -3,12 +3,14 @@ import { describe, expect, it } from 'vitest'
 import { sha256Base64Url } from '../../src/core/digest.js'
 import { D1LinearConnections } from '../../src/providers/linear/connections.js'
 import { createLinearCredentialCipher } from '../../src/providers/linear/credentials.js'
+import { D1RuntimeState } from '../../src/storage/d1-runtime-state.js'
 
 const cipher = createLinearCredentialCipher('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA')
+const state = new D1RuntimeState(env.DB)
 
 describe('Linear connection persistence', () => {
   it('[spec: linear-adapter/linear-workspace-reauthorization] preserves one user binding with multiple workspace contexts', async () => {
-    const store = new D1LinearConnections(env.DB, cipher)
+    const store = new D1LinearConnections(env.DB, cipher, state)
     const verifier = 'linear-pkce-verifier-with-sufficient-entropy'
     const first = await request('linear-request-1', 'linear-connection-1', null, verifier)
     await store.create(first, 'linear-user-state-1')
@@ -61,7 +63,7 @@ describe('Linear connection persistence', () => {
   })
 
   it('serializes rotating refresh credentials with an optimistic lease', async () => {
-    const store = new D1LinearConnections(env.DB, cipher)
+    const store = new D1LinearConnections(env.DB, cipher, state)
     await connectWorkspace(store, 'refresh-owner', 'refresh', 'refresh-workspace', 'refresh-user')
     const credential = await store.credentialForOwner('refresh-owner', 'refresh-workspace')
     await expect(store.claimRefresh(credential, 2_000)).resolves.toBe(true)
@@ -75,7 +77,7 @@ describe('Linear connection persistence', () => {
   })
 
   it('[spec: linear-adapter/linear-provider-lifecycle] applies fresh permission changes once and revokes one workspace', async () => {
-    const store = new D1LinearConnections(env.DB, cipher)
+    const store = new D1LinearConnections(env.DB, cipher, state)
     await connectWorkspace(store, 'lifecycle-owner', 'lifecycle-1', 'lifecycle-workspace-1', 'lifecycle-user')
     await connectWorkspace(
       store,

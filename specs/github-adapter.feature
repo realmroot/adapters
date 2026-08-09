@@ -24,6 +24,14 @@ Feature: GitHub App adapter
     Then the adapter keeps one stable broker reference for the owner
     And replaces the installation contexts with the newly authorized set
 
+  @journey:github-lifecycle-migration @entrypoint:migration
+  Scenario: Legacy GitHub connections do not gain unknown repository authority
+    Given a GitHub connection predates retained repository selection and membership
+    When the lifecycle migration is applied
+    Then the legacy connection is revoked and its installation contexts are removed
+    And a durable generic revoked event updates Realmroot before the adapter serves requests
+    And the controller can reconnect it with freshly discovered repository authority
+
   @journey:github-provider-revocation @entrypoint:http
   Scenario: Realmroot disconnects a GitHub Provider connection
     Given Realmroot signs a revocation request for the connected broker reference
@@ -31,13 +39,58 @@ Feature: GitHub App adapter
     Then the broker reference and its installation contexts become unusable
     And replaying the signed revocation request is rejected
 
+  @journey:github-installation-lifecycle @entrypoint:http
+  Scenario: GitHub installation lifecycle changes immediately constrain connected authority
+    Given a Realmroot owner has connected one or more GitHub App installations
+    When GitHub reports an installation deletion, suspension, restoration, or permission change
+    Then the adapter verifies the delivery signature before changing installation context
+    And rejects an oversized delivery before signature verification
+    And the adapter immediately removes, suspends, restores, or updates the affected installation context
+    And older lifecycle state cannot replace newer provider state
+    And equal-timestamp suspension, authority reduction, and deletion cannot be undone by an ambiguous expansion
+    And each accepted context change receives a monotonically increasing connection revision
+    And Realmroot receives the corresponding signed generic Connection Event with complete authority constraints
+
+  @journey:github-installation-resources @entrypoint:http
+  Scenario: GitHub installation repository changes invalidate affected grants
+    Given a Realmroot owner has connected a GitHub App installation
+    When GitHub reports repositories added to or removed from the installation
+    Then the adapter updates its provider-private repository membership immediately
+    And equal-timestamp removal wins for the same repository while independent repository changes merge
+    And Realmroot receives a signed resources changed Connection Event with the complete remaining contexts and authority constraints
+    And replaying the same GitHub delivery does not apply or emit the event twice
+
   @journey:github-permission-translation @entrypoint:http
   Scenario: GitHub App permissions are exposed as Realmroot scopes
     Given the GitHub App installation grants metadata read and issues write
     When Realmroot completes the Provider connection
     Then the connection grants metadata:read, issues:read, and issues:write
     And provider permissions are absent from authorization details
-    And authorization details only identify the selected GitHub installation
+    And authorization details identify the selected GitHub installation and its repository selection
+
+  @journey:github-operation-permissions @entrypoint:http
+  Scenario: GitHub operation permissions preserve alternatives and conjunctions
+    Given GitHub documents each installation operation as permission alternatives containing required conjunctions
+    When Realmroot discovers the GitHub service description
+    Then each alternative is advertised as a separate OpenAPI security requirement
+    And every permission in one conjunction is advertised together
+    And every scope uses GitHub's native permission name without a provider prefix
+
+  @journey:github-operation-authority @entrypoint:http
+  Scenario: The adapter mints the least-privileged credential for the requested operation
+    Given an Agent token satisfies one or more permission alternatives for a GitHub REST operation
+    When the Agent calls the original GitHub REST path through the adapter
+    Then the adapter selects one least-privileged satisfied permission set for that method and path
+    And the short-lived GitHub installation credential contains only that selected permission set
+    And unrelated scopes in the Agent token are not minted into the GitHub credential
+
+  @journey:github-workflow-file-authority @entrypoint:http
+  Scenario: Workflow file writes require both GitHub permissions
+    Given an Agent calls the GitHub repository contents endpoint
+    When the target path is under .github/workflows
+    Then the Agent must have contents:write and workflows:write
+    And the short-lived GitHub installation credential requests both permissions
+    But a write outside .github/workflows only requires contents:write
 
   @journey:github-transparent-proxy @entrypoint:http
   Scenario: An authorized Agent calls the original GitHub REST API

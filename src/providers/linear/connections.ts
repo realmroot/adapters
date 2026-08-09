@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { BrokerRequestReplayStore } from '../../core/broker-request-replay.js'
 import type { BrokeredConnectionRequest } from '../../core/connection-request.js'
 import { sha256Base64Url } from '../../core/digest.js'
 import { badRequest, forbidden, unauthorized } from '../../core/problem.js'
@@ -75,6 +76,7 @@ export class D1LinearConnections implements LinearConnectionStore {
   constructor(
     private readonly db: D1Database,
     private readonly cipher: LinearCredentialCipher,
+    private readonly brokerRequestReplay: BrokerRequestReplayStore,
   ) {}
 
   async create(request: BrokeredConnectionRequest, providerState: string, now = Date.now()) {
@@ -349,10 +351,11 @@ export class D1LinearConnections implements LinearConnectionStore {
     const now = Date.now()
     try {
       await this.db.batch([
-        this.db.prepare('DELETE FROM broker_request_replay WHERE expires_at <= ?').bind(now),
-        this.db
-          .prepare('INSERT INTO broker_request_replay (jti, expires_at, created_at) VALUES (?, ?, ?)')
-          .bind(input.jti, input.expiresAt, now),
+        ...this.brokerRequestReplay.brokerRequestReplayStatements({
+          jti: input.jti,
+          expiresAt: input.expiresAt,
+          now,
+        }),
         this.db
           .prepare(
             `UPDATE linear_connection_binding SET status = 'revoked', updated_at = ?
@@ -368,11 +371,9 @@ export class D1LinearConnections implements LinearConnectionStore {
           .bind(now, input.brokerReference),
       ])
     } catch (error) {
-      const replay = await this.db
-        .prepare('SELECT jti FROM broker_request_replay WHERE jti = ?')
-        .bind(input.jti)
-        .first()
-      if (replay) throw unauthorized('The Realmroot account revocation request was already used.')
+      if (await this.brokerRequestReplay.hasBrokerRequest(input.jti)) {
+        throw unauthorized('The Realmroot account revocation request was already used.')
+      }
       throw error
     }
   }

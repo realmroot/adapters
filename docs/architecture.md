@@ -179,6 +179,30 @@ Revocation is fail-closed. A removed installation, disabled principal, reduced
 permission, removed Resource, expired grant, or failed credential renewal stops
 subsequent access.
 
+GitHub lifecycle deliveries terminate at the provider boundary. Their HMAC
+signature is verified over the unmodified body before parsing or state
+mutation. Provider-private installation context is updated once per GitHub
+delivery GUID, then a generic Connection Event is sent to Realmroot by an
+authenticated, body-bound HMAC request. Pending deliveries remain retryable;
+completed delivery replays are no-ops. Adapter core owns Realmroot broker
+request replay storage, while GitHub owns its connection intents, bindings,
+contexts, and webhook delivery records.
+
+The provider timestamp in the GitHub installation object is the lifecycle
+ordering cursor. Delivery GUIDs identify events for idempotency and are never
+treated as chronological values. Equal-timestamp changes merge conservatively:
+suspension, selected-repository scope, permission reduction, and repository
+removal win over ambiguous restoration or expansion, while independent
+repository deltas merge. Deletion is terminal. Repository membership is stored
+in GitHub-private relational rows and rendered only as opaque authorization
+details at the generic backchannel boundary. The generic Connection Event keeps
+the delivery GUID as its event identity, so distinct same-timestamp changes are
+not deduplicated by `occurredAt`. An optimistic compare-and-set claim on the
+connection serializes accepted context changes across installations. The same
+atomic batch allocates a monotonically increasing, provider-agnostic `revision`
+that is signed into the Connection Event; Realmroot can therefore reject
+reversed outbound delivery when multiple accepted events share an `occurredAt`.
+
 ## Audit record
 
 Every provider write and security-sensitive operation records:

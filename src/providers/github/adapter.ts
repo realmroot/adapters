@@ -1,17 +1,20 @@
 import type { Context, Hono } from 'hono'
 import type { AdapterEnv, AdapterModule } from '../../core/adapter.js'
 import { type AgentInfoResolver, createAgentInfoResolver } from '../../core/agent-info.js'
+import type { ConnectionEventSink } from '../../core/connection-events.js'
 import type { BrokeredConnectionRequest, BrokeredRevocationRequest } from '../../core/connection-request.js'
 import { badRequest, forbidden, HttpProblem } from '../../core/problem.js'
 import type { AgentPrincipal, RealmrootAuthenticator } from '../../core/realmroot-auth.js'
 import { createGitHubConnectionProvider, createGitHubProvider } from './client.js'
 import type { GitHubAdapterConfig } from './config.js'
-import type { GitHubConnectionIntent, GitHubConnectionStore } from './connections.js'
+import type { GitHubAuthorizationContext, GitHubConnectionIntent, GitHubConnectionStore } from './connections.js'
 import { githubManifest } from './manifest.js'
 import { githubOpenApi } from './openapi.js'
+import { resolveGitHubOperationPermissions } from './operation-permissions.js'
 import { permissionsToScopes, scopesToPermissions } from './permissions.js'
 import { transformGitHubRequest } from './transformers.js'
 import type { GitHubConnectionProvider, GitHubInstallation, GitHubProvider } from './types.js'
+import { handleGitHubWebhook } from './webhooks.js'
 
 export type GitHubAdapterDependencies = {
   authenticator: RealmrootAuthenticator
@@ -22,6 +25,8 @@ export type GitHubAdapterDependencies = {
   connections?: GitHubConnectionStore
   connectionRequestVerifier?: (request: string) => Promise<BrokeredConnectionRequest>
   revocationRequestVerifier?: (request: string) => Promise<BrokeredRevocationRequest>
+  connectionEvents?: ConnectionEventSink
+  connectionEventBarrier?: () => Promise<void>
 }
 
 export function createGitHubAdapter(
@@ -41,6 +46,13 @@ export function createGitHubAdapter(
   }
 
   function registerGitHubRoutes(app: Hono<AdapterEnv>) {
+    app.use('/github/*', async (c, next) => {
+      if (c.req.path !== '/github' && c.req.path !== '/github/openapi.json') {
+        await dependencies.connectionEventBarrier?.()
+      }
+      await next()
+    })
+
     app.get('/providers/github/manifest', async (c) => c.json(githubManifest(await provider.appPermissions())))
 
     app.get('/.well-known/oauth-protected-resource/github', async (c) =>
@@ -134,6 +146,15 @@ export function createGitHubAdapter(
           installation_id: String(context.installationId),
           account_login: context.accountLogin,
           target_type: context.targetType,
+          repository_selection: context.repositorySelection,
+          ...(context.repositorySelection === 'selected'
+            ? {
+                repositories: context.repositories.map((repository) => ({
+                  id: String(repository.id),
+                  full_name: repository.fullName,
+                })),
+              }
+            : {}),
         })),
       })
     })
@@ -151,12 +172,30 @@ export function createGitHubAdapter(
       return c.body(null, 204)
     })
 
+    app.post('/github/webhooks', async (c) => {
+      if (!config.githubWebhookSecret || !dependencies.connections || !dependencies.connectionEvents) {
+        throw notConfiguredConnection()
+      }
+      await handleGitHubWebhook({
+        request: c.req.raw,
+        secret: config.githubWebhookSecret,
+        connections: dependencies.connections,
+        events: dependencies.connectionEvents,
+      })
+      return c.body(null, 204)
+    })
+
     app.all('/github/*', async (c) => {
       const principal = await dependencies.authenticator.authenticate(c.req.raw, resource)
       const installation = await selectedInstallation(principal)
-      const available = await provider.appPermissions()
-      const permissions = scopesToPermissions(principal.scopes, available)
+      const available = scopesToPermissions(new Set(installation.scopes), await provider.appPermissions())
       const upstream = upstreamUrl(c.req.url, c.req.method, config)
+      const permissions = resolveGitHubOperationPermissions({
+        method: c.req.method,
+        path: upstream.pathname,
+        scopes: principal.scopes,
+        available,
+      })
       const repository = repositoryTarget(upstream.pathname, installation)
       const body = await transformGitHubRequest({
         request: c.req.raw,
@@ -199,7 +238,10 @@ export function createGitHubAdapter(
     if (!principal.connectionId || !dependencies.connections) {
       throw forbidden('A brokered GitHub account connection is required.')
     }
-    const connected = await dependencies.connections.activeInstallationsForOwner(principal.subject)
+    const connected = await dependencies.connections.activeInstallationsForOwner(
+      principal.subject,
+      principal.connectionId,
+    )
     const selectedIds = (principal.authorizationDetails ?? []).flatMap((detail) =>
       detail.type === 'github_installation' && typeof detail.installation_id === 'string'
         ? [installationId(detail.installation_id)]
@@ -266,14 +308,23 @@ function isReleaseAssetUpload(method: string, path: string) {
   return method === 'POST' && /^\/repos\/[^/]+\/[^/]+\/releases\/[^/]+\/assets$/.test(path)
 }
 
-function repositoryTarget(path: string, installation: { accountLogin: string }) {
+function repositoryTarget(path: string, installation: GitHubAuthorizationContext) {
   const match = /^\/repos\/([^/]+)\/([^/]+)(?:\/|$)/.exec(path)
   if (!match) return
   const owner = decodeURIComponent(match[1] as string)
   if (owner.toLowerCase() !== installation.accountLogin.toLowerCase()) {
     throw forbidden('The repository owner is outside the selected GitHub installation.')
   }
-  return decodeURIComponent(match[2] as string)
+  const repository = decodeURIComponent(match[2] as string)
+  if (
+    installation.repositorySelection === 'selected' &&
+    !installation.repositories.some(
+      (selected) => selected.fullName.toLowerCase() === `${owner}/${repository}`.toLowerCase(),
+    )
+  ) {
+    throw forbidden('The repository is outside the selected GitHub installation authority.')
+  }
+  return repository
 }
 
 async function completeAuthorization(

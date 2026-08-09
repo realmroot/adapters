@@ -104,6 +104,70 @@ describe('GitHub account connection OAuth boundary', () => {
       },
     })
   })
+
+  it('loads selected repository membership with the installation context', async () => {
+    const requests: string[] = []
+    const provider = createGitHubConnectionProvider({
+      appId: '123',
+      privateKey: privateKey('pkcs8'),
+      clientId: 'client-id',
+      clientSecret: 'client-secret',
+      redirectUri: 'https://adapters.realmroot.dev/github/oauth/callback',
+      apiOrigin: 'https://api.github.test',
+      fetcher: async (input) => {
+        const url = String(input)
+        requests.push(url)
+        if (url.endsWith('/user/installations?per_page=100')) {
+          return Response.json({
+            installations: [
+              {
+                id: 42,
+                account: { login: 'realmroot' },
+                target_type: 'Organization',
+                permissions: { metadata: 'read' },
+                repository_selection: 'selected',
+                updated_at: '2027-01-15T08:00:00Z',
+              },
+            ],
+          })
+        }
+        if (url.endsWith('/user/installations/42/repositories?per_page=100')) {
+          return Response.json({
+            total_count: 101,
+            repositories: Array.from({ length: 100 }, (_, index) => ({
+              id: index + 1,
+              full_name: `realmroot/repository-${index + 1}`,
+            })),
+          })
+        }
+        if (url.endsWith('/user/installations/42/repositories?per_page=100&page=2')) {
+          return Response.json({
+            total_count: 101,
+            repositories: [{ id: 101, full_name: 'realmroot/repository-101' }],
+          })
+        }
+        return Response.json({ message: 'not found' }, { status: 404 })
+      },
+    })
+
+    const installations = await provider.listUserInstallations('user-token')
+    expect(installations).toHaveLength(1)
+    expect(installations[0]).toMatchObject({
+      id: 42,
+      accountLogin: 'realmroot',
+      targetType: 'Organization',
+      permissions: { metadata: 'read' },
+      repositorySelection: 'selected',
+      updatedAt: '2027-01-15T08:00:00Z',
+    })
+    expect(installations[0]?.repositories).toHaveLength(101)
+    expect(installations[0]?.repositories.at(-1)).toEqual({ id: 101, fullName: 'realmroot/repository-101' })
+    expect(requests).toEqual([
+      'https://api.github.test/user/installations?per_page=100',
+      'https://api.github.test/user/installations/42/repositories?per_page=100',
+      'https://api.github.test/user/installations/42/repositories?per_page=100&page=2',
+    ])
+  })
 })
 
 async function route(request: IncomingMessage, response: ServerResponse, seen: SeenRequest[]) {
