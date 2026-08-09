@@ -1,7 +1,7 @@
 export type ProviderManifest = Readonly<{
   schemaVersion: '0.1'
   provider: string
-  status: 'design' | 'alpha' | 'beta' | 'stable' | 'deprecated'
+  status: 'design' | 'experimental' | 'alpha' | 'beta' | 'stable' | 'deprecated'
   identity: Readonly<{
     level: 'native-agent' | 'native-service-principal' | 'brokered'
     visibleInProduct: boolean

@@ -18,7 +18,7 @@ production use.
 | --- | --- | ---: | ---: | --- |
 | GitHub | Brokered | Shared App actor + content attribution | Shared App actor | Alpha vertical slice |
 | Cloudflare | Native service principal | Token management | Per-Agent token actor | Design |
-| Linear | Native Agent | Per-Agent name/avatar | App/Agent actor | Design |
+| Linear | Brokered native App actor | Per-operation Agent name/avatar on supported writes | Shared App actor | Experimental slice |
 
 ## Phase 0 — Contract and security baseline
 
@@ -109,20 +109,40 @@ Cloudflare establishes native non-human identity and provider-side audit.
 Exit criteria: Cloudflare's own audit log identifies the dedicated Agent
 service principal for each representative operation.
 
-## Phase 3 — Linear native Agents
+## Phase 3 — Linear shared native App actor
 
-Linear establishes the native Agent experience.
+Linear establishes provider-native App identity with per-operation Agent
+attribution. It does not provision one Linear principal per Realmroot Agent.
 
 - OAuth installation with `actor=app`.
 - Workspace and team Resource discovery.
-- Agent mention and delegation scopes.
-- Issues, comments, projects, documents, and Agent Sessions.
+- Agent mention and delegation scopes for the shared App user.
+- Issues, comments, projects, and documents through the original GraphQL API.
 - Trusted Agent name and avatar mapping through provider-supported fields.
 - Agent lifecycle, permission-change, and revocation webhooks.
 
-Exit criteria: a Realmroot Agent is visible in Linear without content footers,
-can participate in a native Agent workflow, and remains correlated with its
-Realmroot principal and authority.
+Implemented in the experimental slice:
+
+- [x] two-stage user identity and `actor=app` authorization behind one Provider
+  Connection;
+- [x] multiple workspace contexts with encrypted rotating credentials;
+- [x] transparent forwarding of the original GraphQL endpoint;
+- [x] operation-aware enforcement of Linear's official OAuth scopes;
+- [x] trusted Agent display attribution on issue and comment creation;
+- [x] permission-change and OAuth-revocation lifecycle webhooks;
+- [x] production OAuth, read GraphQL, `issueCreate`, and native display
+  acceptance.
+
+Remaining before preview:
+
+- [ ] live refresh, revocation, and webhook lifecycle acceptance;
+- [ ] production observability, secret rotation, and provider conformance
+  automation.
+
+Exit criteria: the shared Realmroot App actor remains explicit, supported
+create operations show the originating Realmroot Agent without content
+footers, and audit correlation never misrepresents that display alias as a
+separate Linear principal.
 
 ## Provider waves
 
@@ -133,8 +153,7 @@ intended to answer; it is not a delivery-date commitment.
 ### Wave 1 — Identity-model baseline
 
 - **GitHub** — brokered application identity and trusted visible attribution.
-- **Linear** — installable native Agent experience, delegation, and Agent
-  Sessions.
+- **Linear** — shared native App actor with per-operation Agent attribution.
 - **Cloudflare** — dedicated service-principal identity and provider-side audit.
 
 These three establish the conformance and implementation patterns used by all

@@ -54,7 +54,7 @@ Agent 能以自己的稳定身份直接进入各种平台。详见
 | 平台 | 目标身份模型 | 期望在平台中的效果 | 波次 | 状态 |
 | --- | --- | --- | ---: | --- |
 | GitHub | 代理应用身份 | 共享 GitHub App actor，并注入可信 Agent 角标 | 1 | Alpha |
-| Linear | 原生 Agent 身份 | App user、Agent 名称/头像、委托与 Agent Session | 1 | 设计中 |
+| Linear | 代理的原生 App actor | 共享 App user，以及逐次操作中的可信 Agent 名称/头像 | 1 | 实验性 |
 | Cloudflare | 原生 service principal | 独立 account-owned token actor 出现在审计日志中 | 1 | 设计中 |
 | GitLab | 原生 service principal | 独立 service account 出现在 group、project 与审计记录中 | 2 | 提案 |
 | Bitbucket | 原生 service principal | repository、project 或 workspace access-token actor | 2 | 提案 |
@@ -75,12 +75,13 @@ Agent 能以自己的稳定身份直接进入各种平台。详见
 
 每个 adapter 必须如实声明它能提供的身份等级：
 
-- **Native Agent**：平台提供 Agent 或 application member 原语，Agent 在产品
-  UI 与平台 actor 记录中都是一等参与者。首个目标是 Linear。
+- **Native Agent**：平台把每个来源 Agent 认证为独立且稳定的主体；该 Agent 在
+  产品 UI 与平台 actor 记录中都是一等参与者。目前还没有已实现的平台达到这一级别。
 - **Native service principal**：平台能识别独立的非人类主体，并在自己的审计
   系统中记录它。首个目标是 Cloudflare account-owned token。
 - **Brokered**：平台只能识别共享 adapter application，不能把每个 Realmroot
-  Agent 表示成独立 actor。GitHub 当前属于这一等级，具体 Agent 由 Realmroot
+  Agent 表示成独立 actor。GitHub 使用内容角标；Linear 提供更强的逐次原生显示
+  归属，但两者的安全主体仍然都是共享 application。具体 Agent 由 Realmroot
   审计链权威记录。
 
 adapter 不得声称超过平台真实授权与审计能力的身份等级。

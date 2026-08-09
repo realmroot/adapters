@@ -59,7 +59,7 @@ identity model has already passed a capability review.
 | Provider | Target identity model | Target provider-visible result | Wave | Status |
 | --- | --- | --- | ---: | --- |
 | GitHub | Brokered application actor | Shared GitHub App actor with trusted Agent attribution | 1 | Alpha |
-| Linear | Native Agent actor | App user, Agent name/avatar, delegation, and Agent Sessions | 1 | Design |
+| Linear | Brokered native App actor | Shared App user with trusted per-operation Agent attribution | 1 | Experimental |
 | Cloudflare | Native service principal | Dedicated account-owned token actor in audit logs | 1 | Design |
 | GitLab | Native service principal | Dedicated service account visible in groups, projects, and audit records | 2 | Proposal |
 | Bitbucket | Native service principal | Repository, project, or workspace access-token actor | 2 | Proposal |
@@ -83,9 +83,9 @@ Every adapter declares the identity level it can honestly provide:
 
 ### Native Agent
 
-The provider has an Agent or application-member primitive. The Agent can be
-visible in the product and the provider retains a first-class actor record.
-Linear is the initial target for this level.
+The provider authenticates each originating Agent as its own stable principal.
+That Agent is visible in the product and retained as a first-class actor record.
+No implemented provider currently reaches this level.
 
 ### Native service principal
 
@@ -98,9 +98,9 @@ level.
 
 The provider recognizes the shared adapter application, but cannot represent
 each originating Realmroot Agent as a distinct native actor. Realmroot's audit
-chain remains authoritative for the originating Agent. GitHub currently falls
-into this level unless a separate GitHub identity is provisioned for every
-Agent.
+chain remains authoritative for the originating Agent. GitHub uses content
+attribution; Linear provides stronger provider-native per-operation display
+attribution, but both retain a shared application as the security principal.
 
 Adapters must not claim a stronger identity level than the provider actually
 enforces.
@@ -158,6 +158,7 @@ docs/
   native-agent-protocol.md
 specs/
   github-adapter.feature
+  linear-adapter.feature
 src/
   core/         Shared HTTP lifecycle, DPoP, Agent Profile, and errors
   providers/    Isolated provider connections, permission translation, proxy, and transformations
@@ -166,7 +167,7 @@ src/
 migrations/     D1 schema
 ```
 
-## Run the GitHub vertical slice
+## Run locally
 
 The runtime is a Cloudflare Worker, not a Node server. Node 24 and pnpm 10 are
 development tools only. Local operation also needs a running Realmroot
@@ -176,7 +177,7 @@ deployment and a GitHub App with its OAuth callback and setup callback enabled.
 pnpm install
 cp .dev.vars.example .dev.vars
 pnpm exec wrangler d1 migrations apply realmroot-adapters-db --local
-pnpm dev -- --port 4103
+pnpm exec wrangler dev --port 4103 --local-upstream 127.0.0.1:4103
 ```
 
 After configuring the GitHub App credentials, register one brokered Resource
@@ -247,6 +248,56 @@ continues to define request and response schemas, endpoint behavior, and
 permission enforcement. OpenAPI discovery publishes the subset GitHub documents
 for installation access tokens and the permissions currently configured on the
 App.
+
+### Linear experimental slice
+
+Create one Linear OAuth application with this callback:
+
+```text
+Local callback URL:      http://127.0.0.1:4103/linear/oauth/callback
+Production callback URL: https://adapters.realmroot.dev/linear/oauth/callback
+Production webhook URL:  https://adapters.realmroot.dev/linear/webhooks
+```
+
+Configure the webhook for permission changes and OAuth revocation. Do not
+enable Agent Session events yet. Put `LINEAR_CLIENT_ID`,
+`LINEAR_CLIENT_SECRET`, `LINEAR_WEBHOOK_SECRET`, and a random 32-byte
+base64-encoded `LINEAR_CREDENTIAL_ENCRYPTION_KEY` in `.dev.vars`; use Wrangler
+secrets for deployment.
+
+Register one brokered Resource Server and select the Linear Connector:
+
+```json
+{
+  "identifier": "linear",
+  "resourceUrl": "http://127.0.0.1:4103/linear",
+  "connectorId": "YOUR_LINEAR_CONNECTOR_ID",
+  "ownerOrganizationId": "org_platform",
+  "authorizationDetails": [{ "type": "linear_workspace" }],
+  "enabled": true,
+  "availableToAgents": true,
+  "visibility": "public"
+}
+```
+
+The user sees one Linear Connection. Behind that single flow, the adapter first
+identifies the stable Linear user and immediately revokes that temporary token,
+then authorizes the App actor for a workspace. Reauthorization can add another
+workspace context without creating another Connection.
+
+The Agent-facing API remains Linear's original GraphQL transport:
+
+```text
+POST /linear/graphql
+```
+
+Realmroot scopes use Linear's official names. The adapter evaluates the selected
+GraphQL operation and only rewrites `issueCreate` and `commentCreate` to add
+trusted Agent display fields. Because one GraphQL transport operation can carry
+many differently scoped documents, the OpenAPI contract publishes one security
+alternative per official Linear scope. Clients select the alternative matching
+the document they are sending; for example, `read` for a viewer query or
+`issues:create` for `issueCreate`.
 
 Run the project checks with:
 
