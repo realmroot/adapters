@@ -5,7 +5,10 @@ import { createRealmrootConnectionEventSink } from '../../src/core/connection-ev
 describe('Realmroot Connection Event sink', () => {
   it('authenticates and body-binds an idempotent event request', async () => {
     const secret = 'a-provider-connection-secret-with-32-bytes'
-    const request = vi.fn(async () => new Response(null, { status: 204 }))
+    const request = vi.fn(async function (this: unknown) {
+      expect(this).toBeUndefined()
+      return new Response(null, { status: 204 })
+    })
     const sink = createRealmrootConnectionEventSink({
       issuer: 'https://id.example/api/auth',
       resource: 'https://adapter.example/github',
