@@ -47,6 +47,7 @@ export function createRealmrootConnectionEventSink(input: {
   const secret = new TextEncoder().encode(input.secret)
   const now = input.now ?? Date.now
   const timeoutMs = input.timeoutMs ?? 10_000
+  const request = input.fetch
 
   return {
     async send(event) {
@@ -63,7 +64,7 @@ export function createRealmrootConnectionEventSink(input: {
       })
       const timestamp = String(Math.floor(now() / 1000))
       const signature = await hmacHex(secret, `${timestamp}\nPUT\n${pathname}\n${body}`)
-      const response = await input.fetch(url, {
+      const response = await request(url, {
         method: 'PUT',
         headers: {
           Authorization: `Bearer ${input.secret}`,

@@ -72,6 +72,32 @@ describe('GitHub lifecycle webhooks', () => {
     expect(connections.completeLifecycleEvent).toHaveBeenCalledWith('delivery-2')
   })
 
+  it('[spec: github-adapter/github-installation-lifecycle] accepts offset lifecycle timestamps', async () => {
+    const connections = lifecycleStore()
+
+    await handleGitHubWebhook({
+      request: webhookRequest('installation', 'delivery-offset', {
+        action: 'suspend',
+        installation: {
+          id: 42,
+          updated_at: '2027-01-15T08:00:00+00:00',
+          suspended_at: '2027-01-15T08:01:00+00:00',
+        },
+      }),
+      secret,
+      connections,
+      events: eventSink(),
+    })
+
+    expect(connections.prepareLifecycleEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'suspended',
+        occurredAt: '2027-01-15T08:01:00+00:00',
+        providerUpdatedAt: Date.parse('2027-01-15T08:01:00+00:00'),
+      }),
+    )
+  })
+
   it('[spec: github-adapter/github-installation-resources] leaves an already completed delivery idempotent', async () => {
     const connections = lifecycleStore({
       event: {

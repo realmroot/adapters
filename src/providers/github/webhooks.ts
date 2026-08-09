@@ -6,11 +6,12 @@ import type { GitHubConnectionStore, GitHubLifecycleChange } from './connections
 import { permissionsToScopes } from './permissions.js'
 
 const permissionAccessSchema = z.enum(['read', 'write', 'admin'])
+const githubTimestampSchema = z.iso.datetime({ offset: true })
 const installationSchema = z.object({
   id: z.number().int().positive(),
   permissions: z.record(z.string(), permissionAccessSchema).optional(),
-  updated_at: z.iso.datetime(),
-  suspended_at: z.iso.datetime().nullable().optional(),
+  updated_at: githubTimestampSchema,
+  suspended_at: githubTimestampSchema.nullable().optional(),
 })
 const installationEventSchema = z.object({
   action: z.enum(['deleted', 'suspend', 'unsuspend', 'new_permissions_accepted']),
@@ -85,7 +86,7 @@ function lifecycleChange(
     const payload = installationEventSchema.parse(decoded)
     const occurredAt =
       payload.action === 'suspend'
-        ? z.iso.datetime().parse(payload.installation.suspended_at)
+        ? githubTimestampSchema.parse(payload.installation.suspended_at)
         : payload.installation.updated_at
     const providerUpdatedAt = Date.parse(occurredAt)
     const type = {

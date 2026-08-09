@@ -18,7 +18,7 @@ const userInstallationsSchema = z.object({
       target_type: z.string().min(1),
       permissions: permissionsSchema,
       repository_selection: z.enum(['all', 'selected']),
-      updated_at: z.iso.datetime(),
+      updated_at: z.iso.datetime({ offset: true }),
     }),
   ),
 })
