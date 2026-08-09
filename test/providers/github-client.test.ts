@@ -126,7 +126,7 @@ describe('GitHub account connection OAuth boundary', () => {
                 target_type: 'Organization',
                 permissions: { metadata: 'read' },
                 repository_selection: 'selected',
-                updated_at: '2027-01-15T08:00:00Z',
+                updated_at: '2027-01-15T08:00:00+00:00',
               },
             ],
           })
@@ -158,7 +158,7 @@ describe('GitHub account connection OAuth boundary', () => {
       targetType: 'Organization',
       permissions: { metadata: 'read' },
       repositorySelection: 'selected',
-      updatedAt: '2027-01-15T08:00:00Z',
+      updatedAt: '2027-01-15T08:00:00+00:00',
     })
     expect(installations[0]?.repositories).toHaveLength(101)
     expect(installations[0]?.repositories.at(-1)).toEqual({ id: 101, fullName: 'realmroot/repository-101' })
