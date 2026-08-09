@@ -12,10 +12,21 @@
     "REALMROOT_JWKS_URL": "https://id.realmroot.dev/api/auth/jwks",
     "REALMROOT_AGENT_PROFILE_URI_TEMPLATE": "https://id.realmroot.dev/api/public/agents/{subject}",
     "GITHUB_API_ORIGIN": "https://api.github.com",
-    "GITHUB_UPLOADS_ORIGIN": "https://uploads.github.com"
+    "GITHUB_UPLOADS_ORIGIN": "https://uploads.github.com",
+    "LINEAR_API_ORIGIN": "https://api.linear.app",
+    "LINEAR_AUTHORIZATION_ORIGIN": "https://linear.app"
   },
   "secrets": {
-    "required": ["GITHUB_APP_ID", "GITHUB_PRIVATE_KEY", "GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET"]
+    "required": [
+      "GITHUB_APP_ID",
+      "GITHUB_PRIVATE_KEY",
+      "GITHUB_CLIENT_ID",
+      "GITHUB_CLIENT_SECRET",
+      "LINEAR_CLIENT_ID",
+      "LINEAR_CLIENT_SECRET",
+      "LINEAR_CREDENTIAL_ENCRYPTION_KEY",
+      "LINEAR_WEBHOOK_SECRET"
+    ]
   },
   "d1_databases": [
     {

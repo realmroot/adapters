@@ -6,11 +6,13 @@ describe('Provider connection migration', () => {
     const legacy = env.TEST_MIGRATIONS.slice(0, 2)
     const lifecycle = env.TEST_MIGRATIONS.slice(2, 3)
     const installationOwnership = env.TEST_MIGRATIONS.slice(3, 4)
-    const transparentScopes = env.TEST_MIGRATIONS.slice(4)
+    const transparentScopes = env.TEST_MIGRATIONS.slice(4, 5)
+    const linearConnections = env.TEST_MIGRATIONS.slice(5)
     expect(legacy).toHaveLength(2)
     expect(lifecycle).toHaveLength(1)
     expect(installationOwnership).toHaveLength(1)
     expect(transparentScopes).toHaveLength(1)
+    expect(linearConnections).toHaveLength(1)
     await applyD1Migrations(env.MIGRATION_DB, legacy)
     const now = Date.now()
     await env.MIGRATION_DB.batch([
@@ -62,6 +64,7 @@ describe('Provider connection migration', () => {
     await applyD1Migrations(env.MIGRATION_DB, lifecycle)
     await applyD1Migrations(env.MIGRATION_DB, installationOwnership)
     await applyD1Migrations(env.MIGRATION_DB, transparentScopes)
+    await applyD1Migrations(env.MIGRATION_DB, linearConnections)
 
     await expect(
       env.MIGRATION_DB.prepare(

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { loadConfig } from '../src/config.js'
 import { loadGitHubConfig } from '../src/providers/github/config.js'
+import { loadLinearConfig } from '../src/providers/linear/config.js'
 
 describe('adapter Worker configuration', () => {
   it('reads bindings and derives the canonical adapter origin from the request', () => {
@@ -12,6 +13,12 @@ describe('adapter Worker configuration', () => {
       GITHUB_UPLOADS_ORIGIN: 'https://uploads.github.com/',
       GITHUB_APP_ID: '123',
       GITHUB_PRIVATE_KEY: 'private-key',
+      LINEAR_API_ORIGIN: 'https://api.linear.example/',
+      LINEAR_AUTHORIZATION_ORIGIN: 'https://linear.example/',
+      LINEAR_CLIENT_ID: 'linear-client',
+      LINEAR_CLIENT_SECRET: 'linear-secret',
+      LINEAR_CREDENTIAL_ENCRYPTION_KEY: 'linear-encryption-key',
+      LINEAR_WEBHOOK_SECRET: 'linear-webhook-secret',
     }
     const config = loadConfig(environment, 'https://adapter.example/health')
 
@@ -26,6 +33,14 @@ describe('adapter Worker configuration', () => {
       githubUploadsOrigin: 'https://uploads.github.com',
       githubAppId: '123',
       githubPrivateKey: 'private-key',
+    })
+    expect(loadLinearConfig(environment, config)).toMatchObject({
+      linearApiOrigin: 'https://api.linear.example',
+      linearAuthorizationOrigin: 'https://linear.example',
+      linearClientId: 'linear-client',
+      linearClientSecret: 'linear-secret',
+      linearCredentialEncryptionKey: 'linear-encryption-key',
+      linearWebhookSecret: 'linear-webhook-secret',
     })
   })
 
