@@ -1,8 +1,9 @@
 import { z } from 'zod'
+import type { BrokerRequestReplayStore } from '../core/broker-request-replay.js'
 import { sha256Hex } from '../core/digest.js'
 import type { DpopReplayStore } from '../core/realmroot-auth.js'
 
-export class D1RuntimeState implements DpopReplayStore {
+export class D1RuntimeState implements DpopReplayStore, BrokerRequestReplayStore {
   constructor(private readonly db: D1Database) {}
 
   async claim(input: { keyThumbprint: string; jti: string; expiresAt: number; now: number }) {
@@ -24,5 +25,18 @@ export class D1RuntimeState implements DpopReplayStore {
       .prepare('INSERT INTO adapter_audit_event (request_id, event_json, occurred_at) VALUES (?, ?, ?)')
       .bind(requestId, JSON.stringify(record), occurredAt)
       .run()
+  }
+
+  brokerRequestReplayStatements(input: { jti: string; expiresAt: number; now: number }) {
+    return [
+      this.db.prepare('DELETE FROM broker_request_replay WHERE expires_at <= ?').bind(input.now),
+      this.db
+        .prepare('INSERT INTO broker_request_replay (jti, expires_at, created_at) VALUES (?, ?, ?)')
+        .bind(input.jti, input.expiresAt, input.now),
+    ]
+  }
+
+  async hasBrokerRequest(jti: string) {
+    return Boolean(await this.db.prepare('SELECT jti FROM broker_request_replay WHERE jti = ?').bind(jti).first())
   }
 }

@@ -1,18 +1,23 @@
 import { applyD1Migrations, env } from 'cloudflare:test'
 import { describe, expect, it } from 'vitest'
+import { D1GitHubConnections } from '../../src/providers/github/connections.js'
+import { deliverPendingGitHubConnectionEvents } from '../../src/providers/github/webhooks.js'
+import { D1RuntimeState } from '../../src/storage/d1-runtime-state.js'
 
 describe('Provider connection migration', () => {
-  it('upgrades a legacy GitHub binding without changing its broker reference or owner', async () => {
+  it('[spec: github-adapter/github-lifecycle-migration] revokes legacy unknown repository authority before reconnecting', async () => {
     const legacy = env.TEST_MIGRATIONS.slice(0, 2)
     const lifecycle = env.TEST_MIGRATIONS.slice(2, 3)
     const installationOwnership = env.TEST_MIGRATIONS.slice(3, 4)
     const transparentScopes = env.TEST_MIGRATIONS.slice(4, 5)
-    const linearConnections = env.TEST_MIGRATIONS.slice(5)
+    const linearConnections = env.TEST_MIGRATIONS.slice(5, 6)
+    const webhookLifecycle = env.TEST_MIGRATIONS.slice(6, 7)
     expect(legacy).toHaveLength(2)
     expect(lifecycle).toHaveLength(1)
     expect(installationOwnership).toHaveLength(1)
     expect(transparentScopes).toHaveLength(1)
     expect(linearConnections).toHaveLength(1)
+    expect(webhookLifecycle).toHaveLength(1)
     await applyD1Migrations(env.MIGRATION_DB, legacy)
     const now = Date.now()
     await env.MIGRATION_DB.batch([
@@ -65,15 +70,22 @@ describe('Provider connection migration', () => {
     await applyD1Migrations(env.MIGRATION_DB, installationOwnership)
     await applyD1Migrations(env.MIGRATION_DB, transparentScopes)
     await applyD1Migrations(env.MIGRATION_DB, linearConnections)
+    await applyD1Migrations(env.MIGRATION_DB, webhookLifecycle)
 
     await expect(
       env.MIGRATION_DB.prepare(
-        `SELECT broker_reference AS brokerReference, owner_subject AS ownerSubject
+        `SELECT broker_reference AS brokerReference, owner_subject AS ownerSubject,
+                event_revision AS eventRevision, lifecycle_claim AS lifecycleClaim
          FROM github_connection_binding WHERE broker_reference = ?`,
       )
         .bind('broker-legacy')
         .first(),
-    ).resolves.toEqual({ brokerReference: 'broker-legacy', ownerSubject: 'user-legacy' })
+    ).resolves.toEqual({
+      brokerReference: 'broker-legacy',
+      ownerSubject: 'user-legacy',
+      eventRevision: 1,
+      lifecycleClaim: null,
+    })
     await expect(
       env.MIGRATION_DB.prepare(
         'SELECT scopes_json AS scopesJson FROM github_connection_binding WHERE broker_reference = ?',
@@ -87,26 +99,65 @@ describe('Provider connection migration', () => {
       ).first(),
     ).resolves.toBeNull()
     await expect(
-      env.MIGRATION_DB.prepare(
-        'SELECT installation_id AS installationId FROM github_connection_context WHERE broker_reference = ?',
-      )
+      env.MIGRATION_DB.prepare('SELECT installation_id FROM github_connection_context WHERE broker_reference = ?')
         .bind('broker-legacy')
         .first(),
-    ).resolves.toEqual({ installationId: 101 })
+    ).resolves.toBeNull()
+    await expect(
+      env.MIGRATION_DB.prepare('SELECT status FROM github_connection_binding WHERE broker_reference = ?')
+        .bind('broker-legacy')
+        .first(),
+    ).resolves.toEqual({ status: 'revoked' })
+    const pending = await env.MIGRATION_DB.prepare(
+      "SELECT delivery_id AS deliveryId, event_json AS eventJson, state FROM github_webhook_delivery WHERE state = 'pending'",
+    ).first<{ deliveryId: string; eventJson: string; state: string }>()
+    expect(pending).toMatchObject({ deliveryId: 'migration-0007-broker-legacy', state: 'pending' })
+    expect(JSON.parse(pending?.eventJson ?? '{}')).toMatchObject({
+      id: 'migration-0007-broker-legacy',
+      type: 'revoked',
+      brokerReference: 'broker-legacy',
+      revision: 1,
+    })
+    const delivered: unknown[] = []
+    await deliverPendingGitHubConnectionEvents({
+      connections: new D1GitHubConnections(env.MIGRATION_DB, new D1RuntimeState(env.MIGRATION_DB)),
+      events: { send: async (event) => void delivered.push(event) },
+    })
+    expect(delivered).toHaveLength(1)
+    await expect(
+      env.MIGRATION_DB.prepare('SELECT state FROM github_webhook_delivery WHERE delivery_id = ?')
+        .bind('migration-0007-broker-legacy')
+        .first(),
+    ).resolves.toEqual({ state: 'completed' })
+    await expect(
+      env.MIGRATION_DB.prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'github_webhook_delivery'",
+      ).first(),
+    ).resolves.toEqual({ name: 'github_webhook_delivery' })
+    await expect(
+      env.MIGRATION_DB.prepare(
+        "SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name IN ('github_connection_repository', 'github_installation_lifecycle_cursor', 'github_repository_lifecycle_cursor')",
+      ).first(),
+    ).resolves.toEqual({ count: 3 })
     await expect(
       env.MIGRATION_DB.prepare('SELECT broker_reference FROM github_connection_binding WHERE broker_reference = ?')
         .bind('broker-orphan')
         .first(),
     ).resolves.toBeNull()
-    await expect(
-      env.MIGRATION_DB.prepare(
-        `INSERT INTO github_connection_binding
-          (broker_reference, owner_subject, github_user_id, github_login, display_name, scopes_json, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
-      )
-        .bind('broker-conflict', 'user-legacy', 8, 'other', 'Other', '[]', now, now)
-        .run(),
-    ).rejects.toThrow()
+    await env.MIGRATION_DB.prepare(
+      `INSERT INTO github_connection_binding
+        (broker_reference, owner_subject, github_user_id, github_login, display_name, scopes_json, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
+    )
+      .bind('broker-reconnected', 'user-legacy', 8, 'other', 'Other', '[]', now, now)
+      .run()
+    await env.MIGRATION_DB.prepare(
+      `INSERT INTO github_connection_context
+        (broker_reference, installation_id, account_login, target_type, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    )
+      .bind('broker-reconnected', 101, 'realmroot', 'Organization', now)
+      .run()
     await env.MIGRATION_DB.prepare(
       `INSERT INTO github_connection_binding
         (broker_reference, owner_subject, github_user_id, github_login, display_name, scopes_json, status, created_at, updated_at)

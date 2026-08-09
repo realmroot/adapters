@@ -4,7 +4,8 @@ import {
   githubInstallationOperationSource,
   githubInstallationOperations,
   githubOpenApiSource,
-  githubOperationScopes,
+  githubOperationRequirements,
+  githubPermissionNameSource,
   githubPermissionSource,
 } from './openapi-paths.js'
 import type { GitHubPermissionAccess, GitHubPermissions } from './types.js'
@@ -34,11 +35,14 @@ export async function githubOpenApi(input: {
         published[name] = value
         continue
       }
-      const security = operationSecurity(name, path, input.permissions)
-      if (!security || !isObject(value)) continue
+      const authorization = operationAuthorization(name, path, input.permissions)
+      if (!authorization || !isObject(value)) continue
       published[name] = {
         ...Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'servers')),
-        security,
+        security: authorization.security,
+        ...(authorization.conditionalSecurity
+          ? { 'x-restish-security-alternatives': authorization.conditionalSecurity }
+          : {}),
       }
     }
     if (Object.keys(published).some((name) => methodNames.has(name))) paths[path] = published
@@ -57,6 +61,7 @@ export async function githubOpenApi(input: {
     externalDocs: { url: 'https://docs.github.com/rest' },
     'x-github-openapi-source': githubOpenApiSource,
     'x-github-permission-source': githubPermissionSource,
+    'x-github-permission-name-source': githubPermissionNameSource,
     'x-github-installation-operation-source': githubInstallationOperationSource,
     'x-realmroot-transparent-upstream': 'https://api.github.com',
     components: {
@@ -83,13 +88,34 @@ async function parseOpenApi(response: Response) {
   }
 }
 
-function operationSecurity(method: string, path: string, permissions: GitHubPermissions) {
+function operationAuthorization(method: string, path: string, permissions: GitHubPermissions) {
   const key = `${method} ${path}` as keyof typeof githubInstallationOperations
   if (!githubInstallationOperations[key]) return
-  const scopes = githubOperationScopes[key as keyof typeof githubOperationScopes] ?? ['metadata:read']
-  const available = scopes.filter((scope) => hasPermission(scope, permissions))
+  const requirements = githubOperationRequirements[key as keyof typeof githubOperationRequirements]
+  const available = requirements.filter((requirement) =>
+    requirement.every((scope) => hasPermission(scope, permissions)),
+  )
   if (available.length === 0) return
-  return available.map((scope) => ({ realmrootOidc: [scope] }))
+  const security = available.map((requirement) => ({ realmrootOidc: [...requirement] }))
+  const workflowAlternative =
+    (method === 'put' || method === 'delete') && path === '/repos/{owner}/{repo}/contents/{path}'
+      ? available.findIndex((requirement: readonly string[]) => {
+          return requirement.includes('contents:write') && requirement.includes('workflows:write')
+        })
+      : -1
+  return {
+    security,
+    ...(workflowAlternative >= 0
+      ? {
+          conditionalSecurity: [
+            {
+              when: { pathParameter: 'path', prefix: '.github/workflows/' },
+              alternatives: [workflowAlternative],
+            },
+          ],
+        }
+      : {}),
+  }
 }
 
 function hasPermission(scope: string, permissions: GitHubPermissions) {

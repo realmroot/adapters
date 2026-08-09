@@ -17,8 +17,14 @@ const userInstallationsSchema = z.object({
       account: z.object({ login: z.string().min(1) }),
       target_type: z.string().min(1),
       permissions: permissionsSchema,
+      repository_selection: z.enum(['all', 'selected']),
+      updated_at: z.iso.datetime(),
     }),
   ),
+})
+const installationRepositoriesSchema = z.object({
+  total_count: z.number().int().nonnegative(),
+  repositories: z.array(z.object({ id: z.number().int().positive(), full_name: z.string().min(1) })),
 })
 const appSchema = z.object({ slug: z.string().min(1), permissions: permissionsSchema })
 
@@ -136,12 +142,20 @@ export function createGitHubConnectionProvider(
     async listUserInstallations(token) {
       const response = await userRequest('/user/installations?per_page=100', token)
       const parsed = userInstallationsSchema.parse(await response.json())
-      return parsed.installations.map((installation) => ({
-        id: installation.id,
-        accountLogin: installation.account.login,
-        targetType: installation.target_type,
-        permissions: installation.permissions,
-      }))
+      return Promise.all(
+        parsed.installations.map(async (installation) => ({
+          id: installation.id,
+          accountLogin: installation.account.login,
+          targetType: installation.target_type,
+          permissions: installation.permissions,
+          repositorySelection: installation.repository_selection,
+          repositories:
+            installation.repository_selection === 'selected'
+              ? await listInstallationRepositories(token, installation.id)
+              : [],
+          updatedAt: installation.updated_at,
+        })),
+      )
     },
     async newInstallationUrl(state) {
       const response = await userRequest('/app', await appJwt())
@@ -150,6 +164,26 @@ export function createGitHubConnectionProvider(
       url.searchParams.set('state', state)
       return url.toString()
     },
+  }
+
+  async function listInstallationRepositories(token: string, installationId: number) {
+    const repositories: Array<{ id: number; fullName: string }> = []
+    let page = 1
+    let totalCount: number
+    do {
+      const suffix = page === 1 ? '' : `&page=${page}`
+      const response = await userRequest(
+        `/user/installations/${installationId}/repositories?per_page=100${suffix}`,
+        token,
+      )
+      const parsed = installationRepositoriesSchema.parse(await response.json())
+      totalCount = parsed.total_count
+      repositories.push(
+        ...parsed.repositories.map((repository) => ({ id: repository.id, fullName: repository.full_name })),
+      )
+      page += 1
+    } while (repositories.length < totalCount)
+    return repositories
   }
 
   async function userRequest(path: string, token: string) {

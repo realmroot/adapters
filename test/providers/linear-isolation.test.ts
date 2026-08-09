@@ -2,9 +2,12 @@ import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-describe('Linear provider isolation', () => {
-  it('[spec: linear-adapter/linear-provider-isolation] does not import another provider implementation', async () => {
-    const directory = join(process.cwd(), 'src/providers/linear')
+describe('Provider isolation', () => {
+  it.each([
+    ['github', 'github-adapter/provider-isolation'],
+    ['linear', 'linear-adapter/linear-provider-isolation'],
+  ])('%s [spec: %s] does not import another provider implementation', async (provider) => {
+    const directory = join(process.cwd(), 'src/providers', provider)
     const sources = await Promise.all(
       (await readdir(directory))
         .filter((file) => file.endsWith('.ts'))
@@ -12,5 +15,6 @@ describe('Linear provider isolation', () => {
     )
 
     expect(sources.filter(({ source }) => /from\s+['"]\.\.\/(?!\.\.\/)/.test(source))).toEqual([])
+    expect(sources.filter(({ source }) => source.includes('broker_request_replay'))).toEqual([])
   })
 })

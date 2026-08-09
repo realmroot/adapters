@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto'
 import { readdir, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -51,7 +52,7 @@ describe('GitHub adapter contract', () => {
       },
       '/repos/{owner}/{repo}/issues': {
         parameters: [{ name: 'owner', in: 'path' }],
-        get: { security: [{ realmrootOidc: ['issues:read'] }] },
+        get: { security: [{ realmrootOidc: ['issues:read'] }, { realmrootOidc: ['metadata:read'] }] },
         post: { security: [{ realmrootOidc: ['issues:write'] }] },
       },
     })
@@ -71,7 +72,16 @@ describe('GitHub adapter contract', () => {
         displayName: 'Controller',
         scopesJson: '["issues:read","issues:write","metadata:read"]',
       },
-      contexts: [{ installationId: 42, accountLogin: 'realmroot', targetType: 'Organization' }],
+      contexts: [
+        {
+          installationId: 42,
+          accountLogin: 'realmroot',
+          targetType: 'Organization',
+          scopes: ['issues:read', 'issues:write', 'metadata:read'],
+          repositorySelection: 'all' as const,
+          repositories: [],
+        },
+      ],
     }))
     const response = await testApp({ connections }).request('/github/account-connection-credentials', {
       method: 'POST',
@@ -89,6 +99,7 @@ describe('GitHub adapter contract', () => {
           installation_id: '42',
           account_login: 'realmroot',
           target_type: 'Organization',
+          repository_selection: 'all',
         },
       ],
     })
@@ -121,7 +132,7 @@ describe('GitHub adapter contract', () => {
     const provider = fakeProvider()
     const request = vi.fn(async (upstream: Request, token: string) => {
       expect(token).toBe('installation-secret')
-      expect(upstream.url).toBe('https://api.github.com/repos/realmroot/example/labels?per_page=7')
+      expect(upstream.url).toBe('https://api.github.com/repos/realmroot/example/labels/bug?per_page=7')
       expect(upstream.method).toBe('PATCH')
       expect(upstream.headers.get('accept')).toBe('application/vnd.github+json')
       expect(await upstream.json()).toEqual({ name: 'agent-ready', color: '123456' })
@@ -131,7 +142,7 @@ describe('GitHub adapter contract', () => {
       })
     })
     provider.request = request
-    const response = await testApp({ provider }).request('/github/repos/realmroot/example/labels?per_page=7', {
+    const response = await testApp({ provider }).request('/github/repos/realmroot/example/labels/bug?per_page=7', {
       method: 'PATCH',
       headers: { Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'agent-ready', color: '123456' }),
@@ -141,9 +152,80 @@ describe('GitHub adapter contract', () => {
     expect(await response.json()).toEqual({ id: 9 })
     expect(provider.installationToken).toHaveBeenCalledWith({
       installationId: 42,
-      permissions: { issues: 'write', metadata: 'read' },
+      permissions: { issues: 'write' },
       repositories: ['example'],
     })
+  })
+
+  it('[spec: github-adapter/github-operation-authority] constrains minting to the selected installation context', async () => {
+    const provider = fakeProvider()
+    const connections = fakeConnections()
+    connections.activeInstallationsForOwner = vi.fn(async () => [
+      {
+        installationId: 42,
+        accountLogin: 'realmroot',
+        targetType: 'Organization',
+        scopes: ['metadata:read'],
+        repositorySelection: 'all' as const,
+        repositories: [],
+      },
+    ])
+    const response = await testApp({ provider, connections }).request('/github/repos/realmroot/example/labels/bug', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ color: '123456' }),
+    })
+    expect(response.status).toBe(403)
+    expect(provider.installationToken).not.toHaveBeenCalled()
+  })
+
+  it('[spec: github-adapter/github-operation-authority] rejects a token for a replaced broker connection', async () => {
+    const provider = fakeProvider()
+    const connections = fakeConnections()
+    connections.activeInstallationsForOwner = vi.fn(async (_ownerSubject, brokerReference) =>
+      brokerReference === 'connection-2'
+        ? [
+            {
+              installationId: 42,
+              accountLogin: 'realmroot',
+              targetType: 'Organization',
+              scopes: ['issues:read', 'issues:write', 'metadata:read'],
+              repositorySelection: 'all' as const,
+              repositories: [],
+            },
+          ]
+        : [],
+    )
+    const response = await testApp({ provider, connections }).request('/github/repos/realmroot/example/labels/bug', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ color: '123456' }),
+    })
+    expect(response.status).toBe(403)
+    expect(connections.activeInstallationsForOwner).toHaveBeenCalledWith('org_1', 'connection-1')
+    expect(provider.installationToken).not.toHaveBeenCalled()
+  })
+
+  it('[spec: github-adapter/github-installation-resources] rejects repositories removed from selected authority', async () => {
+    const provider = fakeProvider()
+    const connections = fakeConnections()
+    connections.activeInstallationsForOwner = vi.fn(async () => [
+      {
+        installationId: 42,
+        accountLogin: 'realmroot',
+        targetType: 'Organization',
+        scopes: ['issues:read', 'issues:write', 'metadata:read'],
+        repositorySelection: 'selected' as const,
+        repositories: [{ id: 7, fullName: 'realmroot/allowed' }],
+      },
+    ])
+    const response = await testApp({ provider, connections }).request('/github/repos/realmroot/removed/issues', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: 'Denied' }),
+    })
+    expect(response.status).toBe(403)
+    expect(provider.installationToken).not.toHaveBeenCalled()
   })
 
   it('keeps release asset uploads behind the adapter and forwards them to GitHub uploads', async () => {
@@ -152,10 +234,12 @@ describe('GitHub adapter contract', () => {
       expect(upstream.url).toBe('https://uploads.github.com/repos/realmroot/example/releases/7/assets?name=app.zip')
       return Response.json({ id: 9 }, { status: 201 })
     })
-    const response = await testApp({ provider }).request(
-      '/github/repos/realmroot/example/releases/7/assets?name=app.zip',
-      { method: 'POST', body: 'archive' },
-    )
+    const response = await testApp({
+      provider,
+      authenticator: {
+        authenticate: vi.fn(async () => ({ ...principal, scopes: new Set(['contents:write']) })),
+      },
+    }).request('/github/repos/realmroot/example/releases/7/assets?name=app.zip', { method: 'POST', body: 'archive' })
     expect(response.status).toBe(201)
   })
 
@@ -222,6 +306,24 @@ describe('GitHub adapter contract', () => {
     })
   })
 
+  it('[spec: github-adapter/github-installation-lifecycle] exposes the signed lifecycle webhook before the proxy', async () => {
+    const webhookSecret = 'github-webhook-secret'
+    const body = JSON.stringify({ action: 'created', installation: { id: 42 } })
+    const response = await testApp(
+      { connectionEvents: { send: vi.fn(async () => {}) } },
+      { githubWebhookSecret: webhookSecret },
+    ).request('/github/webhooks', {
+      method: 'POST',
+      headers: {
+        'X-GitHub-Delivery': 'delivery-created',
+        'X-GitHub-Event': 'installation',
+        'X-Hub-Signature-256': `sha256=${createHmac('sha256', webhookSecret).update(body).digest('hex')}`,
+      },
+      body,
+    })
+    expect(response.status).toBe(204)
+  })
+
   it('[spec: github-adapter/provider-isolation] forbids imports between Provider implementations', async () => {
     const providersRoot = join(dirname(fileURLToPath(import.meta.url)), '../src/providers')
     const providers = (await readdir(providersRoot, { withFileTypes: true })).filter((entry) => entry.isDirectory())
@@ -243,7 +345,10 @@ describe('GitHub adapter contract', () => {
   })
 })
 
-function testApp(overrides: Partial<GitHubAdapterDependencies> = {}) {
+function testApp(
+  overrides: Partial<GitHubAdapterDependencies> = {},
+  configOverrides: Partial<GitHubAdapterConfig> = {},
+) {
   const dependencies: GitHubAdapterDependencies = {
     authenticator: { authenticate: vi.fn(async () => principal) },
     agentInfo: {
@@ -258,7 +363,7 @@ function testApp(overrides: Partial<GitHubAdapterDependencies> = {}) {
     audit: vi.fn(async () => {}),
     ...overrides,
   }
-  return createApp([createGitHubAdapter(config, dependencies)])
+  return createApp([createGitHubAdapter({ ...config, ...configOverrides }, dependencies)])
 }
 
 function fakeProvider(): GitHubProvider {
@@ -301,9 +406,19 @@ function fakeConnections(): GitHubConnectionStore {
     complete: vi.fn(async () => {}),
     exchange: vi.fn(),
     activeInstallationsForOwner: vi.fn(async () => [
-      { installationId: 42, accountLogin: 'realmroot', targetType: 'Organization' },
+      {
+        installationId: 42,
+        accountLogin: 'realmroot',
+        targetType: 'Organization',
+        scopes: ['contents:read', 'contents:write', 'issues:read', 'issues:write', 'metadata:read'],
+        repositorySelection: 'all' as const,
+        repositories: [],
+      },
     ]),
     revoke: vi.fn(async () => {}),
+    prepareLifecycleEvent: vi.fn(async () => ({ event: null, completed: true })),
+    pendingLifecycleEvents: vi.fn(async () => []),
+    completeLifecycleEvent: vi.fn(async () => {}),
   }
 }
 
