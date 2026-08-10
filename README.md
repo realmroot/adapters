@@ -229,13 +229,16 @@ identities, never ordering values. When GitHub emits distinct changes with the
 same timestamp, restrictive suspension, repository selection, permission, and
 repository-removal changes win; independent repository deltas are merged.
 Accepted context changes are serialized per broker connection and carry a
-monotonically increasing `revision` in the signed generic Connection Event.
+monotonically increasing `revision` in the generic Connection Event.
 Realmroot uses that causal revision to reject reversed same-time delivery.
 
-Set `REALMROOT_CONNECTION_EVENT_SECRET` to the same value as Realmroot's
-`PROVIDER_CONNECTION_EVENT_SECRETS` JSON-map entry for the exact adapter
-Resource URI (at least 32 characters). Failed Connection Event delivery remains
-pending for a GitHub retry; an accepted delivery GUID is not emitted twice.
+Register the adapter as a confidential Realmroot Application with the
+`client_credentials` grant. Configure `connection-events:write` for the
+Realmroot Resource Server, grant the matching Application Permission, and set
+`REALMROOT_APPLICATION_CLIENT_ID`, `REALMROOT_APPLICATION_CLIENT_SECRET`, and
+`REALMROOT_GITHUB_RESOURCE_SERVER_ID`. The adapter requests a resource-bound
+DPoP token for each delivery. Failed Connection Event delivery remains pending
+for a GitHub retry; an accepted delivery GUID is not emitted twice.
 Migration `0007` revokes pre-lifecycle GitHub connections because older schemas
 did not retain repository selection or selected repository membership. Reconnect
 those installations after applying the migration; the adapter will not widen
@@ -251,7 +254,9 @@ pnpm exec wrangler secret put GITHUB_PRIVATE_KEY < github-app.private-key.pem
 pnpm exec wrangler secret put GITHUB_CLIENT_ID
 pnpm exec wrangler secret put GITHUB_CLIENT_SECRET
 pnpm exec wrangler secret put GITHUB_WEBHOOK_SECRET
-pnpm exec wrangler secret put REALMROOT_CONNECTION_EVENT_SECRET
+pnpm exec wrangler secret put REALMROOT_APPLICATION_CLIENT_ID
+pnpm exec wrangler secret put REALMROOT_APPLICATION_CLIENT_SECRET
+pnpm exec wrangler secret put REALMROOT_GITHUB_RESOURCE_SERVER_ID
 ```
 
 The first connected App currently needs repository Metadata read and Issues

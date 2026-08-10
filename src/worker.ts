@@ -30,14 +30,18 @@ export default {
     const linearConnections = linearConfig.linearCredentialEncryptionKey
       ? new D1LinearConnections(env.DB, createLinearCredentialCipher(linearConfig.linearCredentialEncryptionKey), state)
       : undefined
-    const connectionEvents = githubConfig.realmrootConnectionEventSecret
-      ? createRealmrootConnectionEventSink({
-          issuer: config.realmrootIssuer,
-          resource: `${config.origin}/github`,
-          secret: githubConfig.realmrootConnectionEventSecret,
-          fetch,
-        })
-      : undefined
+    const connectionEvents =
+      githubConfig.realmrootApplicationClientId &&
+      githubConfig.realmrootApplicationClientSecret &&
+      githubConfig.realmrootGitHubResourceServerId
+        ? createRealmrootConnectionEventSink({
+            issuer: config.realmrootIssuer,
+            resourceServerId: githubConfig.realmrootGitHubResourceServerId,
+            clientId: githubConfig.realmrootApplicationClientId,
+            clientSecret: githubConfig.realmrootApplicationClientSecret,
+            fetch,
+          })
+        : undefined
     const githubConnectionEventBarrier = async () => {
       if ((await githubConnections.pendingLifecycleEvents()).length === 0) return
       if (!connectionEvents) throw new Error('Pending GitHub Connection Events require backchannel configuration.')

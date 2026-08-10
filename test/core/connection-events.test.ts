@@ -1,21 +1,21 @@
-import { createHmac } from 'node:crypto'
+import { decodeJwt } from 'jose'
 import { describe, expect, it, vi } from 'vitest'
 import { createRealmrootConnectionEventSink } from '../../src/core/connection-events.js'
 
 describe('Realmroot Connection Event sink', () => {
-  it('authenticates and body-binds an idempotent event request', async () => {
-    const secret = 'a-provider-connection-secret-with-32-bytes'
-    const request = vi.fn(async function (this: unknown) {
+  it('uses the Application client-credentials flow and sends a DPoP-bound idempotent event request', async () => {
+    const request = vi.fn(async function (this: unknown, input: URL | RequestInfo) {
       expect(this).toBeUndefined()
-      return new Response(null, { status: 204 })
+      return String(input).endsWith('/oauth2/token')
+        ? Response.json({
+            access_token: 'realmroot-application-token',
+            token_type: 'DPoP',
+            expires_in: 300,
+            scope: 'connection-events:write',
+          })
+        : new Response(null, { status: 204 })
     })
-    const sink = createRealmrootConnectionEventSink({
-      issuer: 'https://id.example/api/auth',
-      resource: 'https://adapter.example/github',
-      secret,
-      fetch: request,
-      now: () => 1_800_000_000_000,
-    })
+    const sink = connectionEventSink(request)
 
     await sink.send({
       id: 'delivery/1',
@@ -34,21 +34,44 @@ describe('Realmroot Connection Event sink', () => {
       ],
     })
 
-    const [url, init] = request.mock.calls[0] as unknown as [URL, RequestInit]
-    const pathname = '/api/provider-connection-events/delivery%2F1'
-    const body = String(init.body)
-    const timestamp = '1800000000'
-    const signature = createHmac('sha256', secret).update(`${timestamp}\nPUT\n${pathname}\n${body}`).digest('hex')
-    expect(url.toString()).toBe(`https://id.example${pathname}`)
-    expect(init).toMatchObject({ method: 'PUT', body })
-    expect(init.headers).toMatchObject({
-      Authorization: `Bearer ${secret}`,
-      'Realmroot-Timestamp': timestamp,
-      'Realmroot-Signature': `sha256=${signature}`,
+    const [tokenUrl, tokenInit] = request.mock.calls[0] as unknown as [string, RequestInit]
+    expect(tokenUrl).toBe('https://id.example/api/auth/oauth2/token')
+    expect(tokenInit.headers).toMatchObject({
+      Authorization: `Basic ${btoa('realmroot-client:realmroot-secret')}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+      DPoP: expect.any(String),
     })
-    expect(JSON.parse(body)).toEqual({
+    expect(Object.fromEntries(new URLSearchParams(String(tokenInit.body)))).toEqual({
+      grant_type: 'client_credentials',
+      resource: 'https://id.example/api',
+      scope: 'connection-events:write',
+    })
+    const tokenDpop = new Headers(tokenInit.headers).get('DPoP')
+    expect(tokenDpop).toBeTruthy()
+    expect(decodeJwt(tokenDpop ?? '')).toMatchObject({
+      htm: 'POST',
+      htu: tokenUrl,
+      jti: expect.any(String),
+    })
+
+    const [url, init] = request.mock.calls[1] as unknown as [URL, RequestInit]
+    const pathname = '/api/resource-servers/res_github/connection-events/delivery%2F1'
+    expect(url.toString()).toBe(`https://id.example${pathname}`)
+    expect(init).toMatchObject({ method: 'PUT' })
+    expect(init.headers).toMatchObject({
+      Authorization: 'DPoP realmroot-application-token',
+      DPoP: expect.any(String),
+    })
+    const requestDpop = new Headers(init.headers).get('DPoP')
+    expect(requestDpop).toBeTruthy()
+    expect(decodeJwt(requestDpop ?? '')).toMatchObject({
+      htm: 'PUT',
+      htu: url.toString(),
+      ath: expect.any(String),
+      jti: expect.any(String),
+    })
+    expect(JSON.parse(String(init.body))).toEqual({
       type: 'authorityChanged',
-      resource: 'https://adapter.example/github',
       brokerReference: 'broker-1',
       occurredAt: '2027-01-15T08:00:00.000Z',
       revision: 7,
@@ -64,45 +87,54 @@ describe('Realmroot Connection Event sink', () => {
     })
   })
 
-  it('surfaces a rejected Connection Event so the provider can retry', async () => {
-    const sink = createRealmrootConnectionEventSink({
-      issuer: 'https://id.example/api/auth',
-      resource: 'https://adapter.example/github',
-      secret: 'a-provider-connection-secret-with-32-bytes',
-      fetch: async () => new Response(null, { status: 409 }),
-    })
+  it('surfaces rejected credentials and rejected Connection Events so the provider can retry', async () => {
+    const rejectedCredentials = connectionEventSink(async () => new Response(null, { status: 401 }))
+    await expect(rejectedCredentials.send(revokedEvent())).rejects.toThrow('credentials with status 401')
 
-    await expect(
-      sink.send({
-        id: 'delivery-2',
-        type: 'revoked',
-        brokerReference: 'broker-1',
-        occurredAt: new Date().toISOString(),
-        revision: 8,
-      }),
-    ).rejects.toThrow('status 409')
+    let calls = 0
+    const rejectedEvent = connectionEventSink(async () => {
+      calls += 1
+      return calls === 1
+        ? Response.json({
+            access_token: 'token',
+            token_type: 'DPoP',
+            expires_in: 300,
+            scope: 'connection-events:write',
+          })
+        : new Response(null, { status: 409 })
+    })
+    await expect(rejectedEvent.send(revokedEvent())).rejects.toThrow('Event with status 409')
   })
 
-  it('bounds a stalled Realmroot backchannel request', async () => {
-    const sink = createRealmrootConnectionEventSink({
-      issuer: 'https://id.example/api/auth',
-      resource: 'https://adapter.example/github',
-      secret: 'a-provider-connection-secret-with-32-bytes',
-      timeoutMs: 1,
-      fetch: async (_url, init) =>
+  it('bounds a stalled Realmroot OAuth request', async () => {
+    const sink = connectionEventSink(
+      async (_url, init) =>
         new Promise<Response>((_resolve, reject) => {
           init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true })
         }),
-    })
-
-    await expect(
-      sink.send({
-        id: 'delivery-timeout',
-        type: 'suspended',
-        brokerReference: 'broker-1',
-        occurredAt: new Date().toISOString(),
-        revision: 9,
-      }),
-    ).rejects.toThrow()
+      1,
+    )
+    await expect(sink.send(revokedEvent())).rejects.toThrow()
   })
 })
+
+function connectionEventSink(request: typeof fetch, timeoutMs?: number) {
+  return createRealmrootConnectionEventSink({
+    issuer: 'https://id.example/api/auth',
+    resourceServerId: 'res_github',
+    clientId: 'realmroot-client',
+    clientSecret: 'realmroot-secret',
+    fetch: request,
+    ...(timeoutMs ? { timeoutMs } : {}),
+  })
+}
+
+function revokedEvent() {
+  return {
+    id: 'delivery-2',
+    type: 'revoked' as const,
+    brokerReference: 'broker-1',
+    occurredAt: new Date().toISOString(),
+    revision: 8,
+  }
+}

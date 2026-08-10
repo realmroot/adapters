@@ -49,7 +49,7 @@ Feature: GitHub App adapter
     And older lifecycle state cannot replace newer provider state
     And equal-timestamp suspension, authority reduction, and deletion cannot be undone by an ambiguous expansion
     And each accepted context change receives a monotonically increasing connection revision
-    And Realmroot receives the corresponding signed generic Connection Event with complete authority constraints
+    And Realmroot receives the corresponding generic Connection Event from the adapter's client-credentials Application with complete authority constraints
 
   @journey:github-installation-resources @entrypoint:http
   Scenario: GitHub installation repository changes invalidate affected grants
@@ -57,7 +57,7 @@ Feature: GitHub App adapter
     When GitHub reports repositories added to or removed from the installation
     Then the adapter updates its provider-private repository membership immediately
     And equal-timestamp removal wins for the same repository while independent repository changes merge
-    And Realmroot receives a signed resources changed Connection Event with the complete remaining contexts and authority constraints
+    And Realmroot receives an OAuth-authenticated resources changed Connection Event with the complete remaining contexts and authority constraints
     And replaying the same GitHub delivery does not apply or emit the event twice
 
   @journey:github-permission-translation @entrypoint:http
