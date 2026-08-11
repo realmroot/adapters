@@ -33,6 +33,7 @@ Feature: Cloudflare OAuth REST adapter
     When the Agent reads the Cloudflare Resource representation
     Then it advertises a Wrangler integration with its supported executable names
     And the integration identifies the local API-base broker protocol it requires
+    And Wrangler-required Cloudflare routes missing from the official schema are explicitly pinned and scoped
 
   @journey:cloudflare-wrangler-token-verification @entrypoint:http
   Scenario: Wrangler verifies its process-local credential before an operation

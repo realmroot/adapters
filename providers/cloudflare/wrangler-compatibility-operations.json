@@ -1,0 +1,19 @@
+{
+  "package": "wrangler",
+  "version": "4.115.0",
+  "source": "https://github.com/cloudflare/workers-sdk/tree/wrangler%404.115.0/packages/wrangler",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/accounts/{account_id}/workers/services/{service_name}",
+      "operationId": "wrangler-workers-get-service",
+      "scopes": ["workers-scripts.read"]
+    },
+    {
+      "method": "PUT",
+      "path": "/accounts/{account_id}/workers/scripts/{script_name}/domains/records",
+      "operationId": "wrangler-workers-replace-domain-records",
+      "scopes": ["workers-scripts.write"]
+    }
+  ]
+}

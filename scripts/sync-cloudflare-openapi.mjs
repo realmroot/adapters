@@ -9,6 +9,9 @@ const overrides = JSON.parse(
 const groupOverrides = JSON.parse(
   await readFile(new URL('../providers/cloudflare/permission-group-overrides.json', import.meta.url)),
 )
+const wranglerCompatibility = JSON.parse(
+  await readFile(new URL('../providers/cloudflare/wrangler-compatibility-operations.json', import.meta.url)),
+)
 const rawUrl = `https://raw.githubusercontent.com/cloudflare/api-schemas/${source.commit}/openapi.json`
 const raw = new Uint8Array(await checkedFetch(rawUrl).then((response) => response.arrayBuffer()))
 const sourceHash = sha256(raw)
@@ -65,6 +68,40 @@ for (const [path, pathItem] of Object.entries(document.paths)) {
     })
   }
   if (methods.some((method) => published[method])) paths[runtimePath.path] = published
+}
+
+for (const operation of wranglerCompatibility.operations) {
+  const method = operation.method.toLowerCase()
+  if (!methods.includes(method)) throw new Error(`Invalid Wrangler compatibility method: ${operation.method}`)
+  if (paths[operation.path]?.[method]) {
+    throw new Error(
+      `Wrangler compatibility operation duplicates the official Cloudflare schema: ${operation.method} ${operation.path}`,
+    )
+  }
+  if (operationIds.has(operation.operationId)) {
+    throw new Error(
+      `Wrangler compatibility operationId duplicates the official Cloudflare schema: ${operation.operationId}`,
+    )
+  }
+  operationIds.add(operation.operationId)
+  paths[operation.path] ??= {}
+  paths[operation.path][method] = {
+    operationId: operation.operationId,
+    parameters: [...operation.path.matchAll(/\{([^}]+)\}/g)].map(([, name]) => ({
+      name,
+      in: 'path',
+      required: true,
+      schema: { type: 'string' },
+    })),
+    responses: { default: {} },
+    security: operation.scopes.map((scope) => ({ realmrootOidc: [scope] })),
+    'x-realmroot-compatibility-source': {
+      package: wranglerCompatibility.package,
+      version: wranglerCompatibility.version,
+      source: wranglerCompatibility.source,
+    },
+  }
+  routes.push(operation)
 }
 
 for (const key of Object.keys(overrides)) {
@@ -126,6 +163,11 @@ const slim = stripNoise({
   },
   'x-cloudflare-openapi-source': { ...source, sha256: sourceHash },
   'x-cloudflare-oauth-scope-catalog-sha256': catalogHash,
+  'x-wrangler-compatibility': {
+    package: wranglerCompatibility.package,
+    version: wranglerCompatibility.version,
+    source: wranglerCompatibility.source,
+  },
   'x-cli-config': { command_layout: 'tags' },
   'x-realmroot-transparent-upstream': 'https://api.cloudflare.com/client/v4',
 })
