@@ -52,6 +52,7 @@ export interface GitHubConnectionStore {
     contexts: GitHubAuthorizationContext[]
   }>
   activeInstallationsForOwner(ownerSubject: string, brokerReference: string): Promise<GitHubAuthorizationContext[]>
+  activeInstallationsForReference(brokerReference: string): Promise<GitHubAuthorizationContext[]>
   revoke(input: { brokerReference: string; ownerSubject: string; jti: string; expiresAt: number }): Promise<void>
   prepareLifecycleEvent(input: GitHubLifecycleChange): Promise<{ event: ConnectionEvent | null; completed: boolean }>
   pendingLifecycleEvents(): Promise<ConnectionEvent[]>
@@ -294,6 +295,18 @@ export class D1GitHubConnections implements GitHubConnectionStore {
          WHERE owner_subject = ? AND broker_reference = ? AND status = 'active'`,
       )
       .bind(ownerSubject, brokerReference)
+      .first<{ brokerReference: string }>()
+    if (!binding) throw forbidden('Active GitHub account connection is required.')
+    return this.contexts(binding.brokerReference)
+  }
+
+  async activeInstallationsForReference(brokerReference: string) {
+    const binding = await this.db
+      .prepare(
+        `SELECT broker_reference AS brokerReference FROM github_connection_binding
+         WHERE broker_reference = ? AND status = 'active'`,
+      )
+      .bind(brokerReference)
       .first<{ brokerReference: string }>()
     if (!binding) throw forbidden('Active GitHub account connection is required.')
     return this.contexts(binding.brokerReference)
