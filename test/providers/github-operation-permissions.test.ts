@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { HttpProblem } from '../../src/core/problem.js'
 import { githubOperationRequirements } from '../../src/providers/github/openapi-paths.js'
 import { resolveGitHubOperationPermissions } from '../../src/providers/github/operation-permissions.js'
 
@@ -31,6 +32,23 @@ describe('GitHub operation permissions', () => {
         available: { issues: 'write', pull_requests: 'write' },
       }),
     ).toEqual({ issues: 'write' })
+  })
+
+  it('[spec: github-adapter/github-native-tool-scope-challenge] reports every available scope alternative', () => {
+    try {
+      resolveGitHubOperationPermissions({
+        method: 'PATCH',
+        path: '/repos/realmroot/example/issues/42',
+        scopes: new Set(['metadata:read']),
+        available: { issues: 'write', metadata: 'read', pull_requests: 'write' },
+      })
+      throw new Error('expected insufficient scope')
+    } catch (error) {
+      expect(error).toBeInstanceOf(HttpProblem)
+      expect((error as HttpProblem).headers['WWW-Authenticate']).toBe(
+        'DPoP error="insufficient_scope", scope="issues:write", DPoP error="insufficient_scope", scope="pull_requests:write"',
+      )
+    }
   })
 
   it('[spec: github-adapter/github-operation-authority] matches slash-delimited Git reference names', () => {

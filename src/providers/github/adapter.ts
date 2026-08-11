@@ -3,7 +3,7 @@ import type { AdapterEnv, AdapterModule } from '../../core/adapter.js'
 import { type AgentInfoResolver, createAgentInfoResolver } from '../../core/agent-info.js'
 import type { ConnectionEventSink } from '../../core/connection-events.js'
 import type { BrokeredConnectionRequest, BrokeredRevocationRequest } from '../../core/connection-request.js'
-import { badRequest, forbidden, HttpProblem } from '../../core/problem.js'
+import { badRequest, forbidden, HttpProblem, insufficientScope } from '../../core/problem.js'
 import type { AgentPrincipal, RealmrootAuthenticator } from '../../core/realmroot-auth.js'
 import { createGitHubConnectionProvider, createGitHubProvider } from './client.js'
 import type { GitHubAdapterConfig } from './config.js'
@@ -234,8 +234,11 @@ export function createGitHubAdapter(
       const repository = repositoryTarget(`/repos/${target.owner}/${target.repository}`, installation)
       const requestedScopes = new Set<string>([target.write ? 'contents:write' : 'contents:read'])
       if (target.write && principal.scopes.has('workflows:write')) requestedScopes.add('workflows:write')
-      for (const scope of requestedScopes) {
-        if (!principal.scopes.has(scope)) throw forbidden(`The Agent token does not authorize ${scope}.`)
+      const missingScopes = [...requestedScopes].filter((scope) => !principal.scopes.has(scope))
+      if (missingScopes.length > 0) {
+        throw insufficientScope(`The Agent token does not authorize ${missingScopes.join(', ')}.`, [
+          [...requestedScopes],
+        ])
       }
       const available = scopesToPermissions(new Set(installation.scopes), await provider.appPermissions())
       const permissions = scopesToPermissions(requestedScopes, available)

@@ -72,6 +72,27 @@ describe('GitHub adapter contract', () => {
     })
   })
 
+  it('[spec: github-adapter/github-native-tool-scope-challenge] rejects before GitHub and reports required authority', async () => {
+    const provider = fakeProvider()
+    const app = testApp({
+      provider,
+      authenticator: {
+        authenticate: vi.fn(async () => ({ ...principal, scopes: new Set(['metadata:read']) })),
+      },
+    })
+
+    const response = await app.request('/github/repos/realmroot/example/issues', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: 'Not authorized' }),
+    })
+
+    expect(response.status).toBe(403)
+    expect(response.headers.get('www-authenticate')).toBe('DPoP error="insufficient_scope", scope="issues:write"')
+    expect(provider.installationToken).not.toHaveBeenCalled()
+    expect(provider.request).not.toHaveBeenCalled()
+  })
+
   it('[spec: github-adapter/github-graphql-proxy] forwards GraphQL with approved installation permissions', async () => {
     const provider = fakeProvider()
     provider.request = vi.fn(async (request: Request, token: string, mode) => {

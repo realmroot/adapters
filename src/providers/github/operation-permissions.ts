@@ -1,4 +1,4 @@
-import { forbidden } from '../../core/problem.js'
+import { forbidden, insufficientScope } from '../../core/problem.js'
 import { githubOperationRequirements } from './openapi-paths.js'
 import { scopesToPermissions } from './permissions.js'
 import type { GitHubPermissionAccess, GitHubPermissions } from './types.js'
@@ -41,7 +41,12 @@ export function resolveGitHubOperationPermissions(input: {
     .filter((requirement) => requirement.every((scope) => scopeSatisfies(scope, input.scopes)))
     .sort(compareRequirements)
   const selected = satisfied[0]
-  if (!selected) throw forbidden('The Agent token does not grant the permissions required for this operation.')
+  if (!selected) {
+    throw insufficientScope(
+      'The Agent token does not grant the permissions required for this operation.',
+      [...available].sort(compareRequirements),
+    )
+  }
   return scopesToPermissions(new Set(selected), input.available)
 }
 
