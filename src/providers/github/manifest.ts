@@ -1,5 +1,6 @@
 import type { ProviderManifest } from '../../core/provider.js'
 import { permissionsToScopes } from './permissions.js'
+import { githubAttributionTransformations } from './transformers.js'
 import type { GitHubPermissions } from './types.js'
 
 export function githubManifest(permissions: GitHubPermissions) {
@@ -26,19 +27,7 @@ export function githubManifest(permissions: GitHubPermissions) {
       mode: 'transparent',
       upstream: 'https://api.github.com',
       openapi: '/github/openapi.json',
-      transformations: [
-        { method: 'POST', path: '/repos/{owner}/{repo}/issues', behavior: 'agent-attribution' },
-        {
-          method: 'POST',
-          path: '/repos/{owner}/{repo}/issues/{issue_number}/comments',
-          behavior: 'agent-attribution',
-        },
-        {
-          method: 'POST',
-          path: '/repos/{owner}/{repo}/pulls/{pull_number}/comments',
-          behavior: 'agent-attribution',
-        },
-      ],
+      transformations: githubAttributionTransformations,
     },
     revocationSignals: ['realmroot-signed-broker-revocation', 'token-rejection'],
     nativeReadinessGaps: ['ACTOR-NATIVE', 'AGENT-DISPLAY', 'DPOP', 'TOKEN-EXCHANGE'],
