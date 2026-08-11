@@ -20,6 +20,17 @@ export function forbidden(detail: string) {
   return new HttpProblem(403, 'urn:realmroot:adapter:insufficient-scope', 'Forbidden', detail)
 }
 
+export function insufficientScope(detail: string, alternatives: readonly (readonly string[])[]) {
+  const challenges = alternatives
+    .filter((scopes) => scopes.length > 0)
+    .map((scopes) => [...new Set(scopes)].sort())
+    .map((scopes) => `DPoP error="insufficient_scope", scope="${scopes.join(' ')}"`)
+  if (challenges.length === 0) return forbidden(detail)
+  return new HttpProblem(403, 'urn:realmroot:adapter:insufficient-scope', 'Forbidden', detail, {
+    'WWW-Authenticate': challenges.join(', '),
+  })
+}
+
 export function badRequest(detail: string, type = 'invalid-request') {
   return new HttpProblem(400, `urn:realmroot:adapter:${type}`, 'Bad Request', detail)
 }

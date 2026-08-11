@@ -1,7 +1,7 @@
 import type { Hono } from 'hono'
 import type { AdapterEnv, AdapterModule } from '../../core/adapter.js'
 import type { RealmrootTokenExchangeClient } from '../../core/oauth-client.js'
-import { forbidden, HttpProblem } from '../../core/problem.js'
+import { forbidden, HttpProblem, insufficientScope } from '../../core/problem.js'
 import type { RealmrootAuthenticator } from '../../core/realmroot-auth.js'
 import type { CloudflareAdapterConfig } from './config.js'
 import { cloudflareManifest } from './manifest.js'
@@ -183,7 +183,12 @@ export function createCloudflareAdapter(
       if (!operation) throw new HttpProblem(404, 'about:blank', 'Not Found', 'Cloudflare operation is not published.')
       const principal = await dependencies.authenticator.authenticate(c.req.raw, resource)
       const requiredScope = operation.scopes.find((scope) => principal.scopes.has(scope))
-      if (!requiredScope) throw forbidden('The Agent token does not authorize this Cloudflare operation.')
+      if (!requiredScope) {
+        throw insufficientScope(
+          'The Agent token does not authorize this Cloudflare operation.',
+          operation.scopes.map((scope) => [scope]),
+        )
+      }
       if (!principal.subjectToken) throw forbidden('The Realmroot Agent subject token is unavailable.')
       const provider = await dependencies.exchange.exchange({
         subjectToken: principal.subjectToken,

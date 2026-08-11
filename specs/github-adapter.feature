@@ -111,6 +111,14 @@ Feature: GitHub App adapter
     Then it advertises Git and GitHub CLI integrations with their supported executable names
     And each integration identifies the local broker protocol it requires
 
+  @journey:github-native-tool-scope-challenge @entrypoint:http
+  Scenario: GitHub reports the authority required by a rejected native request
+    Given a native GitHub request reaches a published operation
+    And the selected Agent credential does not satisfy its permission requirements
+    When the adapter rejects the request before calling GitHub
+    Then the insufficient-scope challenge advertises each available permission alternative
+    And it does not expose unavailable GitHub App permissions
+
   @journey:github-graphql-proxy @entrypoint:http
   Scenario: GitHub CLI sends GraphQL through approved Agent authority
     Given the Agent has an approved GitHub installation authority

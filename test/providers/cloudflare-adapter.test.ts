@@ -228,19 +228,15 @@ describe('Cloudflare adapter', () => {
     expect(upstream).toHaveBeenCalledTimes(1)
   })
 
-  it('fails closed before exchange for an unpublished operation or insufficient Agent scope', async () => {
+  it('[spec: cloudflare-adapter/cloudflare-native-tool-scope-challenge] fails closed and reports operation scope alternatives', async () => {
     const unpublished = fixture()
     expect((await unpublished.app.request('/cloudflare/not-an-operation')).status).toBe(404)
     expect(unpublished.exchange).not.toHaveBeenCalled()
 
     const denied = fixture({ principal: principal(['dns.read']) })
-    expect(
-      (
-        await denied.app.request('/cloudflare/zones/zone-1/dns_records', {
-          method: 'POST',
-        })
-      ).status,
-    ).toBe(403)
+    const response = await denied.app.request('/cloudflare/zones/zone-1/dns_records', { method: 'POST' })
+    expect(response.status).toBe(403)
+    expect(response.headers.get('www-authenticate')).toBe('DPoP error="insufficient_scope", scope="dns.write"')
     expect(denied.exchange).not.toHaveBeenCalled()
   })
 })

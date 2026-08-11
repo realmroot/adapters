@@ -35,6 +35,13 @@ Feature: Cloudflare OAuth REST adapter
     And the integration identifies the local API-base broker protocol it requires
     And Wrangler-required Cloudflare routes missing from the official schema are explicitly pinned and scoped
 
+  @journey:cloudflare-native-tool-scope-challenge @entrypoint:http
+  Scenario: Cloudflare reports the authority required by a rejected native request
+    Given a Wrangler request reaches a published Cloudflare operation
+    And the selected Agent credential satisfies none of its scope alternatives
+    When the adapter rejects the request before token exchange or Cloudflare forwarding
+    Then the insufficient-scope challenge advertises every operation scope alternative
+
   @journey:cloudflare-wrangler-token-verification @entrypoint:http
   Scenario: Wrangler verifies its process-local credential before an operation
     Given the Agent has at least one approved Cloudflare scope
