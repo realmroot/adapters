@@ -63,12 +63,22 @@ describe('GitHub adapter contract', () => {
   })
 
   it('[spec: github-adapter/github-native-tool-discovery] advertises Git and GitHub CLI integrations', async () => {
-    const response = await testApp().request('/github')
+    const app = testApp()
+    const response = await app.request('/github')
     await expect(response.json()).resolves.toMatchObject({
       toolIntegrations: [
         { id: 'git', executables: ['git'], protocol: 'git-smart-http' },
         { id: 'gh', executables: ['gh'], protocol: 'github-http' },
       ],
+    })
+    const manifest = await app.request('/providers/github/manifest')
+    await expect(manifest.json()).resolves.toMatchObject({
+      operations: {
+        transformations: expect.arrayContaining([
+          { method: 'POST', path: '/repos/{owner}/{repo}/issues', behavior: 'agent-attribution' },
+          { method: 'POST', path: '/graphql', behavior: 'agent-attribution' },
+        ]),
+      },
     })
   })
 
@@ -327,6 +337,38 @@ describe('GitHub adapter contract', () => {
     expect(await response.json()).toEqual({ id: 1, number: 2 })
   })
 
+  it('[spec: github-adapter/github-create-issue] injects attribution into GitHub CLI GraphQL issue creation', async () => {
+    const provider = fakeProvider()
+    provider.request = vi.fn(async (upstream: Request) => {
+      expect(upstream.url).toBe('https://api.github.com/graphql')
+      const input = (await upstream.json()) as {
+        query: string
+        variables: { input: { repositoryId: string; title: string; body: string } }
+      }
+      expect(input.query).toContain('mutation IssueCreate')
+      expect(input.variables.input.repositoryId).toBe('repository-1')
+      expect(input.variables.input.title).toBe('Adapter test')
+      expect(input.variables.input.body).toContain('Created by [Build Agent]')
+      expect(input.variables.input.body).toContain('<!-- realmroot-agent:')
+      return Response.json({ data: { createIssue: { issue: { id: 'issue-1', url: 'https://github.test/2' } } } })
+    })
+    const body = {
+      query: `mutation IssueCreate($input: CreateIssueInput!) {
+        createIssue(input: $input) { issue { id url } }
+      }`,
+      variables: { input: { repositoryId: 'repository-1', title: 'Adapter test', body: 'Original' } },
+    }
+    const response = await testApp({ provider }).request('/github/graphql', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({
+      data: { createIssue: { issue: { id: 'issue-1', url: 'https://github.test/2' } } },
+    })
+  })
+
   it('[spec: github-adapter/github-reserved-attribution] rejects forged attribution before GitHub', async () => {
     const provider = fakeProvider()
     const response = await testApp({ provider }).request('/github/repos/realmroot/example/issues', {
@@ -337,6 +379,19 @@ describe('GitHub adapter contract', () => {
     expect(response.status).toBe(400)
     expect(provider.installationToken).not.toHaveBeenCalled()
     expect(provider.request).not.toHaveBeenCalled()
+
+    const graphqlProvider = fakeProvider()
+    const graphqlResponse = await testApp({ provider: graphqlProvider }).request('/github/graphql', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: 'mutation IssueCreate($input: CreateIssueInput!) { createIssue(input: $input) { issue { id } } }',
+        variables: { input: { repositoryId: 'repository-1', title: 'Forged', body: '<!-- realmroot-agent: fake -->' } },
+      }),
+    })
+    expect(graphqlResponse.status).toBe(400)
+    expect(graphqlProvider.installationToken).not.toHaveBeenCalled()
+    expect(graphqlProvider.request).not.toHaveBeenCalled()
   })
 
   it('[spec: github-adapter/github-provider-revocation] delegates signed revocation to the GitHub connection', async () => {

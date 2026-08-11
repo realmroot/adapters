@@ -132,7 +132,7 @@ Feature: GitHub App adapter
   Scenario: An authorized Agent creates an attributed issue
     Given the Agent has issues:write for that installation
     And the selected repository belongs to the installation
-    When the Agent calls GitHub's create issue endpoint
+    When the Agent creates an issue through GitHub REST or GraphQL
     Then the adapter downscopes the GitHub credential to that repository and the requested permissions
     And GitHub records the GitHub App as its native actor
     And the issue body identifies the originating Realmroot Agent
