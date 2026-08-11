@@ -151,6 +151,83 @@ describe('Cloudflare adapter', () => {
     expect(upstream).toHaveBeenCalledTimes(1)
   })
 
+  it('[spec: cloudflare-adapter/cloudflare-native-tool-discovery] forwards Wrangler remote preview session creation with write authority', async () => {
+    const upstream = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(input, init)
+      expect(request.url).toBe('https://api.cloudflare.com/client/v4/zones/zone-1/workers/edge-preview')
+      expect(request.method).toBe('GET')
+      return Response.json({ success: true, result: { token: 'preview-token' } })
+    })
+    const { app, exchange } = fixture({ upstream, principal: principal(['workers-scripts.write']) })
+
+    const response = await app.request('/cloudflare/zones/zone-1/workers/edge-preview')
+
+    expect(response.status).toBe(200)
+    expect(exchange).toHaveBeenCalledWith({
+      subjectToken: 'realmroot-agent-token',
+      audience: resource,
+      scopes: ['workers-scripts.write'],
+    })
+    expect(upstream).toHaveBeenCalledTimes(1)
+  })
+
+  it('[spec: cloudflare-adapter/cloudflare-native-tool-discovery] forwards Wrangler remote preview upload with write authority', async () => {
+    const upstream = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(input, init)
+      expect(request.url).toBe(
+        'https://api.cloudflare.com/client/v4/accounts/account-1/workers/scripts/wallet/edge-preview',
+      )
+      expect(request.method).toBe('POST')
+      expect(request.headers.get('cf-preview-upload-config-token')).toBe('preview-session')
+      return Response.json({ success: true, result: { preview_token: 'preview-token' } })
+    })
+    const { app, exchange } = fixture({ upstream, principal: principal(['workers-scripts.write']) })
+
+    const response = await app.request('/cloudflare/accounts/account-1/workers/scripts/wallet/edge-preview', {
+      method: 'POST',
+      headers: { 'cf-preview-upload-config-token': 'preview-session' },
+      body: 'preview bundle',
+    })
+
+    expect(response.status).toBe(200)
+    expect(exchange).toHaveBeenCalledWith({
+      subjectToken: 'realmroot-agent-token',
+      audience: resource,
+      scopes: ['workers-scripts.write'],
+    })
+    expect(upstream).toHaveBeenCalledTimes(1)
+  })
+
+  it('[spec: cloudflare-adapter/cloudflare-native-tool-discovery] forwards Wrangler custom-domain changesets with write authority', async () => {
+    const upstream = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(input, init)
+      expect(request.url).toBe(
+        'https://api.cloudflare.com/client/v4/accounts/account-1/workers/scripts/wallet/domains/changeset?replace_state=true',
+      )
+      expect(request.method).toBe('POST')
+      await expect(request.json()).resolves.toEqual([{ hostname: 'wallet.example' }])
+      return Response.json({ success: true, result: { updated: [] } })
+    })
+    const { app, exchange } = fixture({ upstream, principal: principal(['workers-scripts.write']) })
+
+    const response = await app.request(
+      '/cloudflare/accounts/account-1/workers/scripts/wallet/domains/changeset?replace_state=true',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify([{ hostname: 'wallet.example' }]),
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(exchange).toHaveBeenCalledWith({
+      subjectToken: 'realmroot-agent-token',
+      audience: resource,
+      scopes: ['workers-scripts.write'],
+    })
+    expect(upstream).toHaveBeenCalledTimes(1)
+  })
+
   it('fails closed before exchange for an unpublished operation or insufficient Agent scope', async () => {
     const unpublished = fixture()
     expect((await unpublished.app.request('/cloudflare/not-an-operation')).status).toBe(404)
