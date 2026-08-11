@@ -73,10 +73,109 @@ export function createCloudflareAdapter(
       }),
     )
     app.get('/cloudflare', (c) =>
-      c.json({ resource, serviceDescription: `${resource}/openapi.json`, identityLevel: 'oauth-delegated-user' }, 200, {
-        Link: `<${resource}/openapi.json>; rel="service-desc"; type="application/vnd.oai.openapi+json"`,
-      }),
+      c.json(
+        {
+          resource,
+          serviceDescription: `${resource}/openapi.json`,
+          identityLevel: 'oauth-delegated-user',
+          toolIntegrations: [
+            { id: 'wrangler', executables: ['wrangler', 'npx', 'pnpm'], protocol: 'cloudflare-api-base' },
+          ],
+        },
+        200,
+        {
+          Link: `<${resource}/openapi.json>; rel="service-desc"; type="application/vnd.oai.openapi+json"`,
+        },
+      ),
     )
+    app.get('/cloudflare/user/tokens/verify', async (c) => {
+      const principal = await dependencies.authenticator.authenticate(c.req.raw, resource)
+      const requiredScope = [...principal.scopes].sort().find((scope) => scope in cloudflareManifest.scopes)
+      if (!requiredScope) throw forbidden('The Agent token has no approved Cloudflare scope for Wrangler verification.')
+      if (!principal.subjectToken) throw forbidden('The Realmroot Agent subject token is unavailable.')
+      const provider = await dependencies.exchange.exchange({
+        subjectToken: principal.subjectToken,
+        audience: resource,
+        scopes: [requiredScope],
+      })
+      if (!provider.scopes.has(requiredScope))
+        throw forbidden('The Cloudflare OAuth grant does not authorize Wrangler verification.')
+      await dependencies.audit({
+        event: 'provider.operation',
+        requestId: c.get('requestId'),
+        provider: 'cloudflare',
+        operationId: 'wrangler-token-verification',
+        method: 'GET',
+        pathTemplate: '/user/tokens/verify',
+        scope: requiredScope,
+        originatingPrincipal: { issuer: principal.actor.issuer, subject: principal.actor.subject },
+        providerActor: { type: 'oauth_delegated_user' },
+        identityLevel: 'brokered',
+        result: { status: 200 },
+        occurredAt: new Date().toISOString(),
+      })
+      return c.json({
+        success: true,
+        errors: [],
+        messages: [],
+        result: { id: 'realmroot-agent-authority', status: 'active' },
+      })
+    })
+    app.get('/cloudflare/user', async (c) => {
+      const principal = await dependencies.authenticator.authenticate(c.req.raw, resource)
+      const requiredScope = [...principal.scopes].sort().find((scope) => scope in cloudflareManifest.scopes)
+      if (!requiredScope || !principal.subjectToken)
+        throw forbidden('The Agent token has no approved Cloudflare authority for Wrangler identity.')
+      const provider = await dependencies.exchange.exchange({
+        subjectToken: principal.subjectToken,
+        audience: resource,
+        scopes: [requiredScope],
+      })
+      if (!provider.scopes.has(requiredScope))
+        throw forbidden('The Cloudflare OAuth grant does not authorize Wrangler identity.')
+      return c.json({
+        success: true,
+        errors: [],
+        messages: [],
+        result: {
+          id: principal.actor.subject,
+          email: `${principal.actor.subject}@agents.realmroot.dev`,
+        },
+      })
+    })
+    app.get('/cloudflare/accounts', async (c) => {
+      const principal = await dependencies.authenticator.authenticate(c.req.raw, resource)
+      const requiredScope = 'account-settings.read'
+      if (!principal.scopes.has(requiredScope) || !principal.subjectToken)
+        throw forbidden(`The Agent token does not authorize ${requiredScope}.`)
+      const provider = await dependencies.exchange.exchange({
+        subjectToken: principal.subjectToken,
+        audience: resource,
+        scopes: [requiredScope],
+      })
+      if (!provider.scopes.has(requiredScope))
+        throw forbidden('The Cloudflare OAuth grant does not authorize account discovery.')
+      const upstream = new URL(config.cloudflareApiOrigin)
+      upstream.pathname = `${upstream.pathname.replace(/\/$/, '')}/accounts`
+      upstream.search = new URL(c.req.url).search
+      const response = await request(upstream, {
+        headers: { authorization: `Bearer ${provider.accessToken}` },
+        redirect: 'manual',
+        signal: AbortSignal.timeout(15_000),
+      })
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: sanitizedHeaders(response.headers, removedResponseHeaders),
+      })
+    })
+    app.get('/cloudflare/memberships', async (c) => {
+      const principal = await dependencies.authenticator.authenticate(c.req.raw, resource)
+      const hasApprovedScope = [...principal.scopes].some((scope) => scope in cloudflareManifest.scopes)
+      if (!hasApprovedScope)
+        throw forbidden('The Agent token has no approved Cloudflare authority for Wrangler membership lookup.')
+      return c.json({ success: true, errors: [], messages: [], result: [], result_info: { count: 0 } })
+    })
     app.all('/cloudflare/*', async (c) => {
       if (c.req.path === '/cloudflare/openapi.json') return c.notFound()
       const suffix = c.req.path.slice('/cloudflare'.length)

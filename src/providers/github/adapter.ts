@@ -81,9 +81,21 @@ export function createGitHubAdapter(
     })
 
     app.get('/github', (c) =>
-      c.json({ resource, serviceDescription: `${resource}/openapi.json`, identityLevel: 'brokered' }, 200, {
-        Link: `<${resource}/openapi.json>; rel="service-desc"; type="application/vnd.oai.openapi+json"`,
-      }),
+      c.json(
+        {
+          resource,
+          serviceDescription: `${resource}/openapi.json`,
+          identityLevel: 'brokered',
+          toolIntegrations: [
+            { id: 'git', executables: ['git'], protocol: 'git-smart-http' },
+            { id: 'gh', executables: ['gh'], protocol: 'github-http' },
+          ],
+        },
+        200,
+        {
+          Link: `<${resource}/openapi.json>; rel="service-desc"; type="application/vnd.oai.openapi+json"`,
+        },
+      ),
     )
 
     app.get('/github/account-connection-authorizations', async (c) => {
@@ -185,6 +197,73 @@ export function createGitHubAdapter(
       return c.body(null, 204)
     })
 
+    app.post('/github/graphql', async (c) => {
+      const principal = await dependencies.authenticator.authenticate(c.req.raw, resource)
+      const installation = await selectedInstallation(principal)
+      const available = scopesToPermissions(new Set(installation.scopes), await provider.appPermissions())
+      const permissions = scopesToPermissions(principal.scopes, available)
+      const token = await provider.installationToken({
+        installationId: installation.installationId,
+        permissions,
+        ...(installation.repositorySelection === 'selected'
+          ? {
+              repositories: installation.repositories.map(
+                (repository) => repository.fullName.split('/').at(-1) as string,
+              ),
+            }
+          : {}),
+      })
+      const upstream = new URL('/graphql', config.githubApiOrigin)
+      const response = await provider.request(
+        new Request(upstream, {
+          method: 'POST',
+          headers: c.req.raw.headers,
+          body: c.req.raw.body,
+          duplex: 'half',
+        } as RequestInit & { duplex: 'half' }),
+        token,
+      )
+      await auditNative(c, principal, installation, 'graphql', response.status)
+      return response
+    })
+
+    app.all('/github/git/*', async (c) => {
+      const target = gitTransportTarget(c.req.url, c.req.method, config.githubGitOrigin)
+      const principal = await dependencies.authenticator.authenticate(c.req.raw, resource)
+      const installation = await selectedInstallation(principal)
+      const repository = repositoryTarget(`/repos/${target.owner}/${target.repository}`, installation)
+      const requestedScopes = new Set<string>([target.write ? 'contents:write' : 'contents:read'])
+      if (target.write && principal.scopes.has('workflows:write')) requestedScopes.add('workflows:write')
+      for (const scope of requestedScopes) {
+        if (!principal.scopes.has(scope)) throw forbidden(`The Agent token does not authorize ${scope}.`)
+      }
+      const available = scopesToPermissions(new Set(installation.scopes), await provider.appPermissions())
+      const permissions = scopesToPermissions(requestedScopes, available)
+      const token = await provider.installationToken({
+        installationId: installation.installationId,
+        permissions,
+        repositories: [repository as string],
+      })
+      const response = await provider.request(
+        new Request(target.url, {
+          method: c.req.method,
+          headers: c.req.raw.headers,
+          ...(c.req.method === 'GET' || c.req.method === 'HEAD' ? {} : { body: c.req.raw.body, duplex: 'half' }),
+          redirect: 'manual',
+        } as RequestInit & { duplex?: 'half' }),
+        token,
+        'git',
+      )
+      await auditNative(
+        c,
+        principal,
+        installation,
+        target.write ? 'git-receive-pack' : 'git-upload-pack',
+        response.status,
+      )
+      return response
+    })
+
     app.all('/github/*', async (c) => {
       const principal = await dependencies.authenticator.authenticate(c.req.raw, resource)
       const installation = await selectedInstallation(principal)
@@ -255,6 +334,51 @@ export function createGitHubAdapter(
     }
     return selected
   }
+
+  async function auditNative(
+    c: Context,
+    principal: AgentPrincipal,
+    installation: GitHubAuthorizationContext,
+    operation: string,
+    status: number,
+  ) {
+    await dependencies.audit({
+      event: 'provider.operation',
+      requestId: c.get('requestId'),
+      provider: 'github',
+      operation,
+      installationId: installation.installationId,
+      originatingPrincipal: { issuer: principal.actor.issuer, subject: principal.actor.subject },
+      providerActor: { type: 'github_app', id: config.githubAppId ?? 'injected-test-provider' },
+      identityLevel: 'brokered',
+      result: { status },
+      occurredAt: new Date().toISOString(),
+    })
+  }
+}
+
+function gitTransportTarget(requestUrl: string, method: string, origin: string) {
+  const request = new URL(requestUrl)
+  const match = /^\/github\/git\/([^/]+)\/([^/]+)\.git\/(info\/refs|git-upload-pack|git-receive-pack)$/.exec(
+    request.pathname,
+  )
+  if (!match) throw new HttpProblem(404, 'about:blank', 'Not Found', 'Git transport operation is not published.')
+  const owner = decodeURIComponent(match[1] as string)
+  const repository = decodeURIComponent(match[2] as string)
+  const operation = match[3]
+  const service = request.searchParams.get('service')
+  const write = operation === 'git-receive-pack' || service === 'git-receive-pack'
+  const read = operation === 'git-upload-pack' || service === 'git-upload-pack'
+  if (
+    (!read && !write) ||
+    (operation === 'info/refs' && method !== 'GET') ||
+    (operation !== 'info/refs' && method !== 'POST')
+  ) {
+    throw new HttpProblem(404, 'about:blank', 'Not Found', 'Git transport operation is not published.')
+  }
+  const url = new URL(`/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}.git/${operation}`, origin)
+  url.search = request.search
+  return { owner, repository, operation, write, url }
 }
 
 function configuredProvider(config: GitHubAdapterConfig): GitHubProvider {

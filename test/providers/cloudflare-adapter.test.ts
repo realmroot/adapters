@@ -6,6 +6,52 @@ import { createCloudflareAdapter } from '../../src/providers/cloudflare/adapter.
 const resource = 'https://adapters.example/cloudflare'
 
 describe('Cloudflare adapter', () => {
+  it('[spec: cloudflare-adapter/cloudflare-native-tool-discovery] advertises Wrangler execution', async () => {
+    const { app } = fixture()
+    const response = await app.request('/cloudflare')
+    await expect(response.json()).resolves.toMatchObject({
+      toolIntegrations: [{ id: 'wrangler', executables: ['wrangler', 'npx', 'pnpm'], protocol: 'cloudflare-api-base' }],
+    })
+  })
+
+  it('[spec: cloudflare-adapter/cloudflare-wrangler-token-verification] verifies Wrangler with one approved scope', async () => {
+    const { app, exchange } = fixture({ principal: principal(['dns.write']) })
+    const response = await app.request('/cloudflare/user/tokens/verify')
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      errors: [],
+      messages: [],
+      result: { id: 'realmroot-agent-authority', status: 'active' },
+    })
+    expect(exchange).toHaveBeenCalledWith({
+      subjectToken: 'realmroot-agent-token',
+      audience: resource,
+      scopes: ['dns.write'],
+    })
+
+    const user = await app.request('/cloudflare/user')
+    await expect(user.json()).resolves.toMatchObject({
+      success: true,
+      result: { id: 'agent-1', email: 'agent-1@agents.realmroot.dev' },
+    })
+    const memberships = await app.request('/cloudflare/memberships')
+    await expect(memberships.json()).resolves.toMatchObject({ success: true, result: [] })
+  })
+
+  it('[spec: cloudflare-adapter/cloudflare-wrangler-token-verification] lists accounts with account read authority', async () => {
+    const upstream = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(input, init)
+      expect(request.url).toBe('https://api.cloudflare.com/client/v4/accounts?per_page=50')
+      expect(request.headers.get('authorization')).toBe('Bearer provider-access')
+      return Response.json({ success: true, result: [{ id: 'account-1', name: 'Realmroot' }] })
+    })
+    const { app } = fixture({ upstream, principal: principal(['account-settings.read']) })
+    const response = await app.request('/cloudflare/accounts?per_page=50')
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({ result: [{ id: 'account-1', name: 'Realmroot' }] })
+  })
+
   it('publishes protected-resource discovery for proven OAuth scopes', async () => {
     const { app } = fixture()
     const response = await app.request('/.well-known/oauth-protected-resource/cloudflare')
@@ -80,7 +126,7 @@ function fixture(options: { upstream?: typeof fetch; principal?: AgentPrincipal 
   const exchange = vi.fn(async () => ({
     accessToken: 'provider-access',
     expiresIn: 300,
-    scopes: new Set(['dns.write']),
+    scopes: options.principal?.scopes ?? new Set(['dns.write']),
   }))
   const adapter = createCloudflareAdapter(
     {

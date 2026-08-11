@@ -104,6 +104,29 @@ Feature: GitHub App adapter
     And GitHub performs endpoint permission enforcement
     And the GitHub credential is never returned
 
+  @journey:github-native-tool-discovery @entrypoint:http
+  Scenario: GitHub advertises supported native tools
+    When the Agent reads the GitHub Resource representation
+    Then it advertises Git and GitHub CLI integrations with their supported executable names
+    And each integration identifies the local broker protocol it requires
+
+  @journey:github-graphql-proxy @entrypoint:http
+  Scenario: GitHub CLI sends GraphQL through approved Agent authority
+    Given the Agent has an approved GitHub installation authority
+    When GitHub CLI sends a GraphQL request through the adapter
+    Then the adapter mints an installation credential constrained to the approved scopes
+    And the GraphQL request and response are preserved
+    And the GitHub credential is never returned
+
+  @journey:github-git-transport @entrypoint:http
+  Scenario: Native Git uses the GitHub installation through the adapter
+    Given the Agent has approved repository contents authority
+    When Git performs Smart HTTP discovery, fetch, or push through the adapter
+    Then the adapter constrains the installation credential to that repository
+    And read transport requires contents read while write transport requires contents write
+    And workflow authority is included on writes only when it was explicitly approved
+    And the GitHub credential is never returned
+
   @journey:github-create-issue @entrypoint:http
   Scenario: An authorized Agent creates an attributed issue
     Given the Agent has issues:write for that installation
