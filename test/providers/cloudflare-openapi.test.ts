@@ -8,18 +8,21 @@ const root = resolve(import.meta.dirname, '../..')
 
 describe('generated Cloudflare OpenAPI', () => {
   it('pins sources and partitions every official operation into one published route or explicit exclusion', async () => {
-    const [source, catalog, exclusions, openapi] = await Promise.all([
+    const [source, catalog, exclusions, openapi, wranglerCompatibility] = await Promise.all([
       json('providers/cloudflare/source.json'),
       json('providers/cloudflare/oauth-scopes.json'),
       json('providers/cloudflare/exclusions.json'),
       json('public/cloudflare/openapi.json'),
+      json('providers/cloudflare/wrangler-compatibility-operations.json'),
     ])
     expect(source.commit).toMatch(/^[a-f0-9]{40}$/)
     expect(source.openapiSha256).toMatch(/^[a-f0-9]{64}$/)
     expect(catalog.sha256).toBe(createHash('sha256').update(JSON.stringify(catalog.scopes)).digest('hex'))
-    expect(cloudflareOperations).toHaveLength(2652)
+    expect(cloudflareOperations).toHaveLength(2654)
     expect(exclusions.operations).toHaveLength(634)
-    expect(cloudflareOperations.length + exclusions.operations.length).toBe(3286)
+    expect(cloudflareOperations.length - wranglerCompatibility.operations.length + exclusions.operations.length).toBe(
+      3286,
+    )
 
     const routeKeys = new Set(cloudflareOperations.map((operation) => `${operation.method} ${operation.path}`))
     const exclusionKeys = new Set(
@@ -54,6 +57,31 @@ describe('generated Cloudflare OpenAPI', () => {
     expect(addressMapMembership.parameters).toEqual(
       expect.arrayContaining([expect.objectContaining({ in: 'path', name: 'account_id_2' })]),
     )
+  })
+
+  it('[spec: cloudflare-adapter/cloudflare-native-tool-discovery] publishes the pinned Wrangler service preflight', async () => {
+    const openapi = await json('public/cloudflare/openapi.json')
+    const path = '/accounts/{account_id}/workers/services/{service_name}'
+    const operation = cloudflareOperations.find((candidate) => candidate.method === 'GET' && candidate.path === path)
+
+    expect(operation).toEqual({
+      method: 'GET',
+      path,
+      operationId: 'wrangler-workers-get-service',
+      scopes: ['workers-scripts.read'],
+    })
+    expect(openapi.paths[path]?.get.security).toEqual([{ realmrootOidc: ['workers-scripts.read'] }])
+
+    const domainRecordsPath = '/accounts/{account_id}/workers/scripts/{script_name}/domains/records'
+    expect(
+      cloudflareOperations.find((candidate) => candidate.method === 'PUT' && candidate.path === domainRecordsPath),
+    ).toEqual({
+      method: 'PUT',
+      path: domainRecordsPath,
+      operationId: 'wrangler-workers-replace-domain-records',
+      scopes: ['workers-scripts.write'],
+    })
+    expect(openapi.paths[domainRecordsPath]?.put.security).toEqual([{ realmrootOidc: ['workers-scripts.write'] }])
   })
 })
 
