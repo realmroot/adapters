@@ -98,7 +98,7 @@ function templatePattern(template: string) {
   let index = 0
   for (const match of template.matchAll(/\{([^}]+)\}/g)) {
     source += escapeRegex(template.slice(index, match.index))
-    source += match[1] === 'path' || match[1]?.startsWith('+') ? '.+' : '[^/]+'
+    source += match[1] === 'path' || match[1] === 'ref' || match[1]?.startsWith('+') ? '.+' : '[^/]+'
     index = (match.index ?? 0) + match[0].length
   }
   source += `${escapeRegex(template.slice(index))}$`

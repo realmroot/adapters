@@ -83,6 +83,7 @@ Feature: GitHub App adapter
     Then the adapter selects one least-privileged satisfied permission set for that method and path
     And the short-lived GitHub installation credential contains only that selected permission set
     And unrelated scopes in the Agent token are not minted into the GitHub credential
+    And slash-delimited Git reference names resolve to their documented operation
 
   @journey:github-workflow-file-authority @entrypoint:http
   Scenario: Workflow file writes require both GitHub permissions
