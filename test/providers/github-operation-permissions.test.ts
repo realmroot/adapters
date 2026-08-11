@@ -33,6 +33,25 @@ describe('GitHub operation permissions', () => {
     ).toEqual({ issues: 'write' })
   })
 
+  it('[spec: github-adapter/github-operation-authority] matches slash-delimited Git reference names', () => {
+    expect(
+      resolveGitHubOperationPermissions({
+        method: 'GET',
+        path: '/repos/realmroot/example/git/ref/heads/main',
+        scopes: new Set(['contents:read']),
+        available: { contents: 'write' },
+      }),
+    ).toEqual({ contents: 'read' })
+    expect(
+      resolveGitHubOperationPermissions({
+        method: 'DELETE',
+        path: '/repos/realmroot/example/git/refs/tags/v1.0.0',
+        scopes: new Set(['contents:write']),
+        available: { contents: 'write' },
+      }),
+    ).toEqual({ contents: 'write' })
+  })
+
   it('[spec: github-adapter/github-operation-permissions] requires every scope in a conjunction', () => {
     const input = {
       method: 'POST',
