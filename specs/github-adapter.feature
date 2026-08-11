@@ -24,6 +24,14 @@ Feature: GitHub App adapter
     Then the adapter keeps one stable broker reference for the owner
     And replaces the installation contexts with the newly authorized set
 
+  @journey:github-context-catalog @entrypoint:http
+  Scenario: GitHub describes installation Contexts without exposing credentials
+    Given Realmroot holds an active brokered GitHub account connection
+    When Realmroot lists that connection's authorization details
+    Then the adapter returns each active installation with its account name, account type, and repository selection
+    And the response uses the shared authorization-detail catalog representation
+    But it does not expose installation credentials or accept an unrelated broker reference
+
   @journey:github-lifecycle-migration @entrypoint:migration
   Scenario: Legacy GitHub connections do not gain unknown repository authority
     Given a GitHub connection predates retained repository selection and membership

@@ -52,6 +52,18 @@ describe('Cloudflare adapter', () => {
     await expect(response.json()).resolves.toMatchObject({ result: [{ id: 'account-1', name: 'Realmroot' }] })
   })
 
+  it('[spec: cloudflare-adapter/cloudflare-native-tool-scope-challenge] reports the account authority Wrangler needs', async () => {
+    const { app, exchange } = fixture({ principal: principal(['dns.read']) })
+
+    const response = await app.request('/cloudflare/accounts')
+
+    expect(response.status).toBe(403)
+    expect(response.headers.get('www-authenticate')).toBe(
+      'DPoP error="insufficient_scope", scope="account-settings.read"',
+    )
+    expect(exchange).not.toHaveBeenCalled()
+  })
+
   it('publishes protected-resource discovery for proven OAuth scopes', async () => {
     const { app } = fixture()
     const response = await app.request('/.well-known/oauth-protected-resource/cloudflare')

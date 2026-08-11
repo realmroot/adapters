@@ -146,8 +146,9 @@ export function createCloudflareAdapter(
     app.get('/cloudflare/accounts', async (c) => {
       const principal = await dependencies.authenticator.authenticate(c.req.raw, resource)
       const requiredScope = 'account-settings.read'
-      if (!principal.scopes.has(requiredScope) || !principal.subjectToken)
-        throw forbidden(`The Agent token does not authorize ${requiredScope}.`)
+      if (!principal.scopes.has(requiredScope))
+        throw insufficientScope(`The Agent token does not authorize ${requiredScope}.`, [[requiredScope]])
+      if (!principal.subjectToken) throw forbidden('The Realmroot Agent subject token is unavailable.')
       const provider = await dependencies.exchange.exchange({
         subjectToken: principal.subjectToken,
         audience: resource,

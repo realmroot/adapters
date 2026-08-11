@@ -65,6 +65,7 @@ export function createGitHubAdapter(
         account_connection_authorization_endpoint: `${resource}/account-connection-authorizations`,
         account_connection_token_endpoint: `${resource}/account-connection-credentials`,
         account_connection_revocation_endpoint: `${resource}/account-connection-revocations`,
+        account_connection_authorization_details_endpoint: `${resource}/account-connection-authorization-details`,
       }),
     )
 
@@ -182,6 +183,42 @@ export function createGitHubAdapter(
         expiresAt: revocation.exp * 1000,
       })
       return c.body(null, 204)
+    })
+
+    app.get('/github/account-connection-authorization-details', async (c) => {
+      if (!dependencies.connections) throw notConfiguredConnection()
+      const brokerReference = bearerCredential(c.req.header('authorization'))
+      const contexts = await dependencies.connections.activeInstallationsForReference(brokerReference)
+      const { limit, offset } = catalogPagination(c.req.query('limit'), c.req.query('offset'))
+      const items = contexts.slice(offset, offset + limit).map((context) => ({
+        authorizationDetail: contextAuthorizationDetail(context),
+        display: {
+          label: context.accountLogin,
+          description: `${context.targetType} GitHub App installation`,
+          metadata: {
+            accountType: context.targetType,
+            repositories:
+              context.repositorySelection === 'all'
+                ? 'All repositories'
+                : `${context.repositories.length} selected repositories`,
+          },
+        },
+      }))
+      const nextOffset = offset + items.length < contexts.length ? offset + items.length : null
+      return c.json(
+        {
+          items,
+          pagination: {
+            limit,
+            offset,
+            total: contexts.length,
+            hasMore: nextOffset !== null,
+            nextOffset,
+          },
+        },
+        200,
+        { 'Cache-Control': 'no-store' },
+      )
     })
 
     app.post('/github/webhooks', async (c) => {
@@ -358,6 +395,39 @@ export function createGitHubAdapter(
       occurredAt: new Date().toISOString(),
     })
   }
+}
+
+function contextAuthorizationDetail(context: GitHubAuthorizationContext) {
+  return {
+    type: 'github_installation',
+    installation_id: String(context.installationId),
+    account_login: context.accountLogin,
+    target_type: context.targetType,
+    repository_selection: context.repositorySelection,
+    ...(context.repositorySelection === 'selected'
+      ? {
+          repositories: context.repositories.map((repository) => ({
+            id: String(repository.id),
+            full_name: repository.fullName,
+          })),
+        }
+      : {}),
+  }
+}
+
+function bearerCredential(value: string | undefined) {
+  const match = /^Bearer ([^\s]+)$/.exec(value ?? '')
+  if (!match) throw forbidden('An active GitHub account connection reference is required.')
+  return match[1] as string
+}
+
+function catalogPagination(limitValue: string | undefined, offsetValue: string | undefined) {
+  const limit = limitValue === undefined ? 100 : Number(limitValue)
+  const offset = offsetValue === undefined ? 0 : Number(offsetValue)
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isInteger(offset) || offset < 0) {
+    throw badRequest('Authorization detail catalog pagination is invalid.')
+  }
+  return { limit, offset }
 }
 
 function gitTransportTarget(requestUrl: string, method: string, origin: string) {

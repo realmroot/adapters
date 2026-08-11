@@ -36,6 +36,8 @@ describe('GitHub adapter contract', () => {
       authorization_servers: [config.realmrootIssuer],
       scopes_supported: ['contents:read', 'contents:write', 'issues:read', 'issues:write', 'metadata:read'],
       account_connection_modes_supported: ['brokered'],
+      account_connection_authorization_details_endpoint:
+        'http://127.0.0.1:4103/github/account-connection-authorization-details',
     })
     const resource = await testApp().request('/github')
     expect(resource.headers.get('link')).toContain('rel="service-desc"')
@@ -70,6 +72,40 @@ describe('GitHub adapter contract', () => {
         { id: 'gh', executables: ['gh'], protocol: 'github-http' },
       ],
     })
+  })
+
+  it('[spec: github-adapter/github-context-catalog] describes connected installations without credentials', async () => {
+    const connections = fakeConnections()
+    const response = await testApp({ connections }).request(
+      '/github/account-connection-authorization-details?limit=100&offset=0',
+      { headers: { Authorization: 'Bearer broker-reference-1' } },
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    await expect(response.json()).resolves.toEqual({
+      items: [
+        {
+          authorizationDetail: {
+            type: 'github_installation',
+            installation_id: '42',
+            account_login: 'realmroot',
+            target_type: 'Organization',
+            repository_selection: 'all',
+          },
+          display: {
+            label: 'realmroot',
+            description: 'Organization GitHub App installation',
+            metadata: { accountType: 'Organization', repositories: 'All repositories' },
+          },
+        },
+      ],
+      pagination: { limit: 100, offset: 0, total: 1, hasMore: false, nextOffset: null },
+    })
+    expect(connections.activeInstallationsForReference).toHaveBeenCalledWith('broker-reference-1')
+
+    const unauthorized = await testApp({ connections }).request('/github/account-connection-authorization-details')
+    expect(unauthorized.status).toBe(403)
   })
 
   it('[spec: github-adapter/github-native-tool-scope-challenge] rejects before GitHub and reports required authority', async () => {
@@ -488,6 +524,16 @@ function fakeConnections(): GitHubConnectionStore {
     complete: vi.fn(async () => {}),
     exchange: vi.fn(),
     activeInstallationsForOwner: vi.fn(async () => [
+      {
+        installationId: 42,
+        accountLogin: 'realmroot',
+        targetType: 'Organization',
+        scopes: ['contents:read', 'contents:write', 'issues:read', 'issues:write', 'metadata:read'],
+        repositorySelection: 'all' as const,
+        repositories: [],
+      },
+    ]),
+    activeInstallationsForReference: vi.fn(async () => [
       {
         installationId: 42,
         accountLogin: 'realmroot',
