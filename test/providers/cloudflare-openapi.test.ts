@@ -18,7 +18,7 @@ describe('generated Cloudflare OpenAPI', () => {
     expect(source.commit).toMatch(/^[a-f0-9]{40}$/)
     expect(source.openapiSha256).toMatch(/^[a-f0-9]{64}$/)
     expect(catalog.sha256).toBe(createHash('sha256').update(JSON.stringify(catalog.scopes)).digest('hex'))
-    expect(cloudflareOperations).toHaveLength(2654)
+    expect(cloudflareOperations).toHaveLength(2658)
     expect(exclusions.operations).toHaveLength(634)
     expect(cloudflareOperations.length - wranglerCompatibility.operations.length + exclusions.operations.length).toBe(
       3286,
@@ -59,7 +59,7 @@ describe('generated Cloudflare OpenAPI', () => {
     )
   })
 
-  it('[spec: cloudflare-adapter/cloudflare-native-tool-discovery] publishes the pinned Wrangler service preflight', async () => {
+  it('[spec: cloudflare-adapter/cloudflare-native-tool-discovery] publishes pinned Wrangler compatibility operations', async () => {
     const openapi = await json('public/cloudflare/openapi.json')
     const path = '/accounts/{account_id}/workers/services/{service_name}'
     const operation = cloudflareOperations.find((candidate) => candidate.method === 'GET' && candidate.path === path)
@@ -82,6 +82,28 @@ describe('generated Cloudflare OpenAPI', () => {
       scopes: ['workers-scripts.write'],
     })
     expect(openapi.paths[domainRecordsPath]?.put.security).toEqual([{ realmrootOidc: ['workers-scripts.write'] }])
+
+    for (const previewPath of [
+      '/zones/{zoneId}/workers/edge-preview',
+      '/accounts/{accountId}/workers/subdomain/edge-preview',
+    ]) {
+      expect(
+        cloudflareOperations.find((candidate) => candidate.method === 'GET' && candidate.path === previewPath),
+      ).toMatchObject({ path: previewPath, scopes: ['workers-scripts.write'] })
+      expect(openapi.paths[previewPath]?.get.security).toEqual([{ realmrootOidc: ['workers-scripts.write'] }])
+    }
+
+    const previewUploadPath = '/accounts/{accountId}/workers/scripts/{scriptName}/edge-preview'
+    expect(
+      cloudflareOperations.find((candidate) => candidate.method === 'POST' && candidate.path === previewUploadPath),
+    ).toMatchObject({ path: previewUploadPath, scopes: ['workers-scripts.write'] })
+    expect(openapi.paths[previewUploadPath]?.post.security).toEqual([{ realmrootOidc: ['workers-scripts.write'] }])
+
+    const domainChangesetPath = '/accounts/{accountId}/workers/scripts/{scriptName}/domains/changeset'
+    expect(
+      cloudflareOperations.find((candidate) => candidate.method === 'POST' && candidate.path === domainChangesetPath),
+    ).toMatchObject({ path: domainChangesetPath, scopes: ['workers-scripts.write'] })
+    expect(openapi.paths[domainChangesetPath]?.post.security).toEqual([{ realmrootOidc: ['workers-scripts.write'] }])
   })
 })
 

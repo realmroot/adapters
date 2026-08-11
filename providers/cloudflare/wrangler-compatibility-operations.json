@@ -1,7 +1,7 @@
 {
   "package": "wrangler",
-  "version": "4.115.0",
-  "source": "https://github.com/cloudflare/workers-sdk/tree/wrangler%404.115.0/packages/wrangler",
+  "version": "4.120.0",
+  "source": "https://github.com/cloudflare/workers-sdk/tree/wrangler%404.120.0/packages/wrangler",
   "operations": [
     {
       "method": "GET",
@@ -13,6 +13,30 @@
       "method": "PUT",
       "path": "/accounts/{account_id}/workers/scripts/{script_name}/domains/records",
       "operationId": "wrangler-workers-replace-domain-records",
+      "scopes": ["workers-scripts.write"]
+    },
+    {
+      "method": "GET",
+      "path": "/zones/{zoneId}/workers/edge-preview",
+      "operationId": "wrangler-workers-get-zone-edge-preview",
+      "scopes": ["workers-scripts.write"]
+    },
+    {
+      "method": "GET",
+      "path": "/accounts/{accountId}/workers/subdomain/edge-preview",
+      "operationId": "wrangler-workers-get-account-edge-preview",
+      "scopes": ["workers-scripts.write"]
+    },
+    {
+      "method": "POST",
+      "path": "/accounts/{accountId}/workers/scripts/{scriptName}/edge-preview",
+      "operationId": "wrangler-workers-create-edge-preview",
+      "scopes": ["workers-scripts.write"]
+    },
+    {
+      "method": "POST",
+      "path": "/accounts/{accountId}/workers/scripts/{scriptName}/domains/changeset",
+      "operationId": "wrangler-workers-create-domain-changeset",
       "scopes": ["workers-scripts.write"]
     }
   ]
