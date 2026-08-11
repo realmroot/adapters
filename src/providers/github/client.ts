@@ -74,8 +74,8 @@ export function createGitHubProvider(input: GitHubClientInput): GitHubProvider {
       return installationTokenSchema.parse(await response.json()).token
     },
 
-    request(request, installationToken) {
-      return githubRequest(request, installationToken, false)
+    request(request, installationToken, mode = 'api') {
+      return githubRequest(request, installationToken, false, mode)
     },
   }
 
@@ -84,17 +84,19 @@ export function createGitHubProvider(input: GitHubClientInput): GitHubProvider {
     return appSchema.parse(await response.json()).permissions
   }
 
-  async function githubRequest(request: Request, token: string, requireSuccess = true) {
+  async function githubRequest(request: Request, token: string, requireSuccess = true, mode: 'api' | 'git' = 'api') {
     const headers = forwardedHeaders(request.headers)
-    headers.set('authorization', `Bearer ${token}`)
+    headers.set('authorization', mode === 'git' ? `Basic ${btoa(`x-access-token:${token}`)}` : `Bearer ${token}`)
     headers.set('user-agent', userAgent)
-    if (!headers.has('accept')) headers.set('accept', 'application/vnd.github+json')
-    if (!headers.has('x-github-api-version')) headers.set('x-github-api-version', githubApiVersion)
+    if (mode === 'api') {
+      if (!headers.has('accept')) headers.set('accept', 'application/vnd.github+json')
+      if (!headers.has('x-github-api-version')) headers.set('x-github-api-version', githubApiVersion)
+    }
     const response = await fetcher(
       new Request(request, {
         headers,
         redirect: 'manual',
-        signal: AbortSignal.timeout(10_000),
+        signal: AbortSignal.timeout(mode === 'git' ? 10 * 60_000 : 30_000),
       }),
     )
     if (requireSuccess && !response.ok) throw providerFailure(response, request.url)

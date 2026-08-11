@@ -15,6 +15,7 @@ const config: GitHubAdapterConfig = {
   realmrootJwksUrl: 'http://127.0.0.1:4189/api/auth/jwks',
   githubApiOrigin: 'https://api.github.com',
   githubUploadsOrigin: 'https://uploads.github.com',
+  githubGitOrigin: 'https://github.com',
   githubAppId: '123',
 }
 
@@ -59,6 +60,66 @@ describe('GitHub adapter contract', () => {
     expect(
       (contract.paths['/repos/{owner}/{repo}/issues'] as { post: { servers?: unknown } }).post.servers,
     ).toBeUndefined()
+  })
+
+  it('[spec: github-adapter/github-native-tool-discovery] advertises Git and GitHub CLI integrations', async () => {
+    const response = await testApp().request('/github')
+    await expect(response.json()).resolves.toMatchObject({
+      toolIntegrations: [
+        { id: 'git', executables: ['git'], protocol: 'git-smart-http' },
+        { id: 'gh', executables: ['gh'], protocol: 'github-http' },
+      ],
+    })
+  })
+
+  it('[spec: github-adapter/github-graphql-proxy] forwards GraphQL with approved installation permissions', async () => {
+    const provider = fakeProvider()
+    provider.request = vi.fn(async (request: Request, token: string, mode) => {
+      expect(request.url).toBe('https://api.github.com/graphql')
+      expect(token).toBe('installation-secret')
+      expect(mode).toBeUndefined()
+      await expect(request.json()).resolves.toEqual({ query: 'query { viewer { login } }' })
+      return Response.json({ data: { viewer: { login: 'realmroot-app' } } })
+    })
+    const response = await testApp({ provider }).request('/github/graphql', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ query: 'query { viewer { login } }' }),
+    })
+    expect(response.status).toBe(200)
+    expect(provider.installationToken).toHaveBeenCalledWith({
+      installationId: 42,
+      permissions: { issues: 'write', metadata: 'read' },
+    })
+  })
+
+  it('[spec: github-adapter/github-git-transport] constrains Smart HTTP fetch and push to repository authority', async () => {
+    const provider = fakeProvider()
+    provider.request = vi.fn(async (request: Request, _token: string, mode) => {
+      expect(mode).toBe('git')
+      return new Response(request.url.includes('receive') ? 'push' : 'fetch')
+    })
+    const authenticated = {
+      authenticate: vi.fn(async () => ({ ...principal, scopes: new Set(['contents:read', 'contents:write']) })),
+    }
+    const app = testApp({ provider, authenticator: authenticated })
+    const fetchResponse = await app.request('/github/git/realmroot/example.git/info/refs?service=git-upload-pack')
+    expect(fetchResponse.status).toBe(200)
+    expect(provider.installationToken).toHaveBeenLastCalledWith({
+      installationId: 42,
+      permissions: { contents: 'read' },
+      repositories: ['example'],
+    })
+    const pushResponse = await app.request('/github/git/realmroot/example.git/git-receive-pack', {
+      method: 'POST',
+      body: 'pack',
+    })
+    expect(pushResponse.status).toBe(200)
+    expect(provider.installationToken).toHaveBeenLastCalledWith({
+      installationId: 42,
+      permissions: { contents: 'write' },
+      repositories: ['example'],
+    })
   })
 
   it('[spec: github-adapter/github-permission-translation] returns permissions as scopes and resources as authorization details', async () => {

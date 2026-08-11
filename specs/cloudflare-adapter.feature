@@ -28,6 +28,22 @@ Feature: Cloudflare OAuth REST adapter
     And the status, body, ETag, pagination, rate-limit, and CF-Ray response data are preserved
     And no write request is automatically retried
 
+  @journey:cloudflare-native-tool-discovery @entrypoint:http
+  Scenario: Cloudflare advertises Wrangler execution
+    When the Agent reads the Cloudflare Resource representation
+    Then it advertises a Wrangler integration with its supported executable names
+    And the integration identifies the local API-base broker protocol it requires
+
+  @journey:cloudflare-wrangler-token-verification @entrypoint:http
+  Scenario: Wrangler verifies its process-local credential before an operation
+    Given the Agent has at least one approved Cloudflare scope
+    When Wrangler calls the Cloudflare token verification endpoint through the adapter
+    Then the adapter authenticates the Agent proof-bound credential
+    And exchanges it for one approved Provider scope only for request-local verification
+    And returns a Wrangler-compatible active credential response without exposing the Provider credential
+    And Wrangler can resolve the Agent-facing user and approved Cloudflare accounts without a personal API token
+    And personal membership roles are omitted because the command runs as the Agent rather than the controller
+
   @journey:cloudflare-audit-privacy @entrypoint:http
   Scenario: Cloudflare transport audit excludes credentials and business payloads
     When a Cloudflare operation completes

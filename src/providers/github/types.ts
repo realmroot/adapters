@@ -11,7 +11,7 @@ export interface GitHubProvider {
   appPermissions(): Promise<GitHubPermissions>
   openApiDocument(): Promise<Response>
   installationToken(input: GitHubInstallationTokenRequest): Promise<string>
-  request(request: Request, installationToken: string): Promise<Response>
+  request(request: Request, installationToken: string, mode?: 'api' | 'git'): Promise<Response>
 }
 
 export type GitHubUser = Readonly<{ id: number; login: string; name: string | null }>
