@@ -1,0 +1,34 @@
+{
+  "Account Filter Lists Edit": {
+    "scopes": ["account-rule-lists.write"],
+    "reason": "Cloudflare renamed Filter Lists to Account Rule Lists in the OAuth scope catalog."
+  },
+  "Account Filter Lists Read": {
+    "scopes": ["account-rule-lists.read"],
+    "reason": "Cloudflare renamed Filter Lists to Account Rule Lists in the OAuth scope catalog."
+  },
+  "Artifacts Edit": {
+    "scopes": ["artifacts.write"],
+    "reason": "The OAuth catalog uses write where the API token group uses edit."
+  },
+  "Browser Rendering Read": {
+    "scopes": ["browser-rendering.read"],
+    "reason": "The OAuth catalog names the Browser Rendering product Browser Run."
+  },
+  "Browser Rendering Write": {
+    "scopes": ["browser-rendering.write"],
+    "reason": "The OAuth catalog names the Browser Rendering product Browser Run."
+  },
+  "Zone DNS Edit": {
+    "scopes": ["dns.write"],
+    "reason": "The OAuth catalog uses write where the API token group uses edit."
+  },
+  "Zone Zone Edit": {
+    "scopes": ["zone.write"],
+    "reason": "The API token group contains a duplicated Zone prefix and uses edit where the OAuth catalog uses write."
+  },
+  "Zone Zone Read": {
+    "scopes": ["zone.read"],
+    "reason": "The API token group contains a duplicated Zone prefix."
+  }
+}

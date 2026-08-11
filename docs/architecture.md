@@ -59,13 +59,14 @@ the provider. It is never returned across the Agent boundary.
 ## Deployment boundary
 
 The adapter is deployed as an independent Cloudflare Worker. It does not run
-inside the Realmroot Worker and does not share Realmroot's database. Each
-deployment owns its provider secrets and a D1 database containing only adapter
-runtime state: provider account bindings and contexts, encrypted provider
-credentials, one-time broker intents, DPoP replay claims, webhook replay
-claims, and correlated audit events.
-Provider credentials never cross into Realmroot. The Worker runtime uses Web
-Crypto and Fetch APIs without a Node process or filesystem.
+inside the Realmroot Worker and does not share Realmroot's database. A brokered
+provider may keep provider bindings and encrypted credentials in adapter D1.
+A connector-backed provider instead keeps OAuth credentials only in Realmroot
+and lets a confidential Adapter Application exchange the current Agent token
+for a request-local provider access token. Adapter D1 then contains only
+runtime replay and audit state for that provider. Provider credentials never
+cross the Agent boundary. The Worker runtime uses Web Crypto and Fetch APIs
+without a Node process or filesystem.
 
 ## Identity model
 

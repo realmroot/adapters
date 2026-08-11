@@ -22,7 +22,8 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "docs:check": "ruby scripts/check-docs.rb",
-    "sync:github-openapi": "node scripts/sync-github-openapi.mjs"
+    "sync:github-openapi": "node scripts/sync-github-openapi.mjs",
+    "sync:cloudflare-openapi": "node scripts/sync-cloudflare-openapi.mjs"
   },
   "dependencies": {
     "graphql": "^17.0.2",

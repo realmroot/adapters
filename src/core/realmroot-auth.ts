@@ -11,6 +11,7 @@ import { sha256Base64Url } from './digest.js'
 import { unauthorized } from './problem.js'
 
 export type AgentPrincipal = Readonly<{
+  subjectToken?: string
   subject: string
   issuer: string
   actor: Readonly<{ issuer: string; subject: string; profile: 'ai_agent' }>
@@ -66,6 +67,7 @@ export function createRealmrootAuthenticator(input: {
       }
 
       return Object.freeze({
+        subjectToken: token,
         subject: access.payload.sub,
         issuer: input.issuer,
         actor: Object.freeze({ issuer: actor.iss, subject: actor.sub, profile: 'ai_agent' as const }),

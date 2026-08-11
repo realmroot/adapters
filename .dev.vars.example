@@ -11,6 +11,7 @@ GITHUB_WEBHOOK_SECRET=replace-with-github-app-webhook-secret
 REALMROOT_APPLICATION_CLIENT_ID=replace-with-realmroot-application-client-id
 REALMROOT_APPLICATION_CLIENT_SECRET=replace-with-realmroot-application-client-secret
 REALMROOT_GITHUB_RESOURCE_SERVER_ID=replace-with-github-resource-server-id
+CLOUDFLARE_API_ORIGIN=https://api.cloudflare.com/client/v4
 LINEAR_API_ORIGIN=https://api.linear.app
 LINEAR_AUTHORIZATION_ORIGIN=https://linear.app
 LINEAR_CLIENT_ID=replace-with-linear-oauth-client-id

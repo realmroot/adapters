@@ -2,7 +2,10 @@ import { createApp } from './app.js'
 import { loadConfig } from './config.js'
 import { createRealmrootConnectionEventSink } from './core/connection-events.js'
 import { createBrokerRequestVerifiers } from './core/connection-request.js'
+import { createRealmrootTokenExchangeClient } from './core/oauth-client.js'
 import { createRealmrootAuthenticator } from './core/realmroot-auth.js'
+import { createCloudflareAdapter } from './providers/cloudflare/adapter.js'
+import { loadCloudflareConfig } from './providers/cloudflare/config.js'
 import { createGitHubAdapter } from './providers/github/adapter.js'
 import { loadGitHubConfig } from './providers/github/config.js'
 import { D1GitHubConnections } from './providers/github/connections.js'
@@ -17,6 +20,7 @@ export default {
   async fetch(request, env, executionContext) {
     const config = loadConfig(env, request.url)
     const githubConfig = loadGitHubConfig(env, config)
+    const cloudflareConfig = loadCloudflareConfig(env, config)
     const linearConfig = loadLinearConfig(env, config)
     const state = new D1RuntimeState(env.DB)
     const githubConnections = new D1GitHubConnections(env.DB, state)
@@ -47,7 +51,7 @@ export default {
       if (!connectionEvents) throw new Error('Pending GitHub Connection Events require backchannel configuration.')
       await deliverPendingGitHubConnectionEvents({ connections: githubConnections, events: connectionEvents })
     }
-    const app = createApp([
+    const adapters = [
       createGitHubAdapter(githubConfig, {
         authenticator,
         audit: (record) => state.recordAudit(record),
@@ -64,7 +68,23 @@ export default {
         revocationRequestVerifier: linearBrokerRequests.verifyRevocation,
         ...(linearConnections ? { connections: linearConnections } : {}),
       }),
-    ])
+    ]
+    if (cloudflareConfig) {
+      adapters.push(
+        createCloudflareAdapter(cloudflareConfig, {
+          authenticator,
+          exchange: createRealmrootTokenExchangeClient({
+            issuer: config.realmrootIssuer,
+            clientId: cloudflareConfig.applicationClientId,
+            clientSecret: cloudflareConfig.applicationClientSecret,
+            fetch,
+          }),
+          audit: (record) => state.recordAudit(record),
+          fetch,
+        }),
+      )
+    }
+    const app = createApp(adapters)
     return app.fetch(request, env, executionContext)
   },
 } satisfies ExportedHandler<Env>
