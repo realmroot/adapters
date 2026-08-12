@@ -44,6 +44,34 @@
       "path": "/accounts/{accountId}/workers/scripts/{scriptName}/domains/changeset",
       "operationId": "wrangler-workers-create-domain-changeset",
       "scopes": ["workers-scripts.write"]
+    },
+    {
+      "method": "POST",
+      "path": "/accounts/{account_id}/d1/database/{database_id}/export",
+      "operationId": "wrangler-d1-export-database",
+      "officialOperationId": "d1-export-database",
+      "scopes": ["d1.read"]
+    },
+    {
+      "method": "POST",
+      "path": "/accounts/{account_id}/d1/database/{database_id}/import",
+      "operationId": "wrangler-d1-import-database",
+      "officialOperationId": "d1-import-database",
+      "scopes": ["d1.write"]
+    },
+    {
+      "method": "POST",
+      "path": "/accounts/{account_id}/d1/database/{database_id}/time_travel/restore",
+      "operationId": "wrangler-d1-time-travel-restore",
+      "officialOperationId": "d1-time-travel-restore",
+      "scopes": ["d1.write"]
+    },
+    {
+      "method": "PATCH",
+      "path": "/accounts/{account_id}/workers/scripts/{script_name}/secrets-bulk",
+      "operationId": "wrangler-workers-patch-script-secrets-bulk",
+      "officialOperationId": "worker-patch-script-secrets-bulk",
+      "scopes": ["workers-scripts.write"]
     }
   ]
 }

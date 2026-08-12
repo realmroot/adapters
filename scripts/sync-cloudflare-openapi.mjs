@@ -73,6 +73,20 @@ for (const [path, pathItem] of Object.entries(document.paths)) {
 for (const operation of wranglerCompatibility.operations) {
   const method = operation.method.toLowerCase()
   if (!methods.includes(method)) throw new Error(`Invalid Wrangler compatibility method: ${operation.method}`)
+  if (operation.officialOperationId) {
+    const exclusionIndex = exclusions.findIndex(
+      (candidate) =>
+        candidate.method === operation.method &&
+        candidate.path === operation.path &&
+        candidate.operationId === operation.officialOperationId,
+    )
+    if (exclusionIndex === -1) {
+      throw new Error(
+        `Wrangler compatibility operation does not replace the declared official exclusion: ${operation.method} ${operation.path}`,
+      )
+    }
+    exclusions.splice(exclusionIndex, 1)
+  }
   if (paths[operation.path]?.[method]) {
     throw new Error(
       `Wrangler compatibility operation duplicates the official Cloudflare schema: ${operation.method} ${operation.path}`,
@@ -99,9 +113,15 @@ for (const operation of wranglerCompatibility.operations) {
       package: wranglerCompatibility.package,
       version: wranglerCompatibility.version,
       source: wranglerCompatibility.source,
+      ...(operation.officialOperationId ? { officialOperationId: operation.officialOperationId } : {}),
     },
   }
-  routes.push(operation)
+  routes.push({
+    method: operation.method,
+    path: operation.path,
+    operationId: operation.operationId,
+    scopes: operation.scopes,
+  })
 }
 
 for (const key of Object.keys(overrides)) {

@@ -18,9 +18,12 @@ describe('generated Cloudflare OpenAPI', () => {
     expect(source.commit).toMatch(/^[a-f0-9]{40}$/)
     expect(source.openapiSha256).toMatch(/^[a-f0-9]{64}$/)
     expect(catalog.sha256).toBe(createHash('sha256').update(JSON.stringify(catalog.scopes)).digest('hex'))
-    expect(cloudflareOperations).toHaveLength(2659)
-    expect(exclusions.operations).toHaveLength(634)
-    expect(cloudflareOperations.length - wranglerCompatibility.operations.length + exclusions.operations.length).toBe(
+    expect(cloudflareOperations).toHaveLength(2663)
+    expect(exclusions.operations).toHaveLength(630)
+    const additiveCompatibilityOperations = wranglerCompatibility.operations.filter(
+      (operation: { officialOperationId?: string }) => !operation.officialOperationId,
+    )
+    expect(cloudflareOperations.length - additiveCompatibilityOperations.length + exclusions.operations.length).toBe(
       3286,
     )
 
@@ -108,6 +111,18 @@ describe('generated Cloudflare OpenAPI', () => {
       cloudflareOperations.find((candidate) => candidate.method === 'POST' && candidate.path === domainChangesetPath),
     ).toMatchObject({ path: domainChangesetPath, scopes: ['workers-scripts.write'] })
     expect(openapi.paths[domainChangesetPath]?.post.security).toEqual([{ realmrootOidc: ['workers-scripts.write'] }])
+
+    for (const [method, path, scopes] of [
+      ['post', '/accounts/{account_id}/d1/database/{database_id}/export', ['d1.read']],
+      ['post', '/accounts/{account_id}/d1/database/{database_id}/import', ['d1.write']],
+      ['post', '/accounts/{account_id}/d1/database/{database_id}/time_travel/restore', ['d1.write']],
+      ['patch', '/accounts/{account_id}/workers/scripts/{script_name}/secrets-bulk', ['workers-scripts.write']],
+    ] as const) {
+      expect(openapi.paths[path]?.[method]).toMatchObject({
+        security: scopes.map((scope) => ({ realmrootOidc: [scope] })),
+        'x-realmroot-compatibility-source': { officialOperationId: expect.any(String) },
+      })
+    }
   })
 })
 
