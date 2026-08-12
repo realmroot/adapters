@@ -1126,27 +1126,6 @@
       "permissionGroups": null
     },
     {
-      "method": "POST",
-      "path": "/accounts/{account_id}/d1/database/{database_id}/export",
-      "operationId": "d1-export-database",
-      "reason": "Cloudflare OpenAPI does not declare an API token permission group; OAuth authority cannot be proven.",
-      "permissionGroups": null
-    },
-    {
-      "method": "POST",
-      "path": "/accounts/{account_id}/d1/database/{database_id}/import",
-      "operationId": "d1-import-database",
-      "reason": "Cloudflare OpenAPI does not declare an API token permission group; OAuth authority cannot be proven.",
-      "permissionGroups": null
-    },
-    {
-      "method": "POST",
-      "path": "/accounts/{account_id}/d1/database/{database_id}/time_travel/restore",
-      "operationId": "d1-time-travel-restore",
-      "reason": "Cloudflare OpenAPI does not declare an API token permission group; OAuth authority cannot be proven.",
-      "permissionGroups": null
-    },
-    {
       "method": "GET",
       "path": "/accounts/{account_id}/devices",
       "operationId": "devices-list-devices",
@@ -3563,13 +3542,6 @@
       "method": "PATCH",
       "path": "/accounts/{account_id}/workers/dispatch/namespaces/{dispatch_namespace}/scripts/{script_name}/secrets-bulk",
       "operationId": "namespace-worker-patch-script-secrets-bulk",
-      "reason": "Cloudflare OpenAPI does not declare an API token permission group; OAuth authority cannot be proven.",
-      "permissionGroups": null
-    },
-    {
-      "method": "PATCH",
-      "path": "/accounts/{account_id}/workers/scripts/{script_name}/secrets-bulk",
-      "operationId": "worker-patch-script-secrets-bulk",
       "reason": "Cloudflare OpenAPI does not declare an API token permission group; OAuth authority cannot be proven.",
       "permissionGroups": null
     },
