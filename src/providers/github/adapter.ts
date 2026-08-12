@@ -8,6 +8,11 @@ import type { AgentPrincipal, RealmrootAuthenticator } from '../../core/realmroo
 import { createGitHubConnectionProvider, createGitHubProvider } from './client.js'
 import type { GitHubAdapterConfig } from './config.js'
 import type { GitHubAuthorizationContext, GitHubConnectionIntent, GitHubConnectionStore } from './connections.js'
+import {
+  createGitHubPullRequestWithRest,
+  parseGitHubCreatePullRequest,
+  resolveGitHubRepositoryName,
+} from './graphql.js'
 import { githubManifest } from './manifest.js'
 import { githubOpenApi } from './openapi.js'
 import { resolveGitHubOperationPermissions } from './operation-permissions.js'
@@ -246,6 +251,48 @@ export function createGitHubAdapter(
         agentInfo,
         requestId: c.get('requestId'),
       })
+      const createPullRequest = parseGitHubCreatePullRequest(body)
+      if (createPullRequest) {
+        const requiredScopes = new Set(['metadata:read', 'pull_requests:write'])
+        const missingScopes = [...requiredScopes].filter((scope) => !principal.scopes.has(scope))
+        if (missingScopes.length > 0) {
+          throw insufficientScope(`The Agent token does not authorize ${missingScopes.join(', ')}.`, [
+            [...requiredScopes],
+          ])
+        }
+        const lookupToken = await provider.installationToken({
+          installationId: installation.installationId,
+          permissions: scopesToPermissions(new Set(['metadata:read']), available),
+          ...(installation.repositorySelection === 'selected'
+            ? {
+                repositories: installation.repositories.map(
+                  (repository) => repository.fullName.split('/').at(-1) as string,
+                ),
+              }
+            : {}),
+        })
+        const nameWithOwner = await resolveGitHubRepositoryName({
+          provider,
+          token: lookupToken,
+          apiOrigin: config.githubApiOrigin,
+          repositoryId: createPullRequest.repositoryId,
+        })
+        const repository = repositoryTarget(`/repos/${nameWithOwner}`, installation)
+        const createToken = await provider.installationToken({
+          installationId: installation.installationId,
+          permissions: scopesToPermissions(new Set(['pull_requests:write']), available),
+          repositories: [repository as string],
+        })
+        const response = await createGitHubPullRequestWithRest({
+          provider,
+          token: createToken,
+          apiOrigin: config.githubApiOrigin,
+          nameWithOwner,
+          pullRequest: createPullRequest,
+        })
+        await auditNative(c, principal, installation, 'graphql-create-pull-request-rest-compatibility', response.status)
+        return response
+      }
       const token = await provider.installationToken({
         installationId: installation.installationId,
         permissions,

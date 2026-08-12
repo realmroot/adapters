@@ -34,7 +34,15 @@ describe('GitHub adapter contract', () => {
     expect(await metadata.json()).toMatchObject({
       resource: 'http://127.0.0.1:4103/github',
       authorization_servers: [config.realmrootIssuer],
-      scopes_supported: ['contents:read', 'contents:write', 'issues:read', 'issues:write', 'metadata:read'],
+      scopes_supported: [
+        'contents:read',
+        'contents:write',
+        'issues:read',
+        'issues:write',
+        'metadata:read',
+        'pull_requests:read',
+        'pull_requests:write',
+      ],
       account_connection_modes_supported: ['brokered'],
       account_connection_authorization_details_endpoint:
         'http://127.0.0.1:4103/github/account-connection-authorization-details',
@@ -162,26 +170,36 @@ describe('GitHub adapter contract', () => {
 
   it('[spec: github-adapter/github-graphql-proxy] preserves the GitHub CLI createPullRequest mutation', async () => {
     const provider = fakeProvider()
-    provider.request = vi.fn(async (request: Request) => {
-      await expect(request.json()).resolves.toEqual({
-        query:
-          'mutation PullRequestCreate($input: CreatePullRequestInput!) { createPullRequest(input: $input) { pullRequest { id url } } }',
-        variables: {
-          input: {
-            repositoryId: 'repository-1',
-            baseRefName: 'main',
-            headRefName: 'codex/fix',
-            title: 'Fix adapter',
-            body: 'Details',
-            draft: true,
-          },
-        },
+    provider.request = vi
+      .fn()
+      .mockImplementationOnce(async (request: Request, token: string) => {
+        expect(request.url).toBe('https://api.github.com/graphql')
+        expect(token).toBe('installation-secret')
+        await expect(request.json()).resolves.toMatchObject({ variables: { id: 'repository-1' } })
+        return Response.json({ data: { node: { nameWithOwner: 'realmroot/example' } } })
       })
-      return Response.json({
-        data: { createPullRequest: { pullRequest: { id: 'pull-request-1', url: 'https://github.test/pull/1' } } },
+      .mockImplementationOnce(async (request: Request, token: string) => {
+        expect(request.url).toBe('https://api.github.com/repos/realmroot/example/pulls')
+        expect(token).toBe('installation-secret')
+        await expect(request.json()).resolves.toEqual({
+          title: 'Fix adapter',
+          head: 'codex/fix',
+          base: 'main',
+          body: 'Details',
+          draft: true,
+          maintainer_can_modify: true,
+        })
+        return Response.json({ node_id: 'pull-request-1', html_url: 'https://github.test/pull/1' }, { status: 201 })
       })
-    })
-    const response = await testApp({ provider }).request('/github/graphql', {
+    const response = await testApp({
+      provider,
+      authenticator: {
+        authenticate: vi.fn(async () => ({
+          ...principal,
+          scopes: new Set(['metadata:read', 'pull_requests:write']),
+        })),
+      },
+    }).request('/github/graphql', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
       body: JSON.stringify({
@@ -195,6 +213,7 @@ describe('GitHub adapter contract', () => {
             title: 'Fix adapter',
             body: 'Details',
             draft: true,
+            maintainerCanModify: true,
           },
         },
       }),
@@ -203,6 +222,15 @@ describe('GitHub adapter contract', () => {
     expect(response.status).toBe(200)
     await expect(response.json()).resolves.toMatchObject({
       data: { createPullRequest: { pullRequest: { url: 'https://github.test/pull/1' } } },
+    })
+    expect(provider.installationToken).toHaveBeenNthCalledWith(1, {
+      installationId: 42,
+      permissions: { metadata: 'read' },
+    })
+    expect(provider.installationToken).toHaveBeenNthCalledWith(2, {
+      installationId: 42,
+      permissions: { pull_requests: 'write' },
+      repositories: ['example'],
     })
   })
 
@@ -587,7 +615,9 @@ function testApp(
 
 function fakeProvider(): GitHubProvider {
   return {
-    appPermissions: vi.fn(async () => ({ contents: 'write', metadata: 'read', issues: 'write' }) as const),
+    appPermissions: vi.fn(
+      async () => ({ contents: 'write', metadata: 'read', issues: 'write', pull_requests: 'write' }) as const,
+    ),
     openApiDocument: vi.fn(async () =>
       Response.json({
         openapi: '3.0.3',
@@ -629,7 +659,15 @@ function fakeConnections(): GitHubConnectionStore {
         installationId: 42,
         accountLogin: 'realmroot',
         targetType: 'Organization',
-        scopes: ['contents:read', 'contents:write', 'issues:read', 'issues:write', 'metadata:read'],
+        scopes: [
+          'contents:read',
+          'contents:write',
+          'issues:read',
+          'issues:write',
+          'metadata:read',
+          'pull_requests:read',
+          'pull_requests:write',
+        ],
         repositorySelection: 'all' as const,
         repositories: [],
       },
@@ -639,7 +677,15 @@ function fakeConnections(): GitHubConnectionStore {
         installationId: 42,
         accountLogin: 'realmroot',
         targetType: 'Organization',
-        scopes: ['contents:read', 'contents:write', 'issues:read', 'issues:write', 'metadata:read'],
+        scopes: [
+          'contents:read',
+          'contents:write',
+          'issues:read',
+          'issues:write',
+          'metadata:read',
+          'pull_requests:read',
+          'pull_requests:write',
+        ],
         repositorySelection: 'all' as const,
         repositories: [],
       },
