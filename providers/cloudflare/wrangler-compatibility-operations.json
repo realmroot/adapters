@@ -10,6 +10,12 @@
       "scopes": ["workers-scripts.read"]
     },
     {
+      "method": "DELETE",
+      "path": "/accounts/{account_id}/workers/services/{service_name}",
+      "operationId": "wrangler-workers-delete-service",
+      "scopes": ["workers-scripts.write"]
+    },
+    {
       "method": "PUT",
       "path": "/accounts/{account_id}/workers/scripts/{script_name}/domains/records",
       "operationId": "wrangler-workers-replace-domain-records",

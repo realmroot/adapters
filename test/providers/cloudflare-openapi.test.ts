@@ -18,7 +18,7 @@ describe('generated Cloudflare OpenAPI', () => {
     expect(source.commit).toMatch(/^[a-f0-9]{40}$/)
     expect(source.openapiSha256).toMatch(/^[a-f0-9]{64}$/)
     expect(catalog.sha256).toBe(createHash('sha256').update(JSON.stringify(catalog.scopes)).digest('hex'))
-    expect(cloudflareOperations).toHaveLength(2658)
+    expect(cloudflareOperations).toHaveLength(2659)
     expect(exclusions.operations).toHaveLength(634)
     expect(cloudflareOperations.length - wranglerCompatibility.operations.length + exclusions.operations.length).toBe(
       3286,
@@ -71,6 +71,10 @@ describe('generated Cloudflare OpenAPI', () => {
       scopes: ['workers-scripts.read'],
     })
     expect(openapi.paths[path]?.get.security).toEqual([{ realmrootOidc: ['workers-scripts.read'] }])
+    expect(openapi.paths[path]?.delete).toMatchObject({
+      operationId: 'wrangler-workers-delete-service',
+      security: [{ realmrootOidc: ['workers-scripts.write'] }],
+    })
 
     const domainRecordsPath = '/accounts/{account_id}/workers/scripts/{script_name}/domains/records'
     expect(
