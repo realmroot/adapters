@@ -37,7 +37,8 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "realmroot-adapters-db",
+      "database_name": "realmroot-adapters",
+      "database_id": "6727387a-6897-4f2a-986f-e974a2008866",
       "migrations_dir": "./migrations"
     }
   ],
