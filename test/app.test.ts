@@ -160,6 +160,52 @@ describe('GitHub adapter contract', () => {
     })
   })
 
+  it('[spec: github-adapter/github-graphql-proxy] preserves the GitHub CLI createPullRequest mutation', async () => {
+    const provider = fakeProvider()
+    provider.request = vi.fn(async (request: Request) => {
+      await expect(request.json()).resolves.toEqual({
+        query:
+          'mutation PullRequestCreate($input: CreatePullRequestInput!) { createPullRequest(input: $input) { pullRequest { id url } } }',
+        variables: {
+          input: {
+            repositoryId: 'repository-1',
+            baseRefName: 'main',
+            headRefName: 'codex/fix',
+            title: 'Fix adapter',
+            body: 'Details',
+            draft: true,
+          },
+        },
+      })
+      return Response.json({
+        data: { createPullRequest: { pullRequest: { id: 'pull-request-1', url: 'https://github.test/pull/1' } } },
+      })
+    })
+    const response = await testApp({ provider }).request('/github/graphql', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify({
+        query:
+          'mutation PullRequestCreate($input: CreatePullRequestInput!) { createPullRequest(input: $input) { pullRequest { id url } } }',
+        variables: {
+          input: {
+            repositoryId: 'repository-1',
+            baseRefName: 'main',
+            headRefName: 'codex/fix',
+            title: 'Fix adapter',
+            body: 'Details',
+            draft: true,
+          },
+        },
+      }),
+    })
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      data: { createPullRequest: { pullRequest: { url: 'https://github.test/pull/1' } } },
+    })
+  })
+
   it('[spec: github-adapter/github-git-transport] constrains Smart HTTP fetch and push to repository authority', async () => {
     const provider = fakeProvider()
     provider.request = vi.fn(async (request: Request, _token: string, mode) => {

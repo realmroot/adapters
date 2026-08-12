@@ -24,16 +24,22 @@ export function createRealmrootTokenExchangeClient(input: {
   clientSecret: string
   fetch?: typeof fetch
   timeoutMs?: number
+  retryBaseDelayMs?: number
 }): RealmrootTokenExchangeClient {
   const request = input.fetch ?? fetch
-  const timeoutMs = input.timeoutMs ?? 10_000
+  const timeoutMs = input.timeoutMs ?? 15_000
+  const retryBaseDelayMs = input.retryBaseDelayMs ?? 100
   return {
     async exchange(exchange) {
-      const metadataResponse = await request(`${input.issuer}/.well-known/openid-configuration`, {
-        signal: AbortSignal.timeout(timeoutMs),
-      }).catch(() => {
-        throw unavailable('Realmroot issuer discovery is temporarily unavailable.')
-      })
+      const deadline = Date.now() + timeoutMs
+      const metadataResponse = await transientRequest(
+        request,
+        `${input.issuer}/.well-known/openid-configuration`,
+        {},
+        deadline,
+        retryBaseDelayMs,
+        'Realmroot issuer discovery is temporarily unavailable.',
+      )
       if (!metadataResponse.ok) throw unavailable('Realmroot issuer discovery is temporarily unavailable.')
       const metadata = discoverySchema.safeParse(await metadataResponse.json().catch(() => null))
       if (!metadata.success) throw unavailable('Realmroot issuer discovery returned an invalid document.')
@@ -46,17 +52,21 @@ export function createRealmrootTokenExchangeClient(input: {
         audience: exchange.audience,
         scope: [...exchange.scopes].sort().join(' '),
       })
-      const response = await request(metadata.data.token_endpoint, {
-        method: 'POST',
-        headers: {
-          authorization: `Basic ${btoa(`${input.clientId}:${input.clientSecret}`)}`,
-          'content-type': 'application/x-www-form-urlencoded',
+      const response = await transientRequest(
+        request,
+        metadata.data.token_endpoint,
+        {
+          method: 'POST',
+          headers: {
+            authorization: `Basic ${btoa(`${input.clientId}:${input.clientSecret}`)}`,
+            'content-type': 'application/x-www-form-urlencoded',
+          },
+          body: form,
         },
-        body: form,
-        signal: AbortSignal.timeout(timeoutMs),
-      }).catch(() => {
-        throw unavailable('Realmroot token exchange is temporarily unavailable.')
-      })
+        deadline,
+        retryBaseDelayMs,
+        'Realmroot token exchange is temporarily unavailable.',
+      )
       if (!response.ok) {
         const retryAfter = response.headers.get('retry-after')
         throw new HttpProblem(
@@ -76,6 +86,39 @@ export function createRealmrootTokenExchangeClient(input: {
       }
     },
   }
+}
+
+async function transientRequest(
+  request: typeof fetch,
+  target: string,
+  init: RequestInit,
+  deadline: number,
+  retryBaseDelayMs: number,
+  failureDetail: string,
+) {
+  const maxAttempts = 3
+  for (let attempt = 0; ; attempt += 1) {
+    const remainingMs = deadline - Date.now()
+    if (remainingMs <= 0) throw unavailable(failureDetail)
+    try {
+      const response = await request(target, { ...init, signal: AbortSignal.timeout(remainingMs) })
+      if (!isTransient(response.status) || attempt === maxAttempts - 1) return response
+      await response.body?.cancel()
+    } catch {
+      if (attempt === maxAttempts - 1) throw unavailable(failureDetail)
+    }
+    const backoffMs = Math.floor(retryBaseDelayMs * (2 ** attempt + Math.random()))
+    const delayMs = Math.min(backoffMs, Math.max(0, deadline - Date.now()))
+    if (delayMs > 0) await delay(delayMs)
+  }
+}
+
+function isTransient(status: number) {
+  return status === 408 || status === 429 || status >= 500
+}
+
+function delay(milliseconds: number) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds))
 }
 
 function unavailable(detail: string) {

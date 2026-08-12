@@ -59,4 +59,114 @@ describe('Realmroot token-exchange client', () => {
       client.exchange({ subjectToken: 'agent-token', audience: 'https://adapter.example', scopes: ['read'] }),
     ).rejects.not.toThrow('provider-token-secret')
   })
+
+  it('retries transient discovery and token endpoint failures within one exchange deadline', async () => {
+    const request = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError('network reset'))
+      .mockResolvedValueOnce(Response.json({ token_endpoint: 'https://id.example/token' }))
+      .mockResolvedValueOnce(new Response(null, { status: 503 }))
+      .mockResolvedValueOnce(
+        Response.json({
+          access_token: 'provider-token',
+          token_type: 'Bearer',
+          expires_in: 300,
+          scope: 'workers-scripts.read',
+        }),
+      )
+    const client = createRealmrootTokenExchangeClient({
+      issuer: 'https://id.example',
+      clientId: 'adapter',
+      clientSecret: 'secret',
+      fetch: request,
+      retryBaseDelayMs: 1,
+    })
+
+    await expect(
+      client.exchange({
+        subjectToken: 'agent-token',
+        audience: 'https://adapter.example/cloudflare',
+        scopes: ['workers-scripts.read'],
+      }),
+    ).resolves.toEqual({
+      accessToken: 'provider-token',
+      expiresIn: 300,
+      scopes: new Set(['workers-scripts.read']),
+    })
+    expect(request).toHaveBeenCalledTimes(4)
+  })
+
+  it('does not retry a non-transient token denial', async () => {
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json({ token_endpoint: 'https://id.example/token' }))
+      .mockResolvedValueOnce(new Response(null, { status: 403 }))
+    const client = createRealmrootTokenExchangeClient({
+      issuer: 'https://id.example',
+      clientId: 'adapter',
+      clientSecret: 'secret',
+      fetch: request,
+      retryBaseDelayMs: 0,
+    })
+
+    await expect(
+      client.exchange({ subjectToken: 'agent-token', audience: 'https://adapter.example', scopes: ['read'] }),
+    ).rejects.toMatchObject({ status: 403 })
+    expect(request).toHaveBeenCalledTimes(2)
+  })
+
+  it('surfaces one stable unavailable error after transient discovery attempts are exhausted', async () => {
+    const request = vi.fn().mockRejectedValue(new TypeError('network reset'))
+    const client = createRealmrootTokenExchangeClient({
+      issuer: 'https://id.example',
+      clientId: 'adapter',
+      clientSecret: 'secret',
+      fetch: request,
+      retryBaseDelayMs: 0,
+    })
+
+    await expect(
+      client.exchange({ subjectToken: 'agent-token', audience: 'https://adapter.example', scopes: ['read'] }),
+    ).rejects.toMatchObject({
+      status: 503,
+      message: 'Realmroot issuer discovery is temporarily unavailable.',
+    })
+    expect(request).toHaveBeenCalledTimes(3)
+  })
+
+  it('preserves Retry-After after the final transient token endpoint response', async () => {
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json({ token_endpoint: 'https://id.example/token' }))
+      .mockResolvedValue(new Response(null, { status: 503, headers: { 'Retry-After': '2' } }))
+    const client = createRealmrootTokenExchangeClient({
+      issuer: 'https://id.example',
+      clientId: 'adapter',
+      clientSecret: 'secret',
+      fetch: request,
+      retryBaseDelayMs: 0,
+    })
+
+    await expect(
+      client.exchange({ subjectToken: 'agent-token', audience: 'https://adapter.example', scopes: ['read'] }),
+    ).rejects.toMatchObject({ status: 503, headers: { 'Retry-After': '2' } })
+    expect(request).toHaveBeenCalledTimes(4)
+  })
+
+  it('does not start discovery after the total exchange deadline has elapsed', async () => {
+    const request = vi.fn()
+    const client = createRealmrootTokenExchangeClient({
+      issuer: 'https://id.example',
+      clientId: 'adapter',
+      clientSecret: 'secret',
+      fetch: request,
+      timeoutMs: 0,
+      retryBaseDelayMs: 0,
+    })
+
+    await expect(
+      client.exchange({ subjectToken: 'agent-token', audience: 'https://adapter.example', scopes: ['read'] }),
+    ).rejects.toMatchObject({ status: 503 })
+    expect(request).not.toHaveBeenCalled()
+  })
 })
