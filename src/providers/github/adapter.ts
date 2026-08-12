@@ -239,6 +239,13 @@ export function createGitHubAdapter(
       const installation = await selectedInstallation(principal)
       const available = scopesToPermissions(new Set(installation.scopes), await provider.appPermissions())
       const permissions = scopesToPermissions(principal.scopes, available)
+      const body = await transformGitHubRequest({
+        request: c.req.raw,
+        upstreamPath: '/graphql',
+        principal,
+        agentInfo,
+        requestId: c.get('requestId'),
+      })
       const token = await provider.installationToken({
         installationId: installation.installationId,
         permissions,
@@ -255,7 +262,7 @@ export function createGitHubAdapter(
         new Request(upstream, {
           method: 'POST',
           headers: c.req.raw.headers,
-          body: c.req.raw.body,
+          body,
           duplex: 'half',
         } as RequestInit & { duplex: 'half' }),
         token,
