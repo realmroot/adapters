@@ -34,6 +34,7 @@ Feature: Cloudflare OAuth REST adapter
     Then it advertises a Wrangler integration with its supported executable names
     And the integration identifies the local API-base broker protocol it requires
     And Wrangler-required Cloudflare routes missing from the official schema are explicitly pinned and scoped
+    And Wrangler can inspect, deploy, and delete a Worker through the broker
 
   @journey:cloudflare-native-tool-scope-challenge @entrypoint:http
   Scenario: Cloudflare reports the authority required by a rejected native request

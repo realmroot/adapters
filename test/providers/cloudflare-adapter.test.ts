@@ -136,6 +136,28 @@ describe('Cloudflare adapter', () => {
     expect(upstream).toHaveBeenCalledTimes(1)
   })
 
+  it('[spec: cloudflare-adapter/cloudflare-native-tool-discovery] forwards Wrangler service deletion with write authority', async () => {
+    const upstream = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(input, init)
+      expect(request.url).toBe('https://api.cloudflare.com/client/v4/accounts/account-1/workers/services/wallet')
+      expect(request.method).toBe('DELETE')
+      return Response.json({ success: true, result: null })
+    })
+    const { app, exchange } = fixture({ upstream, principal: principal(['workers-scripts.write']) })
+
+    const response = await app.request('/cloudflare/accounts/account-1/workers/services/wallet', {
+      method: 'DELETE',
+    })
+
+    expect(response.status).toBe(200)
+    expect(exchange).toHaveBeenCalledWith({
+      subjectToken: 'realmroot-agent-token',
+      audience: resource,
+      scopes: ['workers-scripts.write'],
+    })
+    expect(upstream).toHaveBeenCalledTimes(1)
+  })
+
   it('[spec: cloudflare-adapter/cloudflare-native-tool-discovery] forwards Wrangler custom domains with write authority', async () => {
     const upstream = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const request = input instanceof Request ? input : new Request(input, init)
