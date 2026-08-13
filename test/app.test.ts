@@ -311,16 +311,18 @@ describe('GitHub adapter contract', () => {
       return new Response(request.url.includes('receive') ? 'push' : 'fetch')
     })
     const connections = fakeConnections()
-    connections.activeInstallationsForOwner = vi.fn(async () => [
-      {
-        installationId: 42,
-        accountLogin: 'realmroot',
-        targetType: 'Organization',
-        scopes: ['contents:read', 'contents:write', 'workflows:read', 'workflows:write'],
-        repositorySelection: 'all' as const,
-        repositories: [],
-      },
-    ])
+    connections.externalAuthorization = vi.fn(async () =>
+      authorizationWithContexts([
+        {
+          installationId: 42,
+          accountLogin: 'realmroot',
+          targetType: 'Organization',
+          scopes: ['contents:read', 'contents:write', 'workflows:read', 'workflows:write'],
+          repositorySelection: 'all' as const,
+          repositories: [],
+        },
+      ]),
+    )
     const authenticated = {
       authenticate: vi.fn(async () => ({
         ...principal,
@@ -351,16 +353,18 @@ describe('GitHub adapter contract', () => {
     const provider = fakeProvider()
     provider.appPermissions = vi.fn(async () => ({ contents: 'write', workflows: 'write' }) as const)
     const connections = fakeConnections()
-    connections.activeInstallationsForOwner = vi.fn(async () => [
-      {
-        installationId: 42,
-        accountLogin: 'realmroot',
-        targetType: 'Organization',
-        scopes: ['contents:read', 'contents:write', 'workflows:read', 'workflows:write'],
-        repositorySelection: 'all' as const,
-        repositories: [],
-      },
-    ])
+    connections.externalAuthorization = vi.fn(async () =>
+      authorizationWithContexts([
+        {
+          installationId: 42,
+          accountLogin: 'realmroot',
+          targetType: 'Organization',
+          scopes: ['contents:read', 'contents:write', 'workflows:read', 'workflows:write'],
+          repositorySelection: 'all' as const,
+          repositories: [],
+        },
+      ]),
+    )
     const app = testApp({
       provider,
       connections,
@@ -437,41 +441,17 @@ describe('GitHub adapter contract', () => {
   it('[spec: github-adapter/github-operation-authority] constrains minting to the selected installation context', async () => {
     const provider = fakeProvider()
     const connections = fakeConnections()
-    connections.activeInstallationsForOwner = vi.fn(async () => [
-      {
-        installationId: 42,
-        accountLogin: 'realmroot',
-        targetType: 'Organization',
-        scopes: ['metadata:read'],
-        repositorySelection: 'all' as const,
-        repositories: [],
-      },
-    ])
-    const response = await testApp({ provider, connections }).request('/github/repos/realmroot/example/labels/bug', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ color: '123456' }),
-    })
-    expect(response.status).toBe(403)
-    expect(provider.installationToken).not.toHaveBeenCalled()
-  })
-
-  it('[spec: github-adapter/github-operation-authority] rejects a token for a replaced broker connection', async () => {
-    const provider = fakeProvider()
-    const connections = fakeConnections()
-    connections.activeInstallationsForOwner = vi.fn(async (_ownerSubject, brokerReference) =>
-      brokerReference === 'connection-2'
-        ? [
-            {
-              installationId: 42,
-              accountLogin: 'realmroot',
-              targetType: 'Organization',
-              scopes: ['issues:read', 'issues:write', 'metadata:read'],
-              repositorySelection: 'all' as const,
-              repositories: [],
-            },
-          ]
-        : [],
+    connections.externalAuthorization = vi.fn(async () =>
+      authorizationWithContexts([
+        {
+          installationId: 42,
+          accountLogin: 'realmroot',
+          targetType: 'Organization',
+          scopes: ['metadata:read'],
+          repositorySelection: 'all' as const,
+          repositories: [],
+        },
+      ]),
     )
     const response = await testApp({ provider, connections }).request('/github/repos/realmroot/example/labels/bug', {
       method: 'PATCH',
@@ -479,23 +459,38 @@ describe('GitHub adapter contract', () => {
       body: JSON.stringify({ color: '123456' }),
     })
     expect(response.status).toBe(403)
-    expect(connections.activeInstallationsForOwner).toHaveBeenCalledWith('org_1', 'github:org_1')
+    expect(provider.installationToken).not.toHaveBeenCalled()
+  })
+
+  it('[spec: github-adapter/github-operation-authority] rejects a token without an active external authorization', async () => {
+    const provider = fakeProvider()
+    const connections = fakeConnections()
+    connections.externalAuthorization = vi.fn(async () => authorizationWithContexts([]))
+    const response = await testApp({ provider, connections }).request('/github/repos/realmroot/example/labels/bug', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ color: '123456' }),
+    })
+    expect(response.status).toBe(403)
+    expect(connections.externalAuthorization).toHaveBeenCalledWith('org_1')
     expect(provider.installationToken).not.toHaveBeenCalled()
   })
 
   it('[spec: github-adapter/github-installation-resources] rejects repositories removed from selected authority', async () => {
     const provider = fakeProvider()
     const connections = fakeConnections()
-    connections.activeInstallationsForOwner = vi.fn(async () => [
-      {
-        installationId: 42,
-        accountLogin: 'realmroot',
-        targetType: 'Organization',
-        scopes: ['issues:read', 'issues:write', 'metadata:read'],
-        repositorySelection: 'selected' as const,
-        repositories: [{ id: 7, fullName: 'realmroot/allowed' }],
-      },
-    ])
+    connections.externalAuthorization = vi.fn(async () =>
+      authorizationWithContexts([
+        {
+          installationId: 42,
+          accountLogin: 'realmroot',
+          targetType: 'Organization',
+          scopes: ['issues:read', 'issues:write', 'metadata:read'],
+          repositorySelection: 'selected' as const,
+          repositories: [{ id: 7, fullName: 'realmroot/allowed' }],
+        },
+      ]),
+    )
     const response = await testApp({ provider, connections }).request('/github/repos/realmroot/removed/issues', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -734,9 +729,49 @@ function fakeConnections(): GitHubConnectionStore {
         repositories: [],
       },
     ]),
+    externalAuthorization: vi.fn(async () => ({
+      displayName: 'Controller',
+      scopes: [
+        'contents:read',
+        'contents:write',
+        'issues:read',
+        'issues:write',
+        'metadata:read',
+        'pull_requests:read',
+        'pull_requests:write',
+      ],
+      contexts: [
+        {
+          installationId: 42,
+          accountLogin: 'realmroot',
+          targetType: 'Organization',
+          scopes: [
+            'contents:read',
+            'contents:write',
+            'issues:read',
+            'issues:write',
+            'metadata:read',
+            'pull_requests:read',
+            'pull_requests:write',
+          ],
+          repositorySelection: 'all' as const,
+          repositories: [],
+        },
+      ],
+    })),
     revoke: vi.fn(async () => {}),
     prepareLifecycleEvent: vi.fn(async () => ({ event: null, completed: true })),
     pendingLifecycleEvents: vi.fn(async () => []),
     completeLifecycleEvent: vi.fn(async () => {}),
+  }
+}
+
+function authorizationWithContexts(
+  contexts: Awaited<ReturnType<GitHubConnectionStore['externalAuthorization']>>['contexts'],
+) {
+  return {
+    displayName: 'Controller',
+    scopes: [...new Set(contexts.flatMap((context) => context.scopes))],
+    contexts,
   }
 }

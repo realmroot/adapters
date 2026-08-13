@@ -58,7 +58,7 @@ export default {
           privateKey: githubConfig.githubPrivateKey,
           clientId: githubConfig.githubClientId,
           clientSecret: githubConfig.githubClientSecret,
-          redirectUri: `${config.origin}/oauth/github/provider/callback`,
+          redirectUri: `${config.origin}/github/oauth/callback`,
           apiOrigin: githubConfig.githubApiOrigin,
         }),
         connections: githubConnections,
@@ -68,6 +68,7 @@ export default {
       const githubAuthorization = await createExternalAuthorizationServer({
         origin: config.origin,
         provider: githubExternal.authorization,
+        providerCallbackPath: '/github/oauth/callback',
         store: oauthStore,
         signingPrivateJwk,
         replayStore: state,
@@ -98,7 +99,7 @@ export default {
       const linearProvider = createLinearProvider({
         clientId: linearConfig.linearClientId,
         clientSecret: linearConfig.linearClientSecret,
-        redirectUri: `${config.origin}/oauth/linear/provider/callback`,
+        redirectUri: `${config.origin}/linear/oauth/callback`,
         apiOrigin: linearConfig.linearApiOrigin,
         authorizationOrigin: linearConfig.linearAuthorizationOrigin,
       })
@@ -110,6 +111,7 @@ export default {
           connections: linearConnections,
           scopes: linearScopes,
         }),
+        providerCallbackPath: '/linear/oauth/callback',
         store: oauthStore,
         signingPrivateJwk,
         replayStore: state,

@@ -4,7 +4,8 @@ import type { ExternalProviderAuthorization } from '../../core/external-authoriz
 import { type D1ExternalOAuthStore, sha256 } from '../../core/external-oauth-store.js'
 import { badRequest, forbidden } from '../../core/problem.js'
 import type { D1GitHubConnections } from './connections.js'
-import type { GitHubConnectionProvider, GitHubInstallation } from './types.js'
+import { permissionsToScopes } from './permissions.js'
+import type { GitHubConnectionProvider } from './types.js'
 
 export function createGitHubExternalAuthorization(input: {
   origin: string
@@ -99,7 +100,7 @@ export function createGitHubExternalAuthorization(input: {
         ? installations.filter((installation) => installation.id === expectedInstallationId)
         : installations
       const contexts = await input.connections.upsertExternalAuthorization(user, selected)
-      const providerScopes = new Set(selected.flatMap((installation) => installationScopes(installation)))
+      const providerScopes = new Set(selected.flatMap((installation) => permissionsToScopes(installation.permissions)))
       const requestedProviderScopes = intent.scopes.filter((scope) => !['openid', 'offline_access'].includes(scope))
       if (requestedProviderScopes.some((scope) => !providerScopes.has(scope))) {
         throw forbidden('The selected GitHub installation does not grant every requested scope.')
@@ -164,10 +165,6 @@ function contextAuthorizationDetail(
         }
       : {}),
   }
-}
-
-function installationScopes(installation: GitHubInstallation) {
-  return Object.entries(installation.permissions).map(([permission, access]) => `${permission}:${access}`)
 }
 
 function numberValue(value: unknown) {

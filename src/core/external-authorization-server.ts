@@ -66,11 +66,13 @@ export type ExternalAuthorizationServer = {
 export async function createExternalAuthorizationServer(input: {
   origin: string
   provider: ExternalProviderAuthorization
+  providerCallbackPath?: string
   store: D1ExternalOAuthStore
   signingPrivateJwk: JWK
   replayStore: DpopReplayStore
 }): Promise<ExternalAuthorizationServer> {
   const issuer = `${input.origin}/oauth/${input.provider.id}`
+  const providerCallbackPath = input.providerCallbackPath ?? `/oauth/${input.provider.id}/provider/callback`
   const privateKey = await importJWK(input.signingPrivateJwk, 'ES256')
   const signingKid = input.signingPrivateJwk.kid ?? 'adapter-oauth-signing-key'
   const { d: _privateScalar, ...exportedPublicJwk } = input.signingPrivateJwk
@@ -155,7 +157,7 @@ export async function createExternalAuthorizationServer(input: {
         )
         return c.redirect(started.url)
       })
-      app.get(`/oauth/${input.provider.id}/provider/callback`, async (c) => {
+      app.get(providerCallbackPath, async (c) => {
         const state = required(c.req.query('state'), 'state')
         const intent = await input.store.intentByProviderState(await sha256(state))
         const result = await input.provider.complete({

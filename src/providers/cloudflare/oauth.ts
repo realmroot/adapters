@@ -94,7 +94,12 @@ export function createCloudflareOAuthProvider(input: {
       body: new URLSearchParams(parameters),
       signal: AbortSignal.timeout(10_000),
     })
-    if (!response.ok) throw failedDependency(`Cloudflare rejected OAuth token exchange with ${response.status}.`)
+    if (!response.ok) {
+      const failure = await oauthFailure(response)
+      throw failedDependency(
+        `Cloudflare rejected OAuth token exchange with ${response.status}${failure ? ` (${failure})` : ''}.`,
+      )
+    }
     const token = tokenSchema.parse(await response.json())
     return {
       accessToken: token.access_token,
@@ -103,6 +108,15 @@ export function createCloudflareOAuthProvider(input: {
       scopes: normalizeScopes(token.scope),
     }
   }
+}
+
+async function oauthFailure(response: Response) {
+  const body: unknown = await response.json().catch(() => null)
+  if (!body || typeof body !== 'object') return null
+  const error = 'error' in body && typeof body.error === 'string' ? body.error : null
+  const description =
+    'error_description' in body && typeof body.error_description === 'string' ? body.error_description : null
+  return [error, description].filter(Boolean).join(': ') || null
 }
 
 export class D1CloudflareCredentials {
@@ -227,7 +241,7 @@ export function createCloudflareExternalAuthorization(input: {
       await input.credentials.revoke(subject)
     },
     begin({ providerState, scopes }) {
-      const providerScopes = scopes.filter((scope) => scope !== 'offline_access')
+      const providerScopes = [...scopes]
       if (!providerScopes.includes('openid')) providerScopes.unshift('openid')
       return { url: input.provider.authorizationUrl(providerState, providerScopes), stage: 'provider' }
     },

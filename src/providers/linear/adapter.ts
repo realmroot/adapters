@@ -1,7 +1,7 @@
 import type { AdapterModule } from '../../core/adapter.js'
 import { type AgentInfoResolver, createAgentInfoResolver } from '../../core/agent-info.js'
 import { forbidden, HttpProblem } from '../../core/problem.js'
-import type { AgentPrincipal, RealmrootAuthenticator } from '../../core/realmroot-auth.js'
+import type { RealmrootAuthenticator } from '../../core/realmroot-auth.js'
 import type { LinearAdapterConfig } from './config.js'
 import type { LinearConnectionStore, LinearWorkspaceCredential } from './connections.js'
 import { prepareLinearGraphqlRequest } from './graphql.js'
@@ -35,7 +35,7 @@ export function createLinearAdapter(
           resource,
           authorization_servers: [issuer],
           scopes_supported: Object.keys(linearManifest.scopes),
-          authorization_details_types_supported: ['linear_workspace'],
+          authorization_details_types_supported: [],
           bearer_methods_supported: [],
           dpop_bound_access_tokens_required: true,
         }),
@@ -53,8 +53,7 @@ export function createLinearAdapter(
       )
       app.post('/linear/graphql', async (c) => {
         const principal = await dependencies.authenticator.authenticate(c.req.raw, resource)
-        const selectedWorkspaceId = selectedWorkspace(principal)
-        let credential = await dependencies.connections.credentialForOwner(principal.subject, selectedWorkspaceId)
+        let credential = await dependencies.connections.credentialForOwner(principal.subject)
         credential = await currentCredential(credential, dependencies.provider, dependencies.connections)
         if (
           ![...principal.scopes].every(
@@ -157,14 +156,6 @@ async function currentCredential(
     await connections.releaseRefreshClaim(credential)
     throw error
   }
-}
-
-function selectedWorkspace(principal: AgentPrincipal) {
-  const ids = (principal.authorizationDetails ?? []).flatMap((detail) =>
-    detail.type === 'linear_workspace' && typeof detail.workspace_id === 'string' ? [detail.workspace_id] : [],
-  )
-  if (ids.length !== 1) throw forbidden('Select exactly one connected Linear workspace for this request.')
-  return ids[0]
 }
 
 function notConfiguredWebhook() {

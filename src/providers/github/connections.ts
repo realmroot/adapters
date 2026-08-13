@@ -53,6 +53,11 @@ export interface GitHubConnectionStore {
   }>
   activeInstallationsForOwner(ownerSubject: string, brokerReference: string): Promise<GitHubAuthorizationContext[]>
   activeInstallationsForReference(brokerReference: string): Promise<GitHubAuthorizationContext[]>
+  externalAuthorization(githubUserId: string): Promise<{
+    displayName: string
+    scopes: string[]
+    contexts: GitHubAuthorizationContext[]
+  }>
   revoke(input: { brokerReference: string; ownerSubject: string; jti: string; expiresAt: number }): Promise<void>
   prepareLifecycleEvent(input: GitHubLifecycleChange): Promise<{ event: ConnectionEvent | null; completed: boolean }>
   pendingLifecycleEvents(): Promise<ConnectionEvent[]>
@@ -90,7 +95,29 @@ export class D1GitHubConnections implements GitHubConnectionStore {
 
   async upsertExternalAuthorization(user: GitHubUser, installations: GitHubInstallation[]) {
     const now = Date.now()
-    const brokerReference = `github:${user.id}`
+    const existing = await this.db
+      .prepare(
+        `SELECT broker_reference AS brokerReference
+         FROM github_connection_binding
+         WHERE github_user_id = ? AND status = 'active'
+         ORDER BY updated_at DESC LIMIT 1`,
+      )
+      .bind(user.id)
+      .first<{ brokerReference: string }>()
+    const brokerReference = existing?.brokerReference ?? `github:${user.id}`
+    if (installations.length > 0) {
+      const placeholders = installations.map(() => '?').join(', ')
+      const occupied = await this.db
+        .prepare(
+          `SELECT broker_reference AS brokerReference
+           FROM github_connection_context
+           WHERE installation_id IN (${placeholders}) AND broker_reference <> ?
+           LIMIT 1`,
+        )
+        .bind(...installations.map((installation) => installation.id), brokerReference)
+        .first<{ brokerReference: string }>()
+      if (occupied) throw forbidden('The selected GitHub installation is already connected to another account.')
+    }
     const grantedScopes = permissionsToScopes(
       mergePermissions(installations.map((installation) => installation.permissions)),
     )
@@ -100,7 +127,8 @@ export class D1GitHubConnections implements GitHubConnectionStore {
           `INSERT INTO github_connection_binding
             (broker_reference, owner_subject, github_user_id, github_login, display_name, scopes_json, status, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)
-           ON CONFLICT(broker_reference) DO UPDATE SET github_login = excluded.github_login,
+           ON CONFLICT(broker_reference) DO UPDATE SET owner_subject = excluded.owner_subject,
+             github_user_id = excluded.github_user_id, github_login = excluded.github_login,
              display_name = excluded.display_name, scopes_json = excluded.scopes_json,
              status = 'active', updated_at = excluded.updated_at`,
         )

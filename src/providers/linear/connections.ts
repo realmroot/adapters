@@ -81,7 +81,7 @@ export class D1LinearConnections implements LinearConnectionStore {
 
   async upsertExternalAuthorization(linearUser: LinearViewer['user'], viewer: LinearViewer, token: LinearToken) {
     const now = Date.now()
-    const brokerReference = `linear:${linearUser.id}`
+    const brokerReference = `linear:${viewer.workspace.id}`
     const context = credentialContext(brokerReference, viewer.workspace.id)
     const [accessToken, refreshToken] = await Promise.all([
       this.cipher.seal(token.accessToken, `${context}:access`),
@@ -96,7 +96,32 @@ export class D1LinearConnections implements LinearConnectionStore {
            ON CONFLICT(broker_reference) DO UPDATE SET display_name = excluded.display_name,
              scopes_json = excluded.scopes_json, status = 'active', updated_at = excluded.updated_at`,
         )
-        .bind(brokerReference, linearUser.id, linearUser.id, linearUser.name, JSON.stringify(token.scopes), now, now),
+        .bind(
+          brokerReference,
+          viewer.workspace.id,
+          linearUser.id,
+          viewer.workspace.name,
+          JSON.stringify(token.scopes),
+          now,
+          now,
+        ),
+      this.db
+        .prepare(
+          `UPDATE linear_connection_context
+           SET status = 'revoked', access_token_ciphertext = '', refresh_token_ciphertext = '',
+             refresh_claim_until = NULL, updated_at = ?
+           WHERE broker_reference != ? AND workspace_id = ? AND status = 'active'`,
+        )
+        .bind(now, brokerReference, viewer.workspace.id),
+      this.db
+        .prepare(
+          `UPDATE linear_connection_binding SET status = 'revoked', updated_at = ?
+           WHERE broker_reference != ? AND status = 'active'
+             AND broker_reference NOT IN (
+               SELECT broker_reference FROM linear_connection_context WHERE status = 'active'
+             )`,
+        )
+        .bind(now, brokerReference),
       this.db
         .prepare(
           `INSERT INTO linear_connection_context
@@ -129,39 +154,39 @@ export class D1LinearConnections implements LinearConnectionStore {
     return this.contexts(brokerReference)
   }
 
-  async externalAuthorization(linearUserId: string) {
+  async externalAuthorization(workspaceId: string) {
     const binding = await this.db
       .prepare(
         `SELECT broker_reference AS brokerReference, display_name AS displayName
          FROM linear_connection_binding
-         WHERE linear_user_id = ? AND owner_subject = ? AND status = 'active'`,
+         WHERE owner_subject = ? AND status = 'active'`,
       )
-      .bind(linearUserId, linearUserId)
+      .bind(workspaceId)
       .first<{ brokerReference: string; displayName: string }>()
     if (!binding) throw forbidden('Active Linear authorization is required.')
     return { displayName: binding.displayName, contexts: await this.contexts(binding.brokerReference) }
   }
 
-  async externalCredentials(linearUserId: string) {
+  async externalCredentials(workspaceId: string) {
     const binding = await this.db
       .prepare(
         `SELECT broker_reference AS brokerReference FROM linear_connection_binding
-         WHERE linear_user_id = ? AND owner_subject = ? AND status = 'active'`,
+         WHERE owner_subject = ? AND status = 'active'`,
       )
-      .bind(linearUserId, linearUserId)
+      .bind(workspaceId)
       .first<{ brokerReference: string }>()
     if (!binding) return []
     return Promise.all((await this.credentialRows(binding.brokerReference)).map((row) => this.decryptCredential(row)))
   }
 
-  async revokeExternalAuthorization(linearUserId: string) {
+  async revokeExternalAuthorization(workspaceId: string) {
     const now = Date.now()
     const binding = await this.db
       .prepare(
         `SELECT broker_reference AS brokerReference FROM linear_connection_binding
-         WHERE linear_user_id = ? AND owner_subject = ? AND status = 'active'`,
+         WHERE owner_subject = ? AND status = 'active'`,
       )
-      .bind(linearUserId, linearUserId)
+      .bind(workspaceId)
       .first<{ brokerReference: string }>()
     if (!binding) return
     await this.db.batch([

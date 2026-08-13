@@ -128,9 +128,21 @@ describe('external authorization server', () => {
       callback.searchParams.get('code'),
     )
   })
+
+  it('supports a provider callback path already registered with the upstream OAuth application', async () => {
+    const intent = exampleIntent()
+    const { app, store } = await testServer({ intent, providerCallbackPath: '/example/oauth/callback' })
+
+    const oldPath = await app.request('/oauth/example/provider/callback?state=provider-state&code=provider-code')
+    expect(oldPath.status).toBe(404)
+
+    const response = await app.request('/example/oauth/callback?state=provider-state&code=provider-code')
+    expect(response.status).toBe(302)
+    expect(store.completeIntent).toHaveBeenCalledWith(intent, expect.any(Object), expect.stringMatching(/^code_/))
+  })
 })
 
-async function testServer(options: { intent?: ExternalOAuthIntent } = {}) {
+async function testServer(options: { intent?: ExternalOAuthIntent; providerCallbackPath?: string } = {}) {
   const store = {
     registerClient: vi.fn(async () => undefined),
     client: vi.fn(async (_providerId: string, clientId: string) => ({
@@ -169,6 +181,7 @@ async function testServer(options: { intent?: ExternalOAuthIntent } = {}) {
   const server = await createExternalAuthorizationServer({
     origin: 'https://adapter.example',
     provider,
+    ...(options.providerCallbackPath ? { providerCallbackPath: options.providerCallbackPath } : {}),
     store: store as unknown as D1ExternalOAuthStore,
     signingPrivateJwk,
     replayStore: { claim: vi.fn(async () => true) },

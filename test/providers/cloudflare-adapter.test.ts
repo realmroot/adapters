@@ -2,10 +2,39 @@ import { describe, expect, it, vi } from 'vitest'
 import { createApp } from '../../src/app.js'
 import type { AgentPrincipal } from '../../src/core/realmroot-auth.js'
 import { createCloudflareAdapter } from '../../src/providers/cloudflare/adapter.js'
+import {
+  createCloudflareExternalAuthorization,
+  createCloudflareOAuthProvider,
+} from '../../src/providers/cloudflare/oauth.js'
 
 const resource = 'https://adapters.example/cloudflare'
 
 describe('Cloudflare adapter', () => {
+  it('keeps offline access in the provider authorization request', async () => {
+    const provider = createCloudflareOAuthProvider({
+      clientId: 'client-1',
+      clientSecret: 'secret-1',
+      redirectUri: 'https://adapters.example/oauth/cloudflare/provider/callback',
+      authorizationOrigin: 'https://dash.cloudflare.com',
+    })
+
+    const authorization = createCloudflareExternalAuthorization({
+      origin: 'https://adapters.example',
+      provider,
+      credentials: {} as never,
+      scopes: ['d1.read'],
+    })
+    if (!authorization.begin) throw new Error('Cloudflare authorization must define begin().')
+    const started = await authorization.begin({
+      providerState: 'state-1',
+      scopes: ['openid', 'offline_access', 'd1.read'],
+      authorizationDetails: [],
+    })
+    const url = new URL(started.url)
+
+    expect(url.searchParams.get('scope')).toBe('openid offline_access d1.read')
+  })
+
   it('[spec: cloudflare-adapter/cloudflare-native-tool-discovery] advertises Wrangler execution', async () => {
     const { app } = fixture()
     const response = await app.request('/cloudflare')

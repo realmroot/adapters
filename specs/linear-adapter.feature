@@ -14,21 +14,20 @@ Feature: Linear Agent adapter
   Scenario: One external authorization identifies the user and installs the App
     Given a Realmroot owner starts Linear authorization through the Adapter
     When the owner authorizes their Linear user and then installs the App with actor app
-    Then the adapter binds the stable Linear user to one external authorization
-    And it exposes the installed workspace as a linear_workspace authorization detail
+    Then the adapter exposes the installed workspace as the external authorization subject
+    And the Provider Connection selects that workspace without an authorization detail or Context
     And provider credentials remain encrypted outside Realmroot and the Agent
 
   @journey:linear-workspace-reauthorization @entrypoint:http
-  Scenario: Reauthorization adds or refreshes workspace authority without duplicating the account
-    Given a Realmroot owner already authorized one Linear user
-    When the same Linear user authorizes another workspace or refreshes an existing workspace
-    Then the adapter preserves the stable external subject
-    And it keeps one active provider credential per Linear workspace
-    And a different Linear user cannot replace the active connection
+  Scenario: Reauthorization refreshes or replaces the selected workspace
+    Given a Realmroot owner already authorized one Linear workspace
+    When the owner refreshes that workspace or connects another workspace
+    Then the adapter exposes exactly one workspace through the Provider Connection
+    And Realmroot replaces the old external authorization instead of creating another Context
 
   @journey:linear-transparent-graphql @entrypoint:http
   Scenario: An authorized Agent calls the original Linear GraphQL API
-    Given the Agent token selects one connected Linear workspace
+    Given the Agent token subject identifies the connected Linear workspace
     And the token contains the official Linear scopes required by the selected GraphQL operation
     When the Agent posts the original GraphQL document and variables through the adapter
     Then the adapter forwards the GraphQL transport to Linear without inventing REST business endpoints

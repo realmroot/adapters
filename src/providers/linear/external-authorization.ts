@@ -10,37 +10,13 @@ export function createLinearExternalAuthorization(input: {
   connections: D1LinearConnections
   scopes: readonly string[]
 }): ExternalProviderAuthorization {
-  const authorizationDetailsSubset = ({
-    requested,
-    granted,
-  }: {
-    requested: Array<Record<string, unknown>>
-    granted: Array<Record<string, unknown>>
-  }) =>
-    requested.every(
-      (detail) =>
-        detail.type === 'linear_workspace' &&
-        typeof detail.workspace_id === 'string' &&
-        granted.some(
-          (candidate) => candidate.type === 'linear_workspace' && candidate.workspace_id === detail.workspace_id,
-        ),
-    )
-
   return {
     id: 'linear',
     resource: `${input.origin}/linear`,
     scopes: ['openid', 'offline_access', ...input.scopes],
-    authorizationDetailsTypes: ['linear_workspace'],
-    authorizationDetailsSubset,
-    async validateGrant({ subject, authorizationDetails }) {
-      const active = await input.connections.externalAuthorization(subject)
-      return authorizationDetailsSubset({
-        requested: authorizationDetails,
-        granted: active.contexts.map((context) => ({
-          type: 'linear_workspace',
-          workspace_id: context.workspaceId,
-        })),
-      })
+    async validateGrant({ subject }) {
+      await input.connections.externalAuthorization(subject)
+      return true
     },
     async revoke(subject) {
       const credentials = await input.connections.externalCredentials(subject)
@@ -74,18 +50,15 @@ export function createLinearExternalAuthorization(input: {
       if (intent.providerStage !== 'app') throw badRequest('Linear OAuth authorization stage is invalid.')
       const linearUser = linearUserValue(intent.providerData.linearUser)
       const contexts = await input.connections.upsertExternalAuthorization(linearUser, viewer, token)
+      const workspace = contexts[0]
+      if (!workspace) throw badRequest('Linear workspace authorization is missing.')
       return {
         type: 'complete',
         grant: {
-          subject: linearUser.id,
-          displayName: linearUser.name,
+          subject: workspace.workspaceId,
+          displayName: workspace.workspaceName,
           scopes: intent.scopes,
-          authorizationDetails: contexts.map((context) => ({
-            type: 'linear_workspace',
-            workspace_id: context.workspaceId,
-            workspace_name: context.workspaceName,
-            workspace_url_key: context.workspaceUrlKey,
-          })),
+          authorizationDetails: [],
         },
       }
     },

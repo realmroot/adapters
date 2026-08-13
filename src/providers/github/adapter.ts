@@ -369,10 +369,7 @@ export function createGitHubAdapter(
 
   async function selectedInstallation(principal: AgentPrincipal) {
     if (!dependencies.connections) throw forbidden('A GitHub account connection is required.')
-    const connected = await dependencies.connections.activeInstallationsForOwner(
-      principal.subject,
-      `github:${principal.subject}`,
-    )
+    const connected = (await dependencies.connections.externalAuthorization(principal.subject)).contexts
     const selectedIds = (principal.authorizationDetails ?? []).flatMap((detail) =>
       detail.type === 'github_installation' && typeof detail.installation_id === 'string'
         ? [installationId(detail.installation_id)]

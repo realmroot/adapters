@@ -14,7 +14,7 @@ describe('Linear adapter', () => {
     expect(await metadata.json()).toMatchObject({
       resource: 'https://adapter.example/linear',
       scopes_supported: expect.arrayContaining(['read', 'write', 'app:mentionable']),
-      authorization_details_types_supported: ['linear_workspace'],
+      authorization_details_types_supported: [],
       authorization_servers: ['https://adapter.example/oauth/linear'],
     })
     const contract = await app.request('/linear/openapi.json')
@@ -108,12 +108,12 @@ describe('Linear adapter', () => {
 function createLinearApp(overrides: { provider?: LinearProvider; connections?: LinearConnectionStore } = {}) {
   const authenticator: RealmrootAuthenticator = {
     authenticate: vi.fn(async () => ({
-      subject: 'owner-1',
+      subject: 'workspace-1',
       issuer: 'https://id.example/api/auth',
       actor: { issuer: 'https://id.example/api/auth', subject: 'agent-1', profile: 'ai_agent' as const },
       scopes: new Set(['issues:create']),
       connectionId: 'connection-1',
-      authorizationDetails: [{ type: 'linear_workspace', workspace_id: 'workspace-1' }],
+      authorizationDetails: [],
     })),
   }
   return createApp([

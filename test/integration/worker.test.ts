@@ -146,6 +146,58 @@ describe('Cloudflare Worker runtime', () => {
     expect(active?.count).toBe(1)
   })
 
+  it('migrates an active brokered GitHub binding into the external authorization subject', async () => {
+    const connections = new D1GitHubConnections(env.DB, new D1RuntimeState(env.DB))
+    const now = Date.now()
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO github_connection_binding
+            (broker_reference, owner_subject, github_user_id, github_login, display_name, scopes_json, status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
+      ).bind(
+        'legacy-broker-reference',
+        'realmroot-user-id',
+        70,
+        'controller',
+        'Controller',
+        '["metadata:read"]',
+        now,
+        now,
+      ),
+      env.DB.prepare(
+        `INSERT INTO github_connection_context
+            (broker_reference, installation_id, account_login, target_type, created_at, status, scopes_json, updated_at, repository_selection)
+           VALUES (?, ?, ?, ?, ?, 'active', ?, ?, 'all')`,
+      ).bind('legacy-broker-reference', 701, 'realmroot', 'Organization', now, '["metadata:read"]', now),
+    ])
+
+    const contexts = await connections.upsertExternalAuthorization(
+      { id: 70, login: 'controller', name: 'Controller' },
+      [
+        {
+          id: 701,
+          accountLogin: 'realmroot',
+          targetType: 'Organization',
+          permissions: { metadata: 'read', pull_requests: 'read' },
+          repositorySelection: 'all',
+          repositories: [],
+          updatedAt: '2027-01-15T07:00:00.000Z',
+        },
+      ],
+    )
+
+    expect(contexts.map((context) => context.installationId)).toEqual([701])
+    await expect(connections.externalAuthorization('70')).resolves.toMatchObject({
+      scopes: ['metadata:read', 'pull_requests:read'],
+    })
+    const binding = await env.DB.prepare(
+      'SELECT broker_reference AS brokerReference, owner_subject AS ownerSubject FROM github_connection_binding WHERE github_user_id = ?',
+    )
+      .bind(70)
+      .first<{ brokerReference: string; ownerSubject: string }>()
+    expect(binding).toEqual({ brokerReference: 'legacy-broker-reference', ownerSubject: '70' })
+  })
+
   it('[spec: github-adapter/github-provider-revocation] atomically revokes one broker reference and rejects replay', async () => {
     const connections = new D1GitHubConnections(env.DB, new D1RuntimeState(env.DB))
     const verifier = 'realmroot-pkce-verifier-with-sufficient-entropy'
