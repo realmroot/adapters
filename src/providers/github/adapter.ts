@@ -10,7 +10,10 @@ import type { GitHubAdapterConfig } from './config.js'
 import type { GitHubAuthorizationContext, GitHubConnectionIntent, GitHubConnectionStore } from './connections.js'
 import {
   createGitHubPullRequestWithRest,
+  mergeGitHubPullRequestWithRest,
   parseGitHubCreatePullRequest,
+  parseGitHubMergePullRequest,
+  resolveGitHubPullRequestTarget,
   resolveGitHubRepositoryName,
 } from './graphql.js'
 import { githubManifest } from './manifest.js'
@@ -291,6 +294,49 @@ export function createGitHubAdapter(
           pullRequest: createPullRequest,
         })
         await auditNative(c, principal, installation, 'graphql-create-pull-request-rest-compatibility', response.status)
+        return response
+      }
+      const mergePullRequest = parseGitHubMergePullRequest(body)
+      if (mergePullRequest) {
+        const requiredScopes = new Set(['metadata:read', 'pull_requests:write'])
+        const missingScopes = [...requiredScopes].filter((scope) => !principal.scopes.has(scope))
+        if (missingScopes.length > 0) {
+          throw insufficientScope(`The Agent token does not authorize ${missingScopes.join(', ')}.`, [
+            [...requiredScopes],
+          ])
+        }
+        const lookupToken = await provider.installationToken({
+          installationId: installation.installationId,
+          permissions: scopesToPermissions(new Set(['metadata:read']), available),
+          ...(installation.repositorySelection === 'selected'
+            ? {
+                repositories: installation.repositories.map(
+                  (repository) => repository.fullName.split('/').at(-1) as string,
+                ),
+              }
+            : {}),
+        })
+        const target = await resolveGitHubPullRequestTarget({
+          provider,
+          token: lookupToken,
+          apiOrigin: config.githubApiOrigin,
+          pullRequestId: mergePullRequest.pullRequestId,
+        })
+        const repository = repositoryTarget(`/repos/${target.nameWithOwner}`, installation)
+        const mergeToken = await provider.installationToken({
+          installationId: installation.installationId,
+          permissions: scopesToPermissions(new Set(['pull_requests:write']), available),
+          repositories: [repository as string],
+        })
+        const response = await mergeGitHubPullRequestWithRest({
+          provider,
+          token: mergeToken,
+          apiOrigin: config.githubApiOrigin,
+          nameWithOwner: target.nameWithOwner,
+          number: target.number,
+          pullRequest: mergePullRequest,
+        })
+        await auditNative(c, principal, installation, 'graphql-merge-pull-request-rest-compatibility', response.status)
         return response
       }
       const token = await provider.installationToken({

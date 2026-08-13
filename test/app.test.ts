@@ -234,6 +234,51 @@ describe('GitHub adapter contract', () => {
     })
   })
 
+  it('[spec: github-adapter/github-graphql-proxy] preserves the GitHub CLI mergePullRequest mutation', async () => {
+    const provider = fakeProvider()
+    provider.request = vi
+      .fn()
+      .mockImplementationOnce(async (request: Request) => {
+        expect(request.url).toBe('https://api.github.com/graphql')
+        await expect(request.json()).resolves.toMatchObject({ variables: { id: 'pull-request-1' } })
+        return Response.json({
+          data: { node: { number: 22, repository: { nameWithOwner: 'realmroot/example' } } },
+        })
+      })
+      .mockImplementationOnce(async (request: Request) => {
+        expect(request.url).toBe('https://api.github.com/repos/realmroot/example/pulls/22/merge')
+        await expect(request.json()).resolves.toEqual({ merge_method: 'squash' })
+        return Response.json({ sha: 'merge-commit', merged: true }, { status: 200 })
+      })
+    const response = await testApp({
+      provider,
+      authenticator: {
+        authenticate: vi.fn(async () => ({
+          ...principal,
+          scopes: new Set(['metadata:read', 'pull_requests:write']),
+        })),
+      },
+    }).request('/github/graphql', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query:
+          'mutation PullRequestMerge($input: MergePullRequestInput!) { mergePullRequest(input: $input) { clientMutationId } }',
+        variables: { input: { pullRequestId: 'pull-request-1', mergeMethod: 'SQUASH' } },
+      }),
+    })
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({
+      data: { mergePullRequest: { clientMutationId: null } },
+    })
+    expect(provider.installationToken).toHaveBeenNthCalledWith(2, {
+      installationId: 42,
+      permissions: { pull_requests: 'write' },
+      repositories: ['example'],
+    })
+  })
+
   it('[spec: github-adapter/github-git-transport] constrains Smart HTTP fetch and push to repository authority', async () => {
     const provider = fakeProvider()
     provider.request = vi.fn(async (request: Request, _token: string, mode) => {
