@@ -24,6 +24,7 @@ Feature: Cloudflare OAuth REST adapter
     When the Agent sends a Cloudflare REST request through the Adapter
     Then the method, path, query, body, conditional headers, idempotency key, and content type are preserved
     And inbound credentials, cookies, forwarding headers, and hop-by-hop headers are removed
+    And transient Realmroot discovery or token exchange failures are retried within one bounded deadline
     And the upstream origin is fixed to the Cloudflare v4 API
     And the status, body, ETag, pagination, rate-limit, and CF-Ray response data are preserved
     And no write request is automatically retried

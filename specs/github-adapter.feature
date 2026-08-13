@@ -133,6 +133,7 @@ Feature: GitHub App adapter
     When GitHub CLI sends a GraphQL request through the adapter
     Then the adapter mints an installation credential constrained to the approved scopes
     And the GraphQL request and response are preserved
+    And unsupported createPullRequest and mergePullRequest mutations use GitHub's installation-compatible REST operations
     And the GitHub credential is never returned
 
   @journey:github-git-transport @entrypoint:http
