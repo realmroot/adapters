@@ -76,6 +76,8 @@ describe('GitHub adapter contract', () => {
     const app = testApp()
     const response = await app.request('/github')
     await expect(response.json()).resolves.toMatchObject({
+      providerConnectionMode: 'brokered',
+      providerActorMode: 'github-app-installation',
       toolIntegrations: [
         { id: 'git', executables: ['git'], protocol: 'git-smart-http' },
         { id: 'gh', executables: ['gh'], protocol: 'github-http' },

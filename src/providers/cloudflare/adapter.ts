@@ -77,7 +77,8 @@ export function createCloudflareAdapter(
         {
           resource,
           serviceDescription: `${resource}/openapi.json`,
-          identityLevel: 'oauth-delegated-user',
+          providerConnectionMode: 'managed',
+          providerActorMode: 'oauth-delegated-user',
           toolIntegrations: [
             { id: 'wrangler', executables: ['wrangler', 'npx', 'pnpm'], protocol: 'cloudflare-api-base' },
           ],
@@ -110,7 +111,7 @@ export function createCloudflareAdapter(
         scope: requiredScope,
         originatingPrincipal: { issuer: principal.actor.issuer, subject: principal.actor.subject },
         providerActor: { type: 'oauth_delegated_user' },
-        identityLevel: 'brokered',
+        providerConnectionMode: 'managed',
         result: { status: 200 },
         occurredAt: new Date().toISOString(),
       })
@@ -224,7 +225,7 @@ export function createCloudflareAdapter(
         scope: requiredScope,
         originatingPrincipal: { issuer: principal.actor.issuer, subject: principal.actor.subject },
         providerActor: { type: 'oauth_delegated_user' },
-        identityLevel: 'brokered',
+        providerConnectionMode: 'managed',
         result: {
           status: response.status,
           ...(response.headers.get('cf-ray') ? { cfRay: response.headers.get('cf-ray') } : {}),

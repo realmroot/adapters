@@ -78,6 +78,14 @@ Every operation records two identities:
 
 They may refer to the same conceptual Agent, but they are never conflated.
 
+Provider identity fidelity and Provider Connection custody are also independent.
+The capability manifest's `identity.level` describes which principal the
+provider can represent. Resource representations and operation audit records use
+`providerConnectionMode` to report whether Realmroot manages the provider OAuth
+credential or the Resource Server brokers it. Resource representations also use
+`providerActorMode` to identify the provider-native actor shape. A managed
+credential must therefore never be reported as an `identityLevel`.
+
 Each provider declares an identity level:
 
 ```text

@@ -97,7 +97,8 @@ export function createGitHubAdapter(
         {
           resource,
           serviceDescription: `${resource}/openapi.json`,
-          identityLevel: 'brokered',
+          providerConnectionMode: 'brokered',
+          providerActorMode: 'github-app-installation',
           toolIntegrations: [
             { id: 'git', executables: ['git'], protocol: 'git-smart-http' },
             { id: 'gh', executables: ['gh'], protocol: 'github-http' },
@@ -495,7 +496,7 @@ export function createGitHubAdapter(
         installationId: installation.installationId,
         originatingPrincipal: { issuer: principal.actor.issuer, subject: principal.actor.subject },
         providerActor: { type: 'github_app', id: config.githubAppId ?? 'injected-test-provider' },
-        identityLevel: 'brokered',
+        providerConnectionMode: 'brokered',
         result: { status: response.status },
         occurredAt: new Date().toISOString(),
       })
@@ -540,7 +541,7 @@ export function createGitHubAdapter(
       installationId: installation.installationId,
       originatingPrincipal: { issuer: principal.actor.issuer, subject: principal.actor.subject },
       providerActor: { type: 'github_app', id: config.githubAppId ?? 'injected-test-provider' },
-      identityLevel: 'brokered',
+      providerConnectionMode: 'brokered',
       result: { status },
       occurredAt: new Date().toISOString(),
     })

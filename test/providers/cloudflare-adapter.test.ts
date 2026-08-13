@@ -10,6 +10,8 @@ describe('Cloudflare adapter', () => {
     const { app } = fixture()
     const response = await app.request('/cloudflare')
     await expect(response.json()).resolves.toMatchObject({
+      providerConnectionMode: 'managed',
+      providerActorMode: 'oauth-delegated-user',
       toolIntegrations: [{ id: 'wrangler', executables: ['wrangler', 'npx', 'pnpm'], protocol: 'cloudflare-api-base' }],
     })
   })
@@ -110,6 +112,10 @@ describe('Cloudflare adapter', () => {
     expect(upstream).toHaveBeenCalledTimes(1)
     const auditText = JSON.stringify(audit.mock.calls[0]?.[0])
     expect(auditText).toContain('dns-records-for-a-zone-create-dns-record')
+    expect(audit.mock.calls[0]?.[0]).toMatchObject({
+      providerActor: { type: 'oauth_delegated_user' },
+      providerConnectionMode: 'managed',
+    })
     expect(auditText).not.toContain('realmroot-agent-token')
     expect(auditText).not.toContain('provider-access')
     expect(auditText).not.toContain('trace=private')

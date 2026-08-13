@@ -27,10 +27,14 @@ describe('Linear adapter', () => {
       credentialModes: ['realmroot-connector-oauth'],
       operations: { mode: 'transparent' },
     })
+    await expect((await app.request('/linear')).json()).resolves.toMatchObject({
+      providerConnectionMode: 'managed',
+      providerActorMode: 'linear-app',
+    })
   })
 
   it('[spec: linear-adapter/linear-transparent-graphql] exchanges the Agent token and injects display fields', async () => {
-    const { app, exchange, upstream } = createLinearApp()
+    const { app, audit, exchange, upstream } = createLinearApp()
     const response = await app.request('/linear/graphql', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -56,6 +60,12 @@ describe('Linear adapter', () => {
       createAsUser: 'Mac Agent',
       displayIconUrl: 'https://id.example/agents/mac.png',
     })
+    expect(audit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerActor: { type: 'linear_app' },
+        providerConnectionMode: 'managed',
+      }),
+    )
   })
 
   it('[spec: linear-adapter/linear-transparent-graphql] rejects a provider grant missing approved scopes', async () => {
@@ -100,12 +110,13 @@ function createLinearApp(exchangeOverride?: RealmrootTokenExchangeClient) {
       { status: 207, headers: { 'x-linear-request-id': 'linear-request-1' } },
     ),
   )
+  const audit = vi.fn(async (_record: Record<string, unknown>) => undefined)
   const app = createApp([
     createLinearAdapter(config(), {
       authenticator,
       exchange,
       fetch: upstream,
-      audit: vi.fn(async () => {}),
+      audit,
       agentInfo: {
         resolve: vi.fn(async () => ({
           name: 'Mac Agent',
@@ -115,7 +126,7 @@ function createLinearApp(exchangeOverride?: RealmrootTokenExchangeClient) {
       },
     }),
   ])
-  return { app, exchange, upstream }
+  return { app, audit, exchange, upstream }
 }
 
 function config(): LinearAdapterConfig {

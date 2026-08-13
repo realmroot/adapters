@@ -44,9 +44,18 @@ export function createLinearAdapter(
         }),
       )
       app.get('/linear', (c) =>
-        c.json({ resource, serviceDescription: `${resource}/openapi.json`, identityLevel: 'brokered' }, 200, {
-          Link: `<${resource}/openapi.json>; rel="service-desc"; type="application/vnd.oai.openapi+json"`,
-        }),
+        c.json(
+          {
+            resource,
+            serviceDescription: `${resource}/openapi.json`,
+            providerConnectionMode: 'managed',
+            providerActorMode: 'linear-app',
+          },
+          200,
+          {
+            Link: `<${resource}/openapi.json>; rel="service-desc"; type="application/vnd.oai.openapi+json"`,
+          },
+        ),
       )
       app.post('/linear/graphql', async (c) => {
         const principal = await dependencies.authenticator.authenticate(c.req.raw, resource)
@@ -77,7 +86,7 @@ export function createLinearAdapter(
           path: '/graphql',
           originatingPrincipal: { issuer: principal.actor.issuer, subject: principal.actor.subject },
           providerActor: { type: 'linear_app' },
-          identityLevel: 'brokered',
+          providerConnectionMode: 'managed',
           result: { status: response.status },
           occurredAt: new Date().toISOString(),
         })
