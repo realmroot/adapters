@@ -420,7 +420,7 @@ export function createGitHubAdapter(
       const installation = await selectedInstallation(principal)
       const repository = repositoryTarget(`/repos/${target.owner}/${target.repository}`, installation)
       const requestedScopes = new Set<string>([target.write ? 'contents:write' : 'contents:read'])
-      if (target.write && principal.scopes.has('workflows:write')) requestedScopes.add('workflows:write')
+      if (target.write) requestedScopes.add('workflows:write')
       const missingScopes = [...requestedScopes].filter((scope) => !principal.scopes.has(scope))
       if (missingScopes.length > 0) {
         throw insufficientScope(`The Agent token does not authorize ${missingScopes.join(', ')}.`, [
