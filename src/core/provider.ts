@@ -3,7 +3,7 @@ export type ProviderManifest = Readonly<{
   provider: string
   status: 'design' | 'experimental' | 'alpha' | 'beta' | 'stable' | 'deprecated'
   identity: Readonly<{
-    level: 'native-agent' | 'native-service-principal' | 'brokered'
+    level: 'native-agent' | 'native-service-principal' | 'provider-delegated'
     visibleInProduct: boolean
     visibleInAuditLog: boolean
     attribution: 'provider-native' | 'content-injection' | 'audit-only'

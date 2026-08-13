@@ -88,6 +88,105 @@ export class D1GitHubConnections implements GitHubConnectionStore {
     private readonly brokerRequestReplay: BrokerRequestReplayStore,
   ) {}
 
+  async upsertExternalAuthorization(user: GitHubUser, installations: GitHubInstallation[]) {
+    const now = Date.now()
+    const brokerReference = `github:${user.id}`
+    const grantedScopes = permissionsToScopes(
+      mergePermissions(installations.map((installation) => installation.permissions)),
+    )
+    const statements: D1PreparedStatement[] = [
+      this.db
+        .prepare(
+          `INSERT INTO github_connection_binding
+            (broker_reference, owner_subject, github_user_id, github_login, display_name, scopes_json, status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)
+           ON CONFLICT(broker_reference) DO UPDATE SET github_login = excluded.github_login,
+             display_name = excluded.display_name, scopes_json = excluded.scopes_json,
+             status = 'active', updated_at = excluded.updated_at`,
+        )
+        .bind(
+          brokerReference,
+          String(user.id),
+          user.id,
+          user.login,
+          user.name ?? user.login,
+          JSON.stringify(grantedScopes),
+          now,
+          now,
+        ),
+      this.db.prepare('DELETE FROM github_connection_context WHERE broker_reference = ?').bind(brokerReference),
+      ...installations.map((installation) =>
+        this.db
+          .prepare(
+            `INSERT INTO github_connection_context
+              (broker_reference, installation_id, account_login, target_type, created_at,
+               status, scopes_json, updated_at, repository_selection)
+             VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
+          )
+          .bind(
+            brokerReference,
+            installation.id,
+            installation.accountLogin,
+            installation.targetType,
+            now,
+            JSON.stringify(permissionsToScopes(installation.permissions)),
+            now,
+            installation.repositorySelection,
+          ),
+      ),
+      ...installations.flatMap((installation) =>
+        installation.repositories.map((repository) =>
+          this.db
+            .prepare(
+              `INSERT INTO github_connection_repository (installation_id, repository_id, full_name, updated_at)
+               VALUES (?, ?, ?, ?) ON CONFLICT(installation_id, repository_id) DO UPDATE SET
+                 full_name = excluded.full_name, updated_at = excluded.updated_at`,
+            )
+            .bind(installation.id, repository.id, repository.fullName, now),
+        ),
+      ),
+    ]
+    await this.db.batch(statements)
+    return this.activeInstallationsForReference(brokerReference)
+  }
+
+  async revokeExternalAuthorization(githubUserId: string) {
+    const binding = await this.db
+      .prepare(
+        `SELECT broker_reference AS brokerReference FROM github_connection_binding
+         WHERE owner_subject = ? AND status = 'active'`,
+      )
+      .bind(githubUserId)
+      .first<{ brokerReference: string }>()
+    if (!binding) return
+    await this.db.batch([
+      this.db
+        .prepare(
+          `UPDATE github_connection_binding SET status = 'revoked', updated_at = ?
+           WHERE broker_reference = ? AND status = 'active'`,
+        )
+        .bind(Date.now(), binding.brokerReference),
+      this.db.prepare('DELETE FROM github_connection_context WHERE broker_reference = ?').bind(binding.brokerReference),
+    ])
+  }
+
+  async externalAuthorization(githubUserId: string) {
+    const binding = await this.db
+      .prepare(
+        `SELECT broker_reference AS brokerReference, display_name AS displayName, scopes_json AS scopesJson
+         FROM github_connection_binding
+         WHERE github_user_id = ? AND owner_subject = ? AND status = 'active'`,
+      )
+      .bind(Number(githubUserId), githubUserId)
+      .first<{ brokerReference: string; displayName: string; scopesJson: string }>()
+    if (!binding) throw forbidden('Active GitHub authorization is required.')
+    return {
+      displayName: binding.displayName,
+      scopes: JSON.parse(binding.scopesJson) as string[],
+      contexts: await this.activeInstallationsForReference(binding.brokerReference),
+    }
+  }
+
   async create(request: BrokeredConnectionRequest, providerState: string, now = Date.now()) {
     const result = await this.db
       .prepare(

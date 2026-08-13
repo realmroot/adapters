@@ -33,7 +33,7 @@ describe('GitHub adapter contract', () => {
     const metadata = await testApp().request('/.well-known/oauth-protected-resource/github')
     expect(await metadata.json()).toMatchObject({
       resource: 'http://127.0.0.1:4103/github',
-      authorization_servers: [config.realmrootIssuer],
+      authorization_servers: ['http://127.0.0.1:4103/oauth/github'],
       scopes_supported: [
         'contents:read',
         'contents:write',
@@ -43,9 +43,8 @@ describe('GitHub adapter contract', () => {
         'pull_requests:read',
         'pull_requests:write',
       ],
-      account_connection_modes_supported: ['brokered'],
-      account_connection_authorization_details_endpoint:
-        'http://127.0.0.1:4103/github/account-connection-authorization-details',
+      authorization_details_types_supported: ['github_installation'],
+      dpop_bound_access_tokens_required: true,
     })
     const resource = await testApp().request('/github')
     expect(resource.headers.get('link')).toContain('rel="service-desc"')
@@ -76,8 +75,6 @@ describe('GitHub adapter contract', () => {
     const app = testApp()
     const response = await app.request('/github')
     await expect(response.json()).resolves.toMatchObject({
-      providerConnectionMode: 'brokered',
-      providerActorMode: 'github-app-installation',
       toolIntegrations: [
         { id: 'git', executables: ['git'], protocol: 'git-smart-http' },
         { id: 'gh', executables: ['gh'], protocol: 'github-http' },
@@ -92,40 +89,6 @@ describe('GitHub adapter contract', () => {
         ]),
       },
     })
-  })
-
-  it('[spec: github-adapter/github-context-catalog] describes connected installations without credentials', async () => {
-    const connections = fakeConnections()
-    const response = await testApp({ connections }).request(
-      '/github/account-connection-authorization-details?limit=100&offset=0',
-      { headers: { Authorization: 'Bearer broker-reference-1' } },
-    )
-
-    expect(response.status).toBe(200)
-    expect(response.headers.get('cache-control')).toBe('no-store')
-    await expect(response.json()).resolves.toEqual({
-      items: [
-        {
-          authorizationDetail: {
-            type: 'github_installation',
-            installation_id: '42',
-            account_login: 'realmroot',
-            target_type: 'Organization',
-            repository_selection: 'all',
-          },
-          display: {
-            label: 'realmroot',
-            description: 'Organization GitHub App installation',
-            metadata: { accountType: 'Organization', repositories: 'All repositories' },
-          },
-        },
-      ],
-      pagination: { limit: 100, offset: 0, total: 1, hasMore: false, nextOffset: null },
-    })
-    expect(connections.activeInstallationsForReference).toHaveBeenCalledWith('broker-reference-1')
-
-    const unauthorized = await testApp({ connections }).request('/github/account-connection-authorization-details')
-    expect(unauthorized.status).toBe(403)
   })
 
   it('[spec: github-adapter/github-native-tool-scope-challenge] rejects before GitHub and reports required authority', async () => {
@@ -419,50 +382,6 @@ describe('GitHub adapter contract', () => {
     expect(provider.request).not.toHaveBeenCalled()
   })
 
-  it('[spec: github-adapter/github-permission-translation] returns permissions as scopes and resources as authorization details', async () => {
-    const connections = fakeConnections()
-    connections.exchange = vi.fn(async () => ({
-      intent: intent('completed'),
-      brokerReference: 'broker-1',
-      binding: {
-        githubUserId: 7,
-        githubLogin: 'controller',
-        displayName: 'Controller',
-        scopesJson: '["issues:read","issues:write","metadata:read"]',
-      },
-      contexts: [
-        {
-          installationId: 42,
-          accountLogin: 'realmroot',
-          targetType: 'Organization',
-          scopes: ['issues:read', 'issues:write', 'metadata:read'],
-          repositorySelection: 'all' as const,
-          repositories: [],
-        },
-      ],
-    }))
-    const response = await testApp({ connections }).request('/github/account-connection-credentials', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ code: 'code', code_verifier: 'verifier', connection_id: 'request-1' }),
-    })
-    expect(await response.json()).toEqual({
-      external_subject: '7',
-      display_name: 'Controller',
-      broker_reference: 'broker-1',
-      scope: 'issues:read issues:write metadata:read',
-      authorization_details: [
-        {
-          type: 'github_installation',
-          installation_id: '42',
-          account_login: 'realmroot',
-          target_type: 'Organization',
-          repository_selection: 'all',
-        },
-      ],
-    })
-  })
-
   it('reports an invalid upstream GitHub OpenAPI document as a dependency failure', async () => {
     const provider = fakeProvider()
     provider.openApiDocument = vi.fn(async () => Response.json({ invalid: true }))
@@ -560,7 +479,7 @@ describe('GitHub adapter contract', () => {
       body: JSON.stringify({ color: '123456' }),
     })
     expect(response.status).toBe(403)
-    expect(connections.activeInstallationsForOwner).toHaveBeenCalledWith('org_1', 'connection-1')
+    expect(connections.activeInstallationsForOwner).toHaveBeenCalledWith('org_1', 'github:org_1')
     expect(provider.installationToken).not.toHaveBeenCalled()
   })
 
@@ -681,41 +600,10 @@ describe('GitHub adapter contract', () => {
     expect(graphqlProvider.request).not.toHaveBeenCalled()
   })
 
-  it('[spec: github-adapter/github-provider-revocation] delegates signed revocation to the GitHub connection', async () => {
-    const connections = fakeConnections()
-    const revoke = vi.fn(async () => {})
-    connections.revoke = revoke
-    const response = await testApp({
-      connections,
-      revocationRequestVerifier: vi.fn(async () => ({
-        sub: 'org_1',
-        jti: 'revocation-1',
-        exp: 1_800_000_060,
-        connection_id: 'connection-1',
-        resource_authorization_id: 'authorization-1',
-        broker_reference: 'broker-1',
-      })),
-    }).request('/github/account-connection-revocations', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ request: 'signed-revocation' }),
-    })
-    expect(response.status).toBe(204)
-    expect(revoke).toHaveBeenCalledWith({
-      brokerReference: 'broker-1',
-      ownerSubject: 'org_1',
-      jti: 'revocation-1',
-      expiresAt: 1_800_000_060_000,
-    })
-  })
-
   it('[spec: github-adapter/github-installation-lifecycle] exposes the signed lifecycle webhook before the proxy', async () => {
     const webhookSecret = 'github-webhook-secret'
     const body = JSON.stringify({ action: 'created', installation: { id: 42 } })
-    const response = await testApp(
-      { connectionEvents: { send: vi.fn(async () => {}) } },
-      { githubWebhookSecret: webhookSecret },
-    ).request('/github/webhooks', {
+    const response = await testApp({}, { githubWebhookSecret: webhookSecret }).request('/github/webhooks', {
       method: 'POST',
       headers: {
         'X-GitHub-Delivery': 'delivery-created',
@@ -850,21 +738,5 @@ function fakeConnections(): GitHubConnectionStore {
     prepareLifecycleEvent: vi.fn(async () => ({ event: null, completed: true })),
     pendingLifecycleEvents: vi.fn(async () => []),
     completeLifecycleEvent: vi.fn(async () => {}),
-  }
-}
-
-function intent(status: 'completed') {
-  return {
-    requestId: 'request-1',
-    connectionId: 'connection-1',
-    expectedExternalSubject: null,
-    ownerSubject: 'org_1',
-    realmrootState: 'state',
-    callbackUri: 'https://id.example/callback',
-    codeChallenge: 'challenge',
-    scopesJson: '["metadata:read"]',
-    expectedInstallationId: null,
-    status,
-    expiresAt: Date.now() + 60_000,
   }
 }

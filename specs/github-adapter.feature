@@ -9,8 +9,8 @@ Feature: GitHub App adapter
     And DPoP replay and audit state are durably stored in D1
 
   @journey:github-contract @entrypoint:http
-  Scenario: Realmroot registers one GitHub App installation as a native Resource Server
-    Given the adapter is configured to trust a Realmroot issuer
+  Scenario: Realmroot registers GitHub as an external Resource Server
+    Given the adapter publishes its own OAuth issuer
     When Realmroot discovers the installation Resource URL
     Then RFC 9728 metadata advertises the exact Resource and supported scopes
     And the metadata advertises authorization, credential, and revocation endpoints
@@ -18,19 +18,19 @@ Feature: GitHub App adapter
     And each operation declares its native GitHub App permission scope
 
   @journey:github-provider-connection @entrypoint:http
-  Scenario: One Realmroot owner keeps one GitHub Provider connection across reauthorization
-    Given a Realmroot owner has connected a GitHub account and its App installations
+  Scenario: One Realmroot owner keeps one GitHub external authorization across reauthorization
+    Given a Realmroot owner has authorized a GitHub account and its App installations
     When the same owner reauthorizes that GitHub account
-    Then the adapter keeps one stable broker reference for the owner
-    And replaces the installation contexts with the newly authorized set
+    Then the adapter keeps one stable external subject for the owner
+    And replaces the installation authorization details with the newly authorized set
 
   @journey:github-context-catalog @entrypoint:http
   Scenario: GitHub describes installation Contexts without exposing credentials
-    Given Realmroot holds an active brokered GitHub account connection
-    When Realmroot lists that connection's authorization details
+    Given the Adapter holds an active GitHub external authorization
+    When Realmroot receives the subject token authorization details
     Then the adapter returns each active installation with its account name, account type, and repository selection
     And the response uses the shared authorization-detail catalog representation
-    But it does not expose installation credentials or accept an unrelated broker reference
+    But it does not expose installation credentials
 
   @journey:github-lifecycle-migration @entrypoint:migration
   Scenario: Legacy GitHub connections do not gain unknown repository authority

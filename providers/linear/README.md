@@ -2,7 +2,7 @@
 
 Status: **experimental**
 
-Identity level: **Realmroot-managed native App actor**
+Identity level: **brokered native App actor**
 
 ## Actor semantics
 
@@ -19,8 +19,8 @@ Those display fields are generated only by the trusted adapter and are never
 accepted from Agent request input.
 
 The display alias has no separate Linear user ID, profile, mention target, or
-delegation identity. Realmroot manages the workspace credential used by the
-shared App actor while the attribution remains provider-native.
+delegation identity. The capability manifest therefore classifies Linear as
+brokered even though its per-operation attribution is provider-native.
 
 ## Initial Resource mapping
 
@@ -33,19 +33,23 @@ Linear workspace
 
 ## Implemented vertical slice
 
-- one Provider Connection per Linear workspace, authorized directly with
-  `actor=app` and `prompt=consent`;
-- encrypted access and rotating refresh credentials managed by Realmroot;
+- one user-facing Provider Connection, exposed through the Adapter's standard
+  external OAuth server, with a short user OAuth step followed by App
+  installation using `actor=app`;
+- multiple installed workspace contexts under that one Connection;
+- encrypted access and rotating refresh credentials in provider-owned D1
+  tables;
 - transparent forwarding of the original Linear GraphQL API at
   `POST /linear/graphql`;
 - operation-aware enforcement of Linear's official scopes;
 - trusted `createAsUser` and `displayIconUrl` injection for `issueCreate` and
   `commentCreate` only;
-- request-local provider credential exchange from the Realmroot Agent token.
+- signed permission-change and OAuth-revocation webhook handling.
 
-The adapter does not run Linear OAuth callbacks, persist workspace connections,
-refresh tokens, or process credential lifecycle webhooks. Agent Session execution
-remains outside this identity adapter.
+The temporary user token is used only to identify the stable Linear account
+and is revoked before the App authorization begins. Agent Session execution is
+outside this identity adapter: Realmroot does not wake or run Agents. A future
+execution system may consume those Linear events independently.
 
 ## Scopes
 

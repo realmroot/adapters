@@ -10,14 +10,12 @@ describe('Cloudflare adapter', () => {
     const { app } = fixture()
     const response = await app.request('/cloudflare')
     await expect(response.json()).resolves.toMatchObject({
-      providerConnectionMode: 'managed',
-      providerActorMode: 'oauth-delegated-user',
       toolIntegrations: [{ id: 'wrangler', executables: ['wrangler', 'npx', 'pnpm'], protocol: 'cloudflare-api-base' }],
     })
   })
 
   it('[spec: cloudflare-adapter/cloudflare-wrangler-token-verification] verifies Wrangler with one approved scope', async () => {
-    const { app, exchange } = fixture({ principal: principal(['dns.write']) })
+    const { app, credential } = fixture({ principal: principal(['dns.write']) })
     const response = await app.request('/cloudflare/user/tokens/verify')
     expect(response.status).toBe(200)
     await expect(response.json()).resolves.toEqual({
@@ -26,11 +24,7 @@ describe('Cloudflare adapter', () => {
       messages: [],
       result: { id: 'realmroot-agent-authority', status: 'active' },
     })
-    expect(exchange).toHaveBeenCalledWith({
-      subjectToken: 'realmroot-agent-token',
-      audience: resource,
-      scopes: ['dns.write'],
-    })
+    expect(credential).toHaveBeenCalledWith('user-1')
 
     const user = await app.request('/cloudflare/user')
     await expect(user.json()).resolves.toMatchObject({
@@ -55,7 +49,7 @@ describe('Cloudflare adapter', () => {
   })
 
   it('[spec: cloudflare-adapter/cloudflare-native-tool-scope-challenge] reports the account authority Wrangler needs', async () => {
-    const { app, exchange } = fixture({ principal: principal(['dns.read']) })
+    const { app, credential } = fixture({ principal: principal(['dns.read']) })
 
     const response = await app.request('/cloudflare/accounts')
 
@@ -63,7 +57,7 @@ describe('Cloudflare adapter', () => {
     expect(response.headers.get('www-authenticate')).toBe(
       'DPoP error="insufficient_scope", scope="account-settings.read"',
     )
-    expect(exchange).not.toHaveBeenCalled()
+    expect(credential).not.toHaveBeenCalled()
   })
 
   it('publishes protected-resource discovery for proven OAuth scopes', async () => {
@@ -72,7 +66,8 @@ describe('Cloudflare adapter', () => {
     expect(response.status).toBe(200)
     await expect(response.json()).resolves.toMatchObject({
       resource,
-      authorization_servers: ['https://id.example/api/auth'],
+      authorization_servers: ['https://adapters.example/oauth/cloudflare'],
+      dpop_bound_access_tokens_required: true,
     })
   })
 
@@ -89,7 +84,7 @@ describe('Cloudflare adapter', () => {
       await expect(request.json()).resolves.toEqual({ type: 'TXT', name: 'proof.example', content: 'ok' })
       return Response.json({ success: true }, { status: 201, headers: { 'CF-Ray': 'ray-1', ETag: 'etag-1' } })
     })
-    const { app, audit, exchange } = fixture({ upstream })
+    const { app, audit, credential } = fixture({ upstream })
     const response = await app.request('/cloudflare/zones/zone-1/dns_records?trace=private', {
       method: 'POST',
       headers: {
@@ -104,18 +99,10 @@ describe('Cloudflare adapter', () => {
     })
     expect(response.status).toBe(201)
     expect(response.headers.get('cf-ray')).toBe('ray-1')
-    expect(exchange).toHaveBeenCalledWith({
-      subjectToken: 'realmroot-agent-token',
-      audience: resource,
-      scopes: ['dns.write'],
-    })
+    expect(credential).toHaveBeenCalledWith('user-1')
     expect(upstream).toHaveBeenCalledTimes(1)
     const auditText = JSON.stringify(audit.mock.calls[0]?.[0])
     expect(auditText).toContain('dns-records-for-a-zone-create-dns-record')
-    expect(audit.mock.calls[0]?.[0]).toMatchObject({
-      providerActor: { type: 'oauth_delegated_user' },
-      providerConnectionMode: 'managed',
-    })
     expect(auditText).not.toContain('realmroot-agent-token')
     expect(auditText).not.toContain('provider-access')
     expect(auditText).not.toContain('trace=private')
@@ -129,16 +116,12 @@ describe('Cloudflare adapter', () => {
       expect(request.method).toBe('GET')
       return Response.json({ success: true, result: { default_environment: { environment: 'production' } } })
     })
-    const { app, exchange } = fixture({ upstream, principal: principal(['workers-scripts.read']) })
+    const { app, credential } = fixture({ upstream, principal: principal(['workers-scripts.read']) })
 
     const response = await app.request('/cloudflare/accounts/account-1/workers/services/wallet')
 
     expect(response.status).toBe(200)
-    expect(exchange).toHaveBeenCalledWith({
-      subjectToken: 'realmroot-agent-token',
-      audience: resource,
-      scopes: ['workers-scripts.read'],
-    })
+    expect(credential).toHaveBeenCalledWith('user-1')
     expect(upstream).toHaveBeenCalledTimes(1)
   })
 
@@ -149,18 +132,14 @@ describe('Cloudflare adapter', () => {
       expect(request.method).toBe('DELETE')
       return Response.json({ success: true, result: null })
     })
-    const { app, exchange } = fixture({ upstream, principal: principal(['workers-scripts.write']) })
+    const { app, credential } = fixture({ upstream, principal: principal(['workers-scripts.write']) })
 
     const response = await app.request('/cloudflare/accounts/account-1/workers/services/wallet', {
       method: 'DELETE',
     })
 
     expect(response.status).toBe(200)
-    expect(exchange).toHaveBeenCalledWith({
-      subjectToken: 'realmroot-agent-token',
-      audience: resource,
-      scopes: ['workers-scripts.write'],
-    })
+    expect(credential).toHaveBeenCalledWith('user-1')
     expect(upstream).toHaveBeenCalledTimes(1)
   })
 
@@ -174,7 +153,7 @@ describe('Cloudflare adapter', () => {
       await expect(request.json()).resolves.toEqual([{ hostname: 'wallet.example' }])
       return Response.json({ success: true, result: null })
     })
-    const { app, exchange } = fixture({ upstream, principal: principal(['workers-scripts.write']) })
+    const { app, credential } = fixture({ upstream, principal: principal(['workers-scripts.write']) })
 
     const response = await app.request('/cloudflare/accounts/account-1/workers/scripts/wallet/domains/records', {
       method: 'PUT',
@@ -183,11 +162,7 @@ describe('Cloudflare adapter', () => {
     })
 
     expect(response.status).toBe(200)
-    expect(exchange).toHaveBeenCalledWith({
-      subjectToken: 'realmroot-agent-token',
-      audience: resource,
-      scopes: ['workers-scripts.write'],
-    })
+    expect(credential).toHaveBeenCalledWith('user-1')
     expect(upstream).toHaveBeenCalledTimes(1)
   })
 
@@ -198,16 +173,12 @@ describe('Cloudflare adapter', () => {
       expect(request.method).toBe('GET')
       return Response.json({ success: true, result: { token: 'preview-token' } })
     })
-    const { app, exchange } = fixture({ upstream, principal: principal(['workers-scripts.write']) })
+    const { app, credential } = fixture({ upstream, principal: principal(['workers-scripts.write']) })
 
     const response = await app.request('/cloudflare/zones/zone-1/workers/edge-preview')
 
     expect(response.status).toBe(200)
-    expect(exchange).toHaveBeenCalledWith({
-      subjectToken: 'realmroot-agent-token',
-      audience: resource,
-      scopes: ['workers-scripts.write'],
-    })
+    expect(credential).toHaveBeenCalledWith('user-1')
     expect(upstream).toHaveBeenCalledTimes(1)
   })
 
@@ -221,7 +192,7 @@ describe('Cloudflare adapter', () => {
       expect(request.headers.get('cf-preview-upload-config-token')).toBe('preview-session')
       return Response.json({ success: true, result: { preview_token: 'preview-token' } })
     })
-    const { app, exchange } = fixture({ upstream, principal: principal(['workers-scripts.write']) })
+    const { app, credential } = fixture({ upstream, principal: principal(['workers-scripts.write']) })
 
     const response = await app.request('/cloudflare/accounts/account-1/workers/scripts/wallet/edge-preview', {
       method: 'POST',
@@ -230,11 +201,7 @@ describe('Cloudflare adapter', () => {
     })
 
     expect(response.status).toBe(200)
-    expect(exchange).toHaveBeenCalledWith({
-      subjectToken: 'realmroot-agent-token',
-      audience: resource,
-      scopes: ['workers-scripts.write'],
-    })
+    expect(credential).toHaveBeenCalledWith('user-1')
     expect(upstream).toHaveBeenCalledTimes(1)
   })
 
@@ -248,7 +215,7 @@ describe('Cloudflare adapter', () => {
       await expect(request.json()).resolves.toEqual([{ hostname: 'wallet.example' }])
       return Response.json({ success: true, result: { updated: [] } })
     })
-    const { app, exchange } = fixture({ upstream, principal: principal(['workers-scripts.write']) })
+    const { app, credential } = fixture({ upstream, principal: principal(['workers-scripts.write']) })
 
     const response = await app.request(
       '/cloudflare/accounts/account-1/workers/scripts/wallet/domains/changeset?replace_state=true',
@@ -260,50 +227,52 @@ describe('Cloudflare adapter', () => {
     )
 
     expect(response.status).toBe(200)
-    expect(exchange).toHaveBeenCalledWith({
-      subjectToken: 'realmroot-agent-token',
-      audience: resource,
-      scopes: ['workers-scripts.write'],
-    })
+    expect(credential).toHaveBeenCalledWith('user-1')
     expect(upstream).toHaveBeenCalledTimes(1)
   })
 
   it('[spec: cloudflare-adapter/cloudflare-native-tool-scope-challenge] fails closed and reports operation scope alternatives', async () => {
     const unpublished = fixture()
     expect((await unpublished.app.request('/cloudflare/not-an-operation')).status).toBe(404)
-    expect(unpublished.exchange).not.toHaveBeenCalled()
+    expect(unpublished.credential).not.toHaveBeenCalled()
 
     const denied = fixture({ principal: principal(['dns.read']) })
     const response = await denied.app.request('/cloudflare/zones/zone-1/dns_records', { method: 'POST' })
     expect(response.status).toBe(403)
     expect(response.headers.get('www-authenticate')).toBe('DPoP error="insufficient_scope", scope="dns.write"')
-    expect(denied.exchange).not.toHaveBeenCalled()
+    expect(denied.credential).not.toHaveBeenCalled()
   })
 })
 
 function fixture(options: { upstream?: typeof fetch; principal?: AgentPrincipal } = {}) {
   const audit = vi.fn(async (_record: Record<string, unknown>) => undefined)
-  const exchange = vi.fn(async () => ({
+  const credential = vi.fn(async () => ({
+    subject: 'user-1',
+    displayName: 'User One',
     accessToken: 'provider-access',
-    expiresIn: 300,
-    scopes: options.principal?.scopes ?? new Set(['dns.write']),
+    refreshToken: 'provider-refresh',
+    expiresAt: Date.now() + 300_000,
+    scopes: [...(options.principal?.scopes ?? new Set(['dns.write']))],
+    credentialVersion: 1,
   }))
   const adapter = createCloudflareAdapter(
     {
       origin: 'https://adapters.example',
-      realmrootIssuer: 'https://id.example/api/auth',
-      applicationClientId: 'adapter-client',
-      applicationClientSecret: 'adapter-secret',
+      clientId: 'cloudflare-client',
+      clientSecret: 'cloudflare-secret',
+      credentialEncryptionKey: 'key',
+      authorizationOrigin: 'https://dash.cloudflare.com',
       cloudflareApiOrigin: 'https://api.cloudflare.com/client/v4',
     },
     {
       authenticator: { authenticate: vi.fn(async () => options.principal ?? principal(['dns.write'])) },
-      exchange: { exchange },
+      provider: { refresh: vi.fn() } as never,
+      credentials: { credential, replace: vi.fn() } as never,
       audit,
       fetch: options.upstream ?? vi.fn(async () => Response.json({ success: true })),
     },
   )
-  return { app: createApp([adapter]), audit, exchange }
+  return { app: createApp([adapter]), audit, credential }
 }
 
 function principal(scopes: string[]): AgentPrincipal {

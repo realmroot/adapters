@@ -1,5 +1,4 @@
 import { z } from 'zod'
-import type { ConnectionEventSink } from '../../core/connection-events.js'
 import { sha256Hex } from '../../core/digest.js'
 import { badRequest, HttpProblem } from '../../core/problem.js'
 import type { GitHubConnectionStore, GitHubLifecycleChange } from './connections.js'
@@ -31,7 +30,6 @@ export async function handleGitHubWebhook(input: {
   request: Request
   secret: string
   connections: GitHubConnectionStore
-  events: ConnectionEventSink
 }) {
   const deliveryId = requiredHeader(input.request, 'X-GitHub-Delivery')
   const eventName = requiredHeader(input.request, 'X-GitHub-Event')
@@ -45,18 +43,7 @@ export async function handleGitHubWebhook(input: {
 
   const prepared = await input.connections.prepareLifecycleEvent(change)
   if (prepared.completed || !prepared.event) return
-  await input.events.send(prepared.event)
   await input.connections.completeLifecycleEvent(deliveryId)
-}
-
-export async function deliverPendingGitHubConnectionEvents(input: {
-  connections: GitHubConnectionStore
-  events: ConnectionEventSink
-}) {
-  for (const event of await input.connections.pendingLifecycleEvents()) {
-    await input.events.send(event)
-    await input.connections.completeLifecycleEvent(event.id)
-  }
 }
 
 async function verifySignature(body: Uint8Array, secret: string, header: string | null) {

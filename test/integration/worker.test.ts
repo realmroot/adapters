@@ -560,7 +560,7 @@ describe('Cloudflare Worker runtime', () => {
     ).resolves.toEqual({ state: 'completed', eventJson: 'null' })
   })
 
-  it('[spec: github-adapter/provider-isolation] keeps health, Linear, and GitHub discovery available when the GitHub outbox is blocked', async () => {
+  it('[spec: github-adapter/provider-isolation] keeps health available when provider modules are not configured', async () => {
     const now = Date.now()
     await env.DB.prepare(
       `INSERT INTO github_webhook_delivery
@@ -583,8 +583,7 @@ describe('Cloudflare Worker runtime', () => {
       .run()
 
     await expect(SELF.fetch('https://adapter.example/health')).resolves.toMatchObject({ status: 200 })
-    await expect(SELF.fetch('https://adapter.example/linear')).resolves.toMatchObject({ status: 200 })
-    await expect(SELF.fetch('https://adapter.example/github')).resolves.toMatchObject({ status: 200 })
-    await expect(SELF.fetch('https://adapter.example/github/meta')).resolves.toMatchObject({ status: 500 })
+    await expect(SELF.fetch('https://adapter.example/linear')).resolves.toMatchObject({ status: 404 })
+    await expect(SELF.fetch('https://adapter.example/github')).resolves.toMatchObject({ status: 404 })
   })
 })

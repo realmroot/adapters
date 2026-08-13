@@ -1,17 +1,18 @@
 import type { Hono } from 'hono'
 import type { AdapterEnv, AdapterModule } from '../../core/adapter.js'
-import type { RealmrootTokenExchangeClient } from '../../core/oauth-client.js'
 import { forbidden, HttpProblem, insufficientScope } from '../../core/problem.js'
 import type { RealmrootAuthenticator } from '../../core/realmroot-auth.js'
 import type { CloudflareAdapterConfig } from './config.js'
 import { cloudflareManifest } from './manifest.js'
+import type { CloudflareCredential, CloudflareOAuthProvider, D1CloudflareCredentials } from './oauth.js'
 import { type CloudflareOperation, cloudflareOperations } from './operation-permissions.js'
 
 type Operation = CloudflareOperation
 
 export type CloudflareAdapterDependencies = {
   authenticator: RealmrootAuthenticator
-  exchange: RealmrootTokenExchangeClient
+  provider: CloudflareOAuthProvider
+  credentials: D1CloudflareCredentials
   audit: (record: Record<string, unknown>) => Promise<void>
   fetch?: typeof fetch
 }
@@ -54,6 +55,7 @@ export function createCloudflareAdapter(
   dependencies: CloudflareAdapterDependencies,
 ): AdapterModule {
   const resource = `${config.origin}/cloudflare`
+  const issuer = `${config.origin}/oauth/cloudflare`
   const request = dependencies.fetch ?? fetch
   return {
     id: 'cloudflare',
@@ -67,9 +69,10 @@ export function createCloudflareAdapter(
     app.get('/.well-known/oauth-protected-resource/cloudflare', (c) =>
       c.json({
         resource,
-        authorization_servers: [config.realmrootIssuer],
+        authorization_servers: [issuer],
         scopes_supported: Object.keys(cloudflareManifest.scopes).sort(),
-        bearer_methods_supported: ['header'],
+        bearer_methods_supported: [],
+        dpop_bound_access_tokens_required: true,
       }),
     )
     app.get('/cloudflare', (c) =>
@@ -77,8 +80,7 @@ export function createCloudflareAdapter(
         {
           resource,
           serviceDescription: `${resource}/openapi.json`,
-          providerConnectionMode: 'managed',
-          providerActorMode: 'oauth-delegated-user',
+          authorizationModel: 'external',
           toolIntegrations: [
             { id: 'wrangler', executables: ['wrangler', 'npx', 'pnpm'], protocol: 'cloudflare-api-base' },
           ],
@@ -93,13 +95,8 @@ export function createCloudflareAdapter(
       const principal = await dependencies.authenticator.authenticate(c.req.raw, resource)
       const requiredScope = [...principal.scopes].sort().find((scope) => scope in cloudflareManifest.scopes)
       if (!requiredScope) throw forbidden('The Agent token has no approved Cloudflare scope for Wrangler verification.')
-      if (!principal.subjectToken) throw forbidden('The Realmroot Agent subject token is unavailable.')
-      const provider = await dependencies.exchange.exchange({
-        subjectToken: principal.subjectToken,
-        audience: resource,
-        scopes: [requiredScope],
-      })
-      if (!provider.scopes.has(requiredScope))
+      const provider = await credential(principal.subject)
+      if (!provider.scopes.includes(requiredScope))
         throw forbidden('The Cloudflare OAuth grant does not authorize Wrangler verification.')
       await dependencies.audit({
         event: 'provider.operation',
@@ -111,7 +108,7 @@ export function createCloudflareAdapter(
         scope: requiredScope,
         originatingPrincipal: { issuer: principal.actor.issuer, subject: principal.actor.subject },
         providerActor: { type: 'oauth_delegated_user' },
-        providerConnectionMode: 'managed',
+        identityLevel: 'provider-delegated',
         result: { status: 200 },
         occurredAt: new Date().toISOString(),
       })
@@ -125,14 +122,9 @@ export function createCloudflareAdapter(
     app.get('/cloudflare/user', async (c) => {
       const principal = await dependencies.authenticator.authenticate(c.req.raw, resource)
       const requiredScope = [...principal.scopes].sort().find((scope) => scope in cloudflareManifest.scopes)
-      if (!requiredScope || !principal.subjectToken)
-        throw forbidden('The Agent token has no approved Cloudflare authority for Wrangler identity.')
-      const provider = await dependencies.exchange.exchange({
-        subjectToken: principal.subjectToken,
-        audience: resource,
-        scopes: [requiredScope],
-      })
-      if (!provider.scopes.has(requiredScope))
+      if (!requiredScope) throw forbidden('The Agent token has no approved Cloudflare authority for Wrangler identity.')
+      const provider = await credential(principal.subject)
+      if (!provider.scopes.includes(requiredScope))
         throw forbidden('The Cloudflare OAuth grant does not authorize Wrangler identity.')
       return c.json({
         success: true,
@@ -149,13 +141,8 @@ export function createCloudflareAdapter(
       const requiredScope = 'account-settings.read'
       if (!principal.scopes.has(requiredScope))
         throw insufficientScope(`The Agent token does not authorize ${requiredScope}.`, [[requiredScope]])
-      if (!principal.subjectToken) throw forbidden('The Realmroot Agent subject token is unavailable.')
-      const provider = await dependencies.exchange.exchange({
-        subjectToken: principal.subjectToken,
-        audience: resource,
-        scopes: [requiredScope],
-      })
-      if (!provider.scopes.has(requiredScope))
+      const provider = await credential(principal.subject)
+      if (!provider.scopes.includes(requiredScope))
         throw forbidden('The Cloudflare OAuth grant does not authorize account discovery.')
       const upstream = new URL(config.cloudflareApiOrigin)
       upstream.pathname = `${upstream.pathname.replace(/\/$/, '')}/accounts`
@@ -191,13 +178,8 @@ export function createCloudflareAdapter(
           operation.scopes.map((scope) => [scope]),
         )
       }
-      if (!principal.subjectToken) throw forbidden('The Realmroot Agent subject token is unavailable.')
-      const provider = await dependencies.exchange.exchange({
-        subjectToken: principal.subjectToken,
-        audience: resource,
-        scopes: [requiredScope],
-      })
-      if (!provider.scopes.has(requiredScope))
+      const provider = await credential(principal.subject)
+      if (!provider.scopes.includes(requiredScope))
         throw forbidden('The Cloudflare OAuth grant does not authorize this operation.')
 
       const upstream = new URL(config.cloudflareApiOrigin)
@@ -225,7 +207,7 @@ export function createCloudflareAdapter(
         scope: requiredScope,
         originatingPrincipal: { issuer: principal.actor.issuer, subject: principal.actor.subject },
         providerActor: { type: 'oauth_delegated_user' },
-        providerConnectionMode: 'managed',
+        identityLevel: 'provider-delegated',
         result: {
           status: response.status,
           ...(response.headers.get('cf-ray') ? { cfRay: response.headers.get('cf-ray') } : {}),
@@ -239,6 +221,20 @@ export function createCloudflareAdapter(
         headers: sanitizedHeaders(response.headers, removedResponseHeaders),
       })
     })
+  }
+
+  async function credential(subject: string) {
+    const current = await dependencies.credentials.credential(subject)
+    if (current.expiresAt > Date.now() + 30_000) return current
+    const token = await dependencies.provider.refresh(current.refreshToken)
+    if (!(await dependencies.credentials.replace(current, token))) {
+      return dependencies.credentials.credential(subject)
+    }
+    return {
+      ...current,
+      ...token,
+      credentialVersion: current.credentialVersion + 1,
+    } satisfies CloudflareCredential
   }
 }
 

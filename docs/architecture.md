@@ -35,7 +35,7 @@ does not become a permanent proxy or a central catalog of provider permissions.
 
 ```text
 Realmroot Agent
-  DPoP proof + short-lived Realmroot authority
+  DPoP proof + short-lived Adapter authority
             |
             v
 Adapter Agent boundary
@@ -52,21 +52,26 @@ Provider boundary
   provider-native actor and audit
 ```
 
-The adapter terminates the Realmroot-facing request but does not weaken it. A
+The adapter is both the external authorization server and the protected
+resource boundary. Realmroot manages one logical Connector per provider and
+the controller-facing account connection, while the Adapter owns provider
+OAuth details, credentials, webhook state, and final Agent-token issuance.
+Realmroot returns that final token unchanged and does not interpret provider
+fields inside authorization details.
+
+The adapter terminates the Agent-facing request but does not weaken it. A
 provider bearer credential may exist behind the adapter only when required by
 the provider. It is never returned across the Agent boundary.
 
 ## Deployment boundary
 
 The adapter is deployed as an independent Cloudflare Worker. It does not run
-inside the Realmroot Worker and does not share Realmroot's database. A brokered
-provider may keep provider bindings and encrypted credentials in adapter D1.
-A connector-backed provider instead keeps OAuth credentials only in Realmroot
-and lets a confidential Adapter Application exchange the current Agent token
-for a request-local provider access token. Adapter D1 then contains only
-runtime replay and audit state for that provider. Provider credentials never
-cross the Agent boundary. The Worker runtime uses Web Crypto and Fetch APIs
-without a Node process or filesystem.
+inside the Realmroot Worker and does not share Realmroot's database. Provider
+bindings and encrypted provider credentials stay in Adapter D1. Realmroot
+stores only its Connector client credentials, the controller-visible provider
+connection identity, and the resource authorization record. Provider
+credentials never cross the Agent boundary. The Worker runtime uses Web Crypto
+and Fetch APIs without a Node process or filesystem.
 
 ## Identity model
 
@@ -77,14 +82,6 @@ Every operation records two identities:
   by the provider.
 
 They may refer to the same conceptual Agent, but they are never conflated.
-
-Provider identity fidelity and Provider Connection custody are also independent.
-The capability manifest's `identity.level` describes which principal the
-provider can represent. Resource representations and operation audit records use
-`providerConnectionMode` to report whether Realmroot manages the provider OAuth
-credential or the Resource Server brokers it. Resource representations also use
-`providerActorMode` to identify the provider-native actor shape. A managed
-credential must therefore never be reported as an `identityLevel`.
 
 Each provider declares an identity level:
 

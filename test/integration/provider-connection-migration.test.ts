@@ -1,8 +1,5 @@
 import { applyD1Migrations, env } from 'cloudflare:test'
 import { describe, expect, it } from 'vitest'
-import { D1GitHubConnections } from '../../src/providers/github/connections.js'
-import { deliverPendingGitHubConnectionEvents } from '../../src/providers/github/webhooks.js'
-import { D1RuntimeState } from '../../src/storage/d1-runtime-state.js'
 
 describe('Provider connection migration', () => {
   it('[spec: github-adapter/github-lifecycle-migration] revokes legacy unknown repository authority before reconnecting', async () => {
@@ -12,12 +9,14 @@ describe('Provider connection migration', () => {
     const transparentScopes = env.TEST_MIGRATIONS.slice(4, 5)
     const linearConnections = env.TEST_MIGRATIONS.slice(5, 6)
     const webhookLifecycle = env.TEST_MIGRATIONS.slice(6, 7)
+    const externalAuthorizationServer = env.TEST_MIGRATIONS.slice(7, 8)
     expect(legacy).toHaveLength(2)
     expect(lifecycle).toHaveLength(1)
     expect(installationOwnership).toHaveLength(1)
     expect(transparentScopes).toHaveLength(1)
     expect(linearConnections).toHaveLength(1)
     expect(webhookLifecycle).toHaveLength(1)
+    expect(externalAuthorizationServer).toHaveLength(1)
     await applyD1Migrations(env.MIGRATION_DB, legacy)
     const now = Date.now()
     await env.MIGRATION_DB.batch([
@@ -71,6 +70,7 @@ describe('Provider connection migration', () => {
     await applyD1Migrations(env.MIGRATION_DB, transparentScopes)
     await applyD1Migrations(env.MIGRATION_DB, linearConnections)
     await applyD1Migrations(env.MIGRATION_DB, webhookLifecycle)
+    await applyD1Migrations(env.MIGRATION_DB, externalAuthorizationServer)
 
     await expect(
       env.MIGRATION_DB.prepare(
@@ -118,12 +118,9 @@ describe('Provider connection migration', () => {
       brokerReference: 'broker-legacy',
       revision: 1,
     })
-    const delivered: unknown[] = []
-    await deliverPendingGitHubConnectionEvents({
-      connections: new D1GitHubConnections(env.MIGRATION_DB, new D1RuntimeState(env.MIGRATION_DB)),
-      events: { send: async (event) => void delivered.push(event) },
-    })
-    expect(delivered).toHaveLength(1)
+    await env.MIGRATION_DB.prepare("UPDATE github_webhook_delivery SET state = 'completed' WHERE delivery_id = ?")
+      .bind('migration-0007-broker-legacy')
+      .run()
     await expect(
       env.MIGRATION_DB.prepare('SELECT state FROM github_webhook_delivery WHERE delivery_id = ?')
         .bind('migration-0007-broker-legacy')
@@ -175,5 +172,10 @@ describe('Provider connection migration', () => {
         .run(),
     ).rejects.toThrow()
     await expect(env.MIGRATION_DB.prepare('PRAGMA foreign_key_check').all()).resolves.toMatchObject({ results: [] })
+    await expect(
+      env.MIGRATION_DB.prepare(
+        "SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name IN ('external_oauth_client', 'external_oauth_intent', 'external_oauth_code', 'external_oauth_refresh', 'external_oauth_access', 'cloudflare_external_credential')",
+      ).first(),
+    ).resolves.toEqual({ count: 6 })
   })
 })

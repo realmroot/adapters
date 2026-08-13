@@ -1,13 +1,11 @@
 import type { Context, Hono } from 'hono'
 import type { AdapterEnv, AdapterModule } from '../../core/adapter.js'
 import { type AgentInfoResolver, createAgentInfoResolver } from '../../core/agent-info.js'
-import type { ConnectionEventSink } from '../../core/connection-events.js'
-import type { BrokeredConnectionRequest, BrokeredRevocationRequest } from '../../core/connection-request.js'
 import { badRequest, forbidden, HttpProblem, insufficientScope } from '../../core/problem.js'
 import type { AgentPrincipal, RealmrootAuthenticator } from '../../core/realmroot-auth.js'
-import { createGitHubConnectionProvider, createGitHubProvider } from './client.js'
+import { createGitHubProvider } from './client.js'
 import type { GitHubAdapterConfig } from './config.js'
-import type { GitHubAuthorizationContext, GitHubConnectionIntent, GitHubConnectionStore } from './connections.js'
+import type { GitHubAuthorizationContext, GitHubConnectionStore } from './connections.js'
 import {
   createGitHubCommentWithRest,
   createGitHubPullRequestWithRest,
@@ -24,7 +22,7 @@ import { githubOpenApi } from './openapi.js'
 import { resolveGitHubOperationPermissions } from './operation-permissions.js'
 import { permissionsToScopes, scopesToPermissions } from './permissions.js'
 import { transformGitHubRequest } from './transformers.js'
-import type { GitHubConnectionProvider, GitHubInstallation, GitHubProvider } from './types.js'
+import type { GitHubProvider } from './types.js'
 import { handleGitHubWebhook } from './webhooks.js'
 
 export type GitHubAdapterDependencies = {
@@ -32,12 +30,7 @@ export type GitHubAdapterDependencies = {
   audit: (record: Record<string, unknown>) => Promise<void>
   agentInfo?: AgentInfoResolver
   provider?: GitHubProvider
-  connection?: GitHubConnectionProvider
   connections?: GitHubConnectionStore
-  connectionRequestVerifier?: (request: string) => Promise<BrokeredConnectionRequest>
-  revocationRequestVerifier?: (request: string) => Promise<BrokeredRevocationRequest>
-  connectionEvents?: ConnectionEventSink
-  connectionEventBarrier?: () => Promise<void>
 }
 
 export function createGitHubAdapter(
@@ -46,7 +39,6 @@ export function createGitHubAdapter(
 ): AdapterModule {
   const resource = `${config.origin}/github`
   const provider = dependencies.provider ?? configuredProvider(config)
-  const connection = dependencies.connection ?? configuredConnection(config)
   const agentInfo = dependencies.agentInfo ?? createAgentInfoResolver(fetch, config.realmrootAgentProfileUriTemplate)
 
   return {
@@ -57,33 +49,28 @@ export function createGitHubAdapter(
   }
 
   function registerGitHubRoutes(app: Hono<AdapterEnv>) {
-    app.use('/github/*', async (c, next) => {
-      if (c.req.path !== '/github' && c.req.path !== '/github/openapi.json') {
-        await dependencies.connectionEventBarrier?.()
-      }
-      await next()
-    })
-
     app.get('/providers/github/manifest', async (c) => c.json(githubManifest(await provider.appPermissions())))
 
     app.get('/.well-known/oauth-protected-resource/github', async (c) =>
       c.json({
         resource,
-        authorization_servers: [config.realmrootIssuer],
+        authorization_servers: [`${config.origin}/oauth/github`],
         scopes_supported: permissionsToScopes(await provider.appPermissions()),
-        bearer_methods_supported: ['header'],
-        account_connection_modes_supported: ['brokered'],
-        account_connection_authorization_endpoint: `${resource}/account-connection-authorizations`,
-        account_connection_token_endpoint: `${resource}/account-connection-credentials`,
-        account_connection_revocation_endpoint: `${resource}/account-connection-revocations`,
-        account_connection_authorization_details_endpoint: `${resource}/account-connection-authorization-details`,
+        authorization_details_types_supported: ['github_installation'],
+        bearer_methods_supported: [],
+        dpop_bound_access_tokens_required: true,
       }),
     )
 
     app.get('/github/openapi.json', async (c) => {
       const [response, permissions] = await Promise.all([provider.openApiDocument(), provider.appPermissions()])
       return c.json(
-        await githubOpenApi({ resource, realmrootIssuer: config.realmrootIssuer, permissions, response }),
+        await githubOpenApi({
+          resource,
+          realmrootIssuer: `${config.origin}/oauth/github`,
+          permissions,
+          response,
+        }),
         200,
         {
           'Cache-Control': 'public, max-age=300',
@@ -97,8 +84,7 @@ export function createGitHubAdapter(
         {
           resource,
           serviceDescription: `${resource}/openapi.json`,
-          providerConnectionMode: 'brokered',
-          providerActorMode: 'github-app-installation',
+          authorizationModel: 'external',
           toolIntegrations: [
             { id: 'git', executables: ['git'], protocol: 'git-smart-http' },
             { id: 'gh', executables: ['gh'], protocol: 'github-http' },
@@ -111,137 +97,14 @@ export function createGitHubAdapter(
       ),
     )
 
-    app.get('/github/account-connection-authorizations', async (c) => {
-      const request = c.req.query('request')
-      if (!request || !dependencies.connectionRequestVerifier || !dependencies.connections || !connection) {
-        throw notConfiguredConnection()
-      }
-      const connectionRequest = await dependencies.connectionRequestVerifier(request)
-      const providerState = randomToken()
-      await dependencies.connections.create(connectionRequest, providerState)
-      return c.redirect(connection.authorizationUrl(providerState))
-    })
-
-    app.get('/github/oauth/callback', async (c) => {
-      if (!dependencies.connections || !connection) throw notConfiguredConnection()
-      const state = required(c.req.query('state'), 'GitHub OAuth state')
-      const code = required(c.req.query('code'), 'GitHub OAuth code')
-      const intent = await dependencies.connections.findByProviderState(state, 'pending_oauth')
-      const userToken = await connection.exchangeUserCode(code)
-      const [user, installations] = await Promise.all([
-        connection.getUser(userToken),
-        connection.listUserInstallations(userToken),
-      ])
-      if (intent.expectedInstallationId && !installations.some((item) => item.id === intent.expectedInstallationId)) {
-        throw forbidden('The authorized GitHub user cannot manage the selected App installation.')
-      }
-      if (installations.length === 0) {
-        const installState = randomToken()
-        await dependencies.connections.rotateProviderState(intent.requestId, installState, 'awaiting_install', null)
-        return c.redirect(await connection.newInstallationUrl(installState))
-      }
-      return completeAuthorization(c, dependencies.connections, intent, user, installations)
-    })
-
-    app.get('/github/account-connection-installations', async (c) => {
-      if (!dependencies.connections || !connection) throw notConfiguredConnection()
-      const state = required(c.req.query('state'), 'GitHub installation state')
-      const installation = installationId(required(c.req.query('installation_id'), 'GitHub installation ID'))
-      const intent = await dependencies.connections.findByProviderState(state, 'awaiting_install')
-      const oauthState = randomToken()
-      await dependencies.connections.rotateProviderState(intent.requestId, oauthState, 'pending_oauth', installation)
-      return c.redirect(connection.authorizationUrl(oauthState))
-    })
-
-    app.post('/github/account-connection-credentials', async (c) => {
-      if (!dependencies.connections) throw notConfiguredConnection()
-      const form = await c.req.formData()
-      const { binding, brokerReference, contexts } = await dependencies.connections.exchange(
-        requiredForm(form, 'code'),
-        requiredForm(form, 'code_verifier'),
-        requiredForm(form, 'connection_id'),
-      )
-      return c.json({
-        external_subject: String(binding.githubUserId),
-        display_name: binding.displayName,
-        broker_reference: brokerReference,
-        scope: (JSON.parse(binding.scopesJson) as string[]).join(' '),
-        authorization_details: contexts.map((context) => ({
-          type: 'github_installation',
-          installation_id: String(context.installationId),
-          account_login: context.accountLogin,
-          target_type: context.targetType,
-          repository_selection: context.repositorySelection,
-          ...(context.repositorySelection === 'selected'
-            ? {
-                repositories: context.repositories.map((repository) => ({
-                  id: String(repository.id),
-                  full_name: repository.fullName,
-                })),
-              }
-            : {}),
-        })),
-      })
-    })
-
-    app.post('/github/account-connection-revocations', async (c) => {
-      if (!dependencies.revocationRequestVerifier || !dependencies.connections) throw notConfiguredConnection()
-      const signedRequest = requiredForm(await c.req.formData(), 'request')
-      const revocation = await dependencies.revocationRequestVerifier(signedRequest)
-      await dependencies.connections.revoke({
-        brokerReference: revocation.broker_reference,
-        ownerSubject: revocation.sub,
-        jti: revocation.jti,
-        expiresAt: revocation.exp * 1000,
-      })
-      return c.body(null, 204)
-    })
-
-    app.get('/github/account-connection-authorization-details', async (c) => {
-      if (!dependencies.connections) throw notConfiguredConnection()
-      const brokerReference = bearerCredential(c.req.header('authorization'))
-      const contexts = await dependencies.connections.activeInstallationsForReference(brokerReference)
-      const { limit, offset } = catalogPagination(c.req.query('limit'), c.req.query('offset'))
-      const items = contexts.slice(offset, offset + limit).map((context) => ({
-        authorizationDetail: contextAuthorizationDetail(context),
-        display: {
-          label: context.accountLogin,
-          description: `${context.targetType} GitHub App installation`,
-          metadata: {
-            accountType: context.targetType,
-            repositories:
-              context.repositorySelection === 'all'
-                ? 'All repositories'
-                : `${context.repositories.length} selected repositories`,
-          },
-        },
-      }))
-      const nextOffset = offset + items.length < contexts.length ? offset + items.length : null
-      return c.json(
-        {
-          items,
-          pagination: {
-            limit,
-            offset,
-            total: contexts.length,
-            hasMore: nextOffset !== null,
-            nextOffset,
-          },
-        },
-        200,
-        { 'Cache-Control': 'no-store' },
-      )
-    })
-
     app.post('/github/webhooks', async (c) => {
-      if (!config.githubWebhookSecret || !dependencies.connections || !dependencies.connectionEvents) {
+      if (!config.githubWebhookSecret || !dependencies.connections) {
         throw notConfiguredConnection()
       }
       await handleGitHubWebhook({
         request: c.req.raw,
         secret: config.githubWebhookSecret,
         connections: dependencies.connections,
-        events: dependencies.connectionEvents,
       })
       return c.body(null, 204)
     })
@@ -496,7 +359,7 @@ export function createGitHubAdapter(
         installationId: installation.installationId,
         originatingPrincipal: { issuer: principal.actor.issuer, subject: principal.actor.subject },
         providerActor: { type: 'github_app', id: config.githubAppId ?? 'injected-test-provider' },
-        providerConnectionMode: 'brokered',
+        identityLevel: 'provider-delegated',
         result: { status: response.status },
         occurredAt: new Date().toISOString(),
       })
@@ -505,12 +368,10 @@ export function createGitHubAdapter(
   }
 
   async function selectedInstallation(principal: AgentPrincipal) {
-    if (!principal.connectionId || !dependencies.connections) {
-      throw forbidden('A brokered GitHub account connection is required.')
-    }
+    if (!dependencies.connections) throw forbidden('A GitHub account connection is required.')
     const connected = await dependencies.connections.activeInstallationsForOwner(
       principal.subject,
-      principal.connectionId,
+      `github:${principal.subject}`,
     )
     const selectedIds = (principal.authorizationDetails ?? []).flatMap((detail) =>
       detail.type === 'github_installation' && typeof detail.installation_id === 'string'
@@ -541,44 +402,11 @@ export function createGitHubAdapter(
       installationId: installation.installationId,
       originatingPrincipal: { issuer: principal.actor.issuer, subject: principal.actor.subject },
       providerActor: { type: 'github_app', id: config.githubAppId ?? 'injected-test-provider' },
-      providerConnectionMode: 'brokered',
+      identityLevel: 'provider-delegated',
       result: { status },
       occurredAt: new Date().toISOString(),
     })
   }
-}
-
-function contextAuthorizationDetail(context: GitHubAuthorizationContext) {
-  return {
-    type: 'github_installation',
-    installation_id: String(context.installationId),
-    account_login: context.accountLogin,
-    target_type: context.targetType,
-    repository_selection: context.repositorySelection,
-    ...(context.repositorySelection === 'selected'
-      ? {
-          repositories: context.repositories.map((repository) => ({
-            id: String(repository.id),
-            full_name: repository.fullName,
-          })),
-        }
-      : {}),
-  }
-}
-
-function bearerCredential(value: string | undefined) {
-  const match = /^Bearer ([^\s]+)$/.exec(value ?? '')
-  if (!match) throw forbidden('An active GitHub account connection reference is required.')
-  return match[1] as string
-}
-
-function catalogPagination(limitValue: string | undefined, offsetValue: string | undefined) {
-  const limit = limitValue === undefined ? 100 : Number(limitValue)
-  const offset = offsetValue === undefined ? 0 : Number(offsetValue)
-  if (!Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isInteger(offset) || offset < 0) {
-    throw badRequest('Authorization detail catalog pagination is invalid.')
-  }
-  return { limit, offset }
 }
 
 function gitTransportTarget(requestUrl: string, method: string, origin: string) {
@@ -610,18 +438,6 @@ function configuredProvider(config: GitHubAdapterConfig): GitHubProvider {
   return createGitHubProvider({
     appId: config.githubAppId,
     privateKey: config.githubPrivateKey,
-    apiOrigin: config.githubApiOrigin,
-  })
-}
-
-function configuredConnection(config: GitHubAdapterConfig) {
-  if (!config.githubAppId || !config.githubPrivateKey || !config.githubClientId || !config.githubClientSecret) return
-  return createGitHubConnectionProvider({
-    appId: config.githubAppId,
-    privateKey: config.githubPrivateKey,
-    clientId: config.githubClientId,
-    clientSecret: config.githubClientSecret,
-    redirectUri: `${config.origin}/github/oauth/callback`,
     apiOrigin: config.githubApiOrigin,
   })
 }
@@ -675,44 +491,10 @@ function repositoryTarget(path: string, installation: GitHubAuthorizationContext
   return repository
 }
 
-async function completeAuthorization(
-  c: Context,
-  store: GitHubConnectionStore,
-  intent: GitHubConnectionIntent,
-  user: Awaited<ReturnType<GitHubConnectionProvider['getUser']>>,
-  installations: GitHubInstallation[],
-) {
-  const code = randomToken()
-  await store.complete(intent, user, installations, code)
-  const callback = new URL(intent.callbackUri)
-  callback.searchParams.set('state', intent.realmrootState)
-  callback.searchParams.set('code', code)
-  return c.redirect(callback.toString())
-}
-
 function installationId(value: string) {
   const parsed = Number(value)
   if (!Number.isSafeInteger(parsed) || parsed <= 0) throw badRequest('The GitHub installation ID is invalid.')
   return parsed
-}
-
-function required(value: string | undefined, label: string) {
-  if (!value) throw badRequest(`${label} is required.`)
-  return value
-}
-
-function requiredForm(form: FormData, name: string) {
-  const value = form.get(name)
-  if (typeof value !== 'string' || !value) throw badRequest(`${name} is required.`)
-  return value
-}
-
-function randomToken() {
-  const bytes = crypto.getRandomValues(new Uint8Array(32))
-  return btoa(String.fromCharCode(...bytes))
-    .replaceAll('+', '-')
-    .replaceAll('/', '_')
-    .replace(/=+$/, '')
 }
 
 function notConfiguredConnection() {
