@@ -2,7 +2,7 @@
 
 Status: **alpha implementation**
 
-Identity level: **brokered**
+Identity level: **provider-delegated application actor**
 
 ## Actor semantics
 
@@ -60,7 +60,8 @@ Provider credentials remain adapter-owned and are never returned to the Agent.
 
 Every write is correlated with the Realmroot Agent, approved repository and
 scopes, GitHub installation, real GitHub actor, provider request, and resulting
-GitHub URL. The adapter declares brokered identity in discovery metadata.
+GitHub URL. The adapter declares provider-delegated identity in discovery
+metadata.
 
 ## Known limitation
 
@@ -109,7 +110,6 @@ mean GitHub implements that capability natively.
 | `DPOP` | 🟨 | GitHub API tokens are Bearer credentials; the adapter will require DPoP on its Agent-facing boundary. |
 | `JWK-THUMBPRINT` | 🟨 | The adapter owns the inbound `cnf.jkt` binding. |
 | `RICH-AUTHORIZATION` | 🟨 | The adapter carries `github_installation` authorization details through Realmroot grants and tokens; GitHub represents that boundary with App installations rather than RFC 9396. |
-| `BROKERED-ACCOUNT-CONNECTION` | 🟨 | The adapter implements the Realmroot extension and keeps GitHub OAuth and installation credentials within its Worker boundary; GitHub does not implement the exchange. |
 | `PUSHED-AUTHORIZATION` | ➖ | PAR is conditional on RFC 9396 use. |
 | `AUTHORIZATION-CATALOG` | ➖ | The RFC 9396 catalog extension is not used; ordinary adapter Resource discovery still enumerates installations and repositories. |
 | `TOKEN-REVOCATION` | 🟨 | GitHub exposes provider-specific token and installation lifecycle operations rather than the profile's RFC 7009 contract. |

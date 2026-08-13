@@ -32,20 +32,12 @@ Feature: GitHub App adapter
     And the response uses the shared authorization-detail catalog representation
     But it does not expose installation credentials
 
-  @journey:github-lifecycle-migration @entrypoint:migration
-  Scenario: Legacy GitHub connections do not gain unknown repository authority
-    Given a GitHub connection predates retained repository selection and membership
-    When the lifecycle migration is applied
-    Then the legacy connection is revoked and its installation contexts are removed
-    And a durable generic revoked event updates Realmroot before the adapter serves requests
-    And the controller can reconnect it with freshly discovered repository authority
-
   @journey:github-provider-revocation @entrypoint:http
   Scenario: Realmroot disconnects a GitHub Provider connection
-    Given Realmroot signs a revocation request for the connected broker reference
-    When the adapter accepts that one-use request
-    Then the broker reference and its installation contexts become unusable
-    And replaying the signed revocation request is rejected
+    Given Realmroot holds an Adapter-issued refresh token for the Provider connection
+    When Realmroot sends that token to the Adapter's OAuth revocation endpoint
+    Then the refresh token and its installation authority become unusable
+    And repeating standard OAuth revocation does not restore authority
 
   @journey:github-installation-lifecycle @entrypoint:http
   Scenario: GitHub installation lifecycle changes immediately constrain connected authority
@@ -56,8 +48,7 @@ Feature: GitHub App adapter
     And the adapter immediately removes, suspends, restores, or updates the affected installation context
     And older lifecycle state cannot replace newer provider state
     And equal-timestamp suspension, authority reduction, and deletion cannot be undone by an ambiguous expansion
-    And each accepted context change receives a monotonically increasing connection revision
-    And Realmroot receives the corresponding generic Connection Event from the adapter's client-credentials Application with complete authority constraints
+    And subsequent token issuance and execution use the updated Adapter-owned authority
 
   @journey:github-installation-resources @entrypoint:http
   Scenario: GitHub installation repository changes invalidate affected grants
@@ -65,8 +56,8 @@ Feature: GitHub App adapter
     When GitHub reports repositories added to or removed from the installation
     Then the adapter updates its provider-private repository membership immediately
     And equal-timestamp removal wins for the same repository while independent repository changes merge
-    And Realmroot receives an OAuth-authenticated resources changed Connection Event with the complete remaining contexts and authority constraints
-    And replaying the same GitHub delivery does not apply or emit the event twice
+    And subsequent token issuance excludes removed repositories
+    And replaying the same GitHub delivery does not apply the event twice
 
   @journey:github-permission-translation @entrypoint:http
   Scenario: GitHub App permissions are exposed as Realmroot scopes

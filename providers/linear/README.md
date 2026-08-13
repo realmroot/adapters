@@ -2,7 +2,7 @@
 
 Status: **experimental**
 
-Identity level: **brokered native App actor**
+Identity level: **provider-delegated native App actor**
 
 ## Actor semantics
 
@@ -20,7 +20,8 @@ accepted from Agent request input.
 
 The display alias has no separate Linear user ID, profile, mention target, or
 delegation identity. The capability manifest therefore classifies Linear as
-brokered even though its per-operation attribution is provider-native.
+provider-delegated even though its per-operation attribution is
+provider-native.
 
 ## Initial Resource mapping
 
@@ -36,7 +37,7 @@ Linear workspace
 - one user-facing Provider Connection, exposed through the Adapter's standard
   external OAuth server, with a short user OAuth step followed by App
   installation using `actor=app`;
-- multiple installed workspace contexts under that one Connection;
+- one installed workspace represented by the Provider Connection subject;
 - encrypted access and rotating refresh credentials in provider-owned D1
   tables;
 - transparent forwarding of the original Linear GraphQL API at

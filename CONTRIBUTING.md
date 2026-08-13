@@ -34,8 +34,8 @@ documentation for:
 12. the observable condition under which the adapter can be deprecated.
 
 A provider that only supports a shared application actor is still welcome, but
-must declare `brokered` identity rather than presenting display attribution as
-a native Agent principal.
+must declare `provider-delegated` identity rather than presenting display
+attribution as a native Agent principal.
 
 Contributions that help a platform adopt the native protocol profile are as
 valuable as adapter implementations. The project prefers a smaller removable
@@ -44,6 +44,13 @@ proxy.
 
 ## Development principles
 
+- Implement every Adapter as a standard external OAuth authorization server and
+  protected Resource. Do not add an Adapter-specific authorization model or
+  private account-connection protocol to Realmroot.
+- Keep provider OAuth, credentials, refresh, revocation, lifecycle state,
+  permission mapping, and API execution inside the provider module.
+- Adding a provider must require Realmroot configuration only, not a Realmroot
+  core-code change.
 - Start with one complete provider journey and its proof.
 - Keep canonical contracts owned by the application behavior that consumes
   them; adapters implement those contracts.

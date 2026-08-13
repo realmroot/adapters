@@ -4,21 +4,19 @@ Status: **experimental**
 
 The Cloudflare adapter is a fail-closed REST transport backed by a normal
 Cloudflare OAuth authorization. External users authorize their own Cloudflare
-accounts. Realmroot's generic OAuth Connector encrypts the access and refresh
-tokens; the Adapter stores neither.
+accounts. The Adapter encrypts and owns Cloudflare access and refresh tokens;
+Realmroot stores only its Connector configuration and Provider Connection.
 
 ## Identity and credentials
 
 - Provider actor: the Cloudflare user and OAuth Client.
 - Cloudflare product visibility for the Agent: no.
 - Cloudflare audit-log visibility for the Agent: no.
-- Credential mode: `realmroot-connector-oauth`.
-- Agent-facing credential: short-lived Realmroot DPoP token.
-- Provider-facing credential: request-local Cloudflare Bearer token returned by
-  RFC 8693 exchange to the confidential Adapter Application.
+- Credential mode: Adapter-managed Cloudflare OAuth.
+- Agent-facing credential: short-lived Adapter-issued DPoP token.
+- Provider-facing credential: Adapter-owned Cloudflare Bearer token.
 
-The Adapter does not create one API Token per Agent, does not contain a Token
-Manager, and does not persist provider credentials. Cloudflare receives the
+The Adapter does not create one API Token per Agent. Cloudflare receives the
 delegated user OAuth identity, not the Realmroot Agent actor chain.
 
 ## REST contract
@@ -44,10 +42,9 @@ authority metadata or a reviewed explicit mapping is added.
 
 ## Runtime boundary
 
-For every published operation the Adapter validates the Realmroot DPoP token,
-Agent actor, audience, replay, and operation scope; exchanges the original
-subject token at Realmroot's standard OAuth token endpoint; verifies the
-returned Provider scopes; and forwards to the fixed
+For every published operation the Adapter validates its DPoP token, Agent actor,
+audience, replay, and operation scope; resolves and refreshes its Adapter-owned
+Cloudflare credential; verifies the Provider scopes; and forwards to the fixed
 `https://api.cloudflare.com/client/v4` origin.
 
 The proxy strips inbound credentials, cookies, forwarding metadata, and
