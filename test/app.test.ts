@@ -185,7 +185,7 @@ describe('GitHub adapter contract', () => {
           title: 'Fix adapter',
           head: 'codex/fix',
           base: 'main',
-          body: 'Details',
+          body: expect.stringContaining('🤖 Created by [Build Agent]'),
           draft: true,
           maintainer_can_modify: true,
         })
@@ -490,7 +490,7 @@ describe('GitHub adapter contract', () => {
     expect(response.status).toBe(201)
   })
 
-  it('[spec: github-adapter/github-create-issue] injects attribution without changing GitHub response semantics', async () => {
+  it('[spec: github-adapter/github-attributed-content] injects attribution without changing GitHub response semantics', async () => {
     const provider = fakeProvider()
     provider.request = vi.fn(async (upstream: Request) => {
       const input = (await upstream.json()) as { title: string; labels: string[]; body: string }
@@ -513,7 +513,7 @@ describe('GitHub adapter contract', () => {
     expect(await response.json()).toEqual({ id: 1, number: 2 })
   })
 
-  it('[spec: github-adapter/github-create-issue] injects attribution into GitHub CLI GraphQL issue creation', async () => {
+  it('[spec: github-adapter/github-attributed-content] injects attribution into GitHub CLI GraphQL issue creation', async () => {
     const provider = fakeProvider()
     provider.request = vi.fn(async (upstream: Request) => {
       expect(upstream.url).toBe('https://api.github.com/graphql')
