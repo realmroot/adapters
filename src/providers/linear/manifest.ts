@@ -11,8 +11,8 @@ export const linearManifest = {
     visibleInAuditLog: true,
     attribution: 'provider-native',
   },
-  actorModes: ['linear-user', 'linear-app-user'],
-  credentialModes: ['oauth-app-access-token'],
+  actorModes: ['linear-app'],
+  credentialModes: ['realmroot-connector-oauth'],
   resourceTypes: ['workspace', 'team', 'project', 'issue'],
   scopes: Object.fromEntries(
     linearScopes.map((scope) => [scope, { providerPermissions: { [scope]: linearScopeDescriptions[scope] } }]),
@@ -25,7 +25,7 @@ export const linearManifest = {
       { method: 'POST', path: '/graphql', behavior: 'agent-display-for-issueCreate-and-commentCreate' },
     ],
   },
-  revocationSignals: ['realmroot-signed-broker-revocation', 'linear-oauth-app-revoked', 'token-rejection'],
+  revocationSignals: ['realmroot-provider-connection-revocation', 'linear-oauth-app-revoked'],
   nativeReadinessGaps: ['ACTOR-CHAIN', 'ACTOR-PROFILE', 'DPOP', 'TOKEN-EXCHANGE'],
   retirementCondition:
     'Linear accepts the stable external Agent and proof-bound authority directly instead of recording the shared Realmroot App user as the security principal.',

@@ -12,8 +12,6 @@ import { D1GitHubConnections } from './providers/github/connections.js'
 import { deliverPendingGitHubConnectionEvents } from './providers/github/webhooks.js'
 import { createLinearAdapter } from './providers/linear/adapter.js'
 import { loadLinearConfig } from './providers/linear/config.js'
-import { D1LinearConnections } from './providers/linear/connections.js'
-import { createLinearCredentialCipher } from './providers/linear/credentials.js'
 import { D1RuntimeState } from './storage/d1-runtime-state.js'
 
 export default {
@@ -30,10 +28,6 @@ export default {
       replayStore: state,
     })
     const githubBrokerRequests = createBrokerRequestVerifiers(config, `${config.origin}/github`)
-    const linearBrokerRequests = createBrokerRequestVerifiers(config, `${config.origin}/linear`)
-    const linearConnections = linearConfig.linearCredentialEncryptionKey
-      ? new D1LinearConnections(env.DB, createLinearCredentialCipher(linearConfig.linearCredentialEncryptionKey), state)
-      : undefined
     const connectionEvents =
       githubConfig.realmrootApplicationClientId &&
       githubConfig.realmrootApplicationClientSecret &&
@@ -63,10 +57,14 @@ export default {
       }),
       createLinearAdapter(linearConfig, {
         authenticator,
+        exchange: createRealmrootTokenExchangeClient({
+          issuer: config.realmrootIssuer,
+          clientId: linearConfig.applicationClientId,
+          clientSecret: linearConfig.applicationClientSecret,
+          fetch,
+        }),
         audit: (record) => state.recordAudit(record),
-        connectionRequestVerifier: linearBrokerRequests.verifyConnection,
-        revocationRequestVerifier: linearBrokerRequests.verifyRevocation,
-        ...(linearConnections ? { connections: linearConnections } : {}),
+        fetch,
       }),
     ]
     if (cloudflareConfig) {

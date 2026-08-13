@@ -14,7 +14,6 @@
     "GITHUB_API_ORIGIN": "https://api.github.com",
     "GITHUB_UPLOADS_ORIGIN": "https://uploads.github.com",
     "LINEAR_API_ORIGIN": "https://api.linear.app",
-    "LINEAR_AUTHORIZATION_ORIGIN": "https://linear.app",
     "CLOUDFLARE_API_ORIGIN": "https://api.cloudflare.com/client/v4"
   },
   "assets": { "directory": "./public" },
@@ -27,11 +26,7 @@
       "GITHUB_WEBHOOK_SECRET",
       "REALMROOT_APPLICATION_CLIENT_ID",
       "REALMROOT_APPLICATION_CLIENT_SECRET",
-      "REALMROOT_GITHUB_RESOURCE_SERVER_ID",
-      "LINEAR_CLIENT_ID",
-      "LINEAR_CLIENT_SECRET",
-      "LINEAR_CREDENTIAL_ENCRYPTION_KEY",
-      "LINEAR_WEBHOOK_SECRET"
+      "REALMROOT_GITHUB_RESOURCE_SERVER_ID"
     ]
   },
   "d1_databases": [

@@ -189,8 +189,9 @@ appear in the audience URL:
 {
   "identifier": "github",
   "resourceUrl": "http://127.0.0.1:4103/github",
-  "connectorId": "YOUR_GITHUB_CONNECTOR_ID",
-  "ownerOrganizationId": "org_platform",
+  "authorizationModel": "realmroot",
+  "providerConnection": { "connectorId": "YOUR_GITHUB_CONNECTOR_ID", "mode": "brokered" },
+  "ownerOrganizationId": "YOUR_PLATFORM_ORGANIZATION_ID",
   "authorizationDetails": [{ "type": "github_installation" }],
   "enabled": true,
   "availableToAgents": true,
@@ -300,39 +301,34 @@ discovery and does not invent a request predicate or retry a provider write.
 
 ### Linear experimental slice
 
-Create one Linear OAuth application with this callback:
+Create one Linear OAuth application in the Realmroot Connector with this resource authorization callback:
 
 ```text
-Local callback URL:      http://127.0.0.1:4103/linear/oauth/callback
-Production callback URL: https://adapters.realmroot.dev/linear/oauth/callback
-Production webhook URL:  https://adapters.realmroot.dev/linear/webhooks
+Local callback URL:      http://127.0.0.1:4173/api/account-connections/oauth/callback
+Production callback URL: https://id.realmroot.dev/api/account-connections/oauth/callback
 ```
 
-Configure the webhook for permission changes and OAuth revocation. Do not
-enable Agent Session events yet. Put `LINEAR_CLIENT_ID`,
-`LINEAR_CLIENT_SECRET`, `LINEAR_WEBHOOK_SECRET`, and a random 32-byte
-base64-encoded `LINEAR_CREDENTIAL_ENCRYPTION_KEY` in `.dev.vars`; use Wrangler
-secrets for deployment.
+Realmroot owns the Linear client credentials, refresh tokens, and revocation.
+The adapter uses its existing confidential Realmroot Application credentials
+only to exchange an Agent token for the selected workspace token.
 
-Register one brokered Resource Server and select the Linear Connector:
+Register one Realmroot-authorized Resource Server with a managed Provider Connection:
 
 ```json
 {
   "identifier": "linear",
   "resourceUrl": "http://127.0.0.1:4103/linear",
-  "connectorId": "YOUR_LINEAR_CONNECTOR_ID",
-  "ownerOrganizationId": "org_platform",
-  "authorizationDetails": [{ "type": "linear_workspace" }],
+  "authorizationModel": "realmroot",
+  "providerConnection": { "connectorId": "YOUR_LINEAR_CONNECTOR_ID", "mode": "managed" },
+  "ownerOrganizationId": "YOUR_PLATFORM_ORGANIZATION_ID",
   "enabled": true,
   "availableToAgents": true,
   "visibility": "public"
 }
 ```
 
-The user sees one Linear Connection. Behind that single flow, the adapter first
-identifies the stable Linear user and immediately revokes that temporary token,
-then authorizes the App actor for a workspace. Reauthorization can add another
-workspace context without creating another Connection.
+The user sees one Provider Connection per Linear workspace. Realmroot authorizes
+each workspace directly with `actor=app` and `prompt=consent`; the adapter remains stateless.
 
 The Agent-facing API remains Linear's original GraphQL transport:
 

@@ -18,11 +18,6 @@ describe('adapter Worker configuration', () => {
       REALMROOT_APPLICATION_CLIENT_SECRET: 'realmroot-secret',
       REALMROOT_GITHUB_RESOURCE_SERVER_ID: 'res_github',
       LINEAR_API_ORIGIN: 'https://api.linear.example/',
-      LINEAR_AUTHORIZATION_ORIGIN: 'https://linear.example/',
-      LINEAR_CLIENT_ID: 'linear-client',
-      LINEAR_CLIENT_SECRET: 'linear-secret',
-      LINEAR_CREDENTIAL_ENCRYPTION_KEY: 'linear-encryption-key',
-      LINEAR_WEBHOOK_SECRET: 'linear-webhook-secret',
     }
     const config = loadConfig(environment, 'https://adapter.example/health')
 
@@ -44,11 +39,8 @@ describe('adapter Worker configuration', () => {
     })
     expect(loadLinearConfig(environment, config)).toMatchObject({
       linearApiOrigin: 'https://api.linear.example',
-      linearAuthorizationOrigin: 'https://linear.example',
-      linearClientId: 'linear-client',
-      linearClientSecret: 'linear-secret',
-      linearCredentialEncryptionKey: 'linear-encryption-key',
-      linearWebhookSecret: 'linear-webhook-secret',
+      applicationClientId: 'realmroot-client',
+      applicationClientSecret: 'realmroot-secret',
     })
   })
 
