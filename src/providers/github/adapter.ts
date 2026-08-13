@@ -298,7 +298,7 @@ export function createGitHubAdapter(
       }
       const mergePullRequest = parseGitHubMergePullRequest(body)
       if (mergePullRequest) {
-        const requiredScopes = new Set(['metadata:read', 'pull_requests:write'])
+        const requiredScopes = new Set(['contents:write', 'metadata:read'])
         const missingScopes = [...requiredScopes].filter((scope) => !principal.scopes.has(scope))
         if (missingScopes.length > 0) {
           throw insufficientScope(`The Agent token does not authorize ${missingScopes.join(', ')}.`, [
@@ -325,7 +325,7 @@ export function createGitHubAdapter(
         const repository = repositoryTarget(`/repos/${target.nameWithOwner}`, installation)
         const mergeToken = await provider.installationToken({
           installationId: installation.installationId,
-          permissions: scopesToPermissions(new Set(['pull_requests:write']), available),
+          permissions: scopesToPermissions(new Set(['contents:write']), available),
           repositories: [repository as string],
         })
         const response = await mergeGitHubPullRequestWithRest({
