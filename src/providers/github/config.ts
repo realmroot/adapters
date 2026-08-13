@@ -2,15 +2,15 @@ import { z } from 'zod'
 import type { AppConfig } from '../../config.js'
 
 const githubEnvironmentSchema = z.object({
-    GITHUB_API_ORIGIN: z.url().default('https://api.github.com'),
-    GITHUB_UPLOADS_ORIGIN: z.url().default('https://uploads.github.com'),
-    GITHUB_GIT_ORIGIN: z.url().default('https://github.com'),
-    GITHUB_APP_ID: z.string().trim().min(1).optional(),
-    GITHUB_PRIVATE_KEY: z.string().trim().min(1).optional(),
-    GITHUB_CLIENT_ID: z.string().trim().min(1).optional(),
-    GITHUB_CLIENT_SECRET: z.string().trim().min(1).optional(),
-    GITHUB_WEBHOOK_SECRET: z.string().min(32).optional(),
-  })
+  GITHUB_API_ORIGIN: z.url().default('https://api.github.com'),
+  GITHUB_UPLOADS_ORIGIN: z.url().default('https://uploads.github.com'),
+  GITHUB_GIT_ORIGIN: z.url().default('https://github.com'),
+  GITHUB_APP_ID: z.string().trim().min(1).optional(),
+  GITHUB_PRIVATE_KEY: z.string().trim().min(1).optional(),
+  GITHUB_CLIENT_ID: z.string().trim().min(1).optional(),
+  GITHUB_CLIENT_SECRET: z.string().trim().min(1).optional(),
+  GITHUB_WEBHOOK_SECRET: z.string().min(32).optional(),
+})
 
 export type GitHubAdapterConfig = AppConfig & {
   githubApiOrigin: string

@@ -58,7 +58,9 @@ export interface GitHubConnectionStore {
     contexts: GitHubAuthorizationContext[]
   }>
   revoke(input: { brokerReference: string; ownerSubject: string; jti: string; expiresAt: number }): Promise<void>
-  prepareLifecycleEvent(input: GitHubLifecycleChange): Promise<{ event: GitHubLifecycleEvent | null; completed: boolean }>
+  prepareLifecycleEvent(
+    input: GitHubLifecycleChange,
+  ): Promise<{ event: GitHubLifecycleEvent | null; completed: boolean }>
   pendingLifecycleEvents(): Promise<GitHubLifecycleEvent[]>
   completeLifecycleEvent(deliveryId: string): Promise<void>
 }
