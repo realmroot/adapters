@@ -1,6 +1,5 @@
 import { z } from 'zod'
 import type { BrokerRequestReplayStore } from '../../core/broker-request-replay.js'
-import type { ConnectionEvent } from '../../core/connection-events.js'
 import type { BrokeredConnectionRequest } from '../../core/connection-request.js'
 import { sha256Base64Url } from '../../core/digest.js'
 import { badRequest, forbidden, HttpProblem, unauthorized } from '../../core/problem.js'
@@ -59,8 +58,8 @@ export interface GitHubConnectionStore {
     contexts: GitHubAuthorizationContext[]
   }>
   revoke(input: { brokerReference: string; ownerSubject: string; jti: string; expiresAt: number }): Promise<void>
-  prepareLifecycleEvent(input: GitHubLifecycleChange): Promise<{ event: ConnectionEvent | null; completed: boolean }>
-  pendingLifecycleEvents(): Promise<ConnectionEvent[]>
+  prepareLifecycleEvent(input: GitHubLifecycleChange): Promise<{ event: GitHubLifecycleEvent | null; completed: boolean }>
+  pendingLifecycleEvents(): Promise<GitHubLifecycleEvent[]>
   completeLifecycleEvent(deliveryId: string): Promise<void>
 }
 
@@ -76,6 +75,37 @@ export type GitHubLifecycleChange = Readonly<{
   repositoriesAdded?: readonly GitHubRepositoryChange[]
   repositoriesRemoved?: readonly GitHubRepositoryChange[]
 }>
+
+type GitHubLifecycleEventCommon = Readonly<{
+  id: string
+  brokerReference: string
+  occurredAt: string
+  revision: number
+}>
+
+type GitHubLifecycleEvent = GitHubLifecycleEventCommon &
+  (
+    | Readonly<{
+        type: 'authorityChanged'
+        scopes: readonly string[]
+        affectedScopes: readonly string[]
+        affectedAuthorizationDetails: readonly Record<string, unknown>[]
+        authorityConstraints: readonly {
+          authorizationDetails: readonly Record<string, unknown>[]
+          scopes: readonly string[]
+        }[]
+      }>
+    | Readonly<{
+        type: 'resourcesChanged' | 'restored'
+        scopes: readonly string[]
+        authorizationDetails: readonly Record<string, unknown>[]
+        authorityConstraints: readonly {
+          authorizationDetails: readonly Record<string, unknown>[]
+          scopes: readonly string[]
+        }[]
+      }>
+    | Readonly<{ type: 'suspended' | 'revoked' }>
+  )
 
 export type GitHubRepositoryChange = Readonly<{ id: number; fullName: string }>
 export type GitHubAuthorizationContext = Readonly<{
@@ -471,7 +501,7 @@ export class D1GitHubConnections implements GitHubConnectionStore {
 
   async prepareLifecycleEvent(
     input: GitHubLifecycleChange,
-  ): Promise<{ event: ConnectionEvent | null; completed: boolean }> {
+  ): Promise<{ event: GitHubLifecycleEvent | null; completed: boolean }> {
     const delivery = await this.db
       .prepare('SELECT fingerprint, event_json AS eventJson, state FROM github_webhook_delivery WHERE delivery_id = ?')
       .bind(input.deliveryId)
@@ -479,7 +509,7 @@ export class D1GitHubConnections implements GitHubConnectionStore {
     if (delivery) {
       if (delivery.fingerprint !== input.fingerprint) throw webhookDeliveryConflict()
       return {
-        event: JSON.parse(delivery.eventJson) as ConnectionEvent | null,
+        event: JSON.parse(delivery.eventJson) as GitHubLifecycleEvent | null,
         completed: delivery.state === 'completed',
       }
     }
@@ -578,7 +608,7 @@ export class D1GitHubConnections implements GitHubConnectionStore {
       occurredAt: input.occurredAt,
       revision: selected.eventRevision + 1,
     }
-    let event: ConnectionEvent
+    let event: GitHubLifecycleEvent
     if (eventType === 'authorityChanged') {
       if (!nextSelected) throw new Error('The changed GitHub installation context is missing.')
       event = {
@@ -861,7 +891,7 @@ export class D1GitHubConnections implements GitHubConnectionStore {
         "SELECT event_json AS eventJson FROM github_webhook_delivery WHERE state = 'pending' ORDER BY created_at",
       )
       .all<{ eventJson: string }>()
-    return result.results.map(({ eventJson }) => JSON.parse(eventJson) as ConnectionEvent)
+    return result.results.map(({ eventJson }) => JSON.parse(eventJson) as GitHubLifecycleEvent)
   }
 
   private async contexts(brokerReference: string) {
@@ -1050,7 +1080,7 @@ function lifecycleEventType(
   type: GitHubLifecycleChange['type'],
   previous: readonly LifecycleContext[],
   active: readonly LifecycleContext[],
-): ConnectionEvent['type'] {
+): GitHubLifecycleEvent['type'] {
   if (active.length === 0) return type === 'suspended' ? 'suspended' : 'revoked'
   if (type === 'restored' && previous.every((context) => context.status === 'suspended')) return 'restored'
   if (type === 'authorityChanged') return 'authorityChanged'
