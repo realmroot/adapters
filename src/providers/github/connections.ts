@@ -3,6 +3,7 @@ import type { BrokerRequestReplayStore } from '../../core/broker-request-replay.
 import type { BrokeredConnectionRequest } from '../../core/connection-request.js'
 import { sha256Base64Url } from '../../core/digest.js'
 import { badRequest, forbidden, HttpProblem, unauthorized } from '../../core/problem.js'
+import { githubInstallationAuthorizationDetail } from './authorization-details.js'
 import { mergePermissions, permissionsToScopes } from './permissions.js'
 import type { GitHubInstallation, GitHubUser } from './types.js'
 
@@ -595,9 +596,9 @@ export class D1GitHubConnections implements GitHubConnectionStore {
     })
     const activeContexts = nextContexts.filter((context) => context.status === 'active')
     const scopes = [...new Set(activeContexts.flatMap((context) => JSON.parse(context.scopesJson) as string[]))].sort()
-    const authorizationDetails = activeContexts.map(contextAuthorizationDetail)
+    const authorizationDetails = activeContexts.map(githubInstallationAuthorizationDetail)
     const authorityConstraints = activeContexts.map((context) => ({
-      authorizationDetails: [contextAuthorizationDetail(context)],
+      authorizationDetails: [githubInstallationAuthorizationDetail(context)],
       scopes: JSON.parse(context.scopesJson) as string[],
     }))
     const eventType = lifecycleEventType(input.type, contexts, activeContexts)
@@ -618,7 +619,7 @@ export class D1GitHubConnections implements GitHubConnectionStore {
         type: eventType,
         scopes,
         affectedScopes: JSON.parse(nextSelected.scopesJson) as string[],
-        affectedAuthorizationDetails: [contextAuthorizationDetail(nextSelected)],
+        affectedAuthorizationDetails: [githubInstallationAuthorizationDetail(nextSelected)],
         authorityConstraints,
       }
     } else if (eventType === 'resourcesChanged' || eventType === 'restored') {
@@ -970,24 +971,6 @@ type LifecycleCursor = {
 }
 
 type RepositoryLifecycleCursor = { providerUpdatedAt: number; removed: 0 | 1 }
-
-function contextAuthorizationDetail(context: LifecycleContext) {
-  return {
-    type: 'github_installation',
-    installation_id: String(context.installationId),
-    account_login: context.accountLogin,
-    target_type: context.targetType,
-    repository_selection: context.repositorySelection,
-    ...(context.repositorySelection === 'selected'
-      ? {
-          repositories: context.repositories.map((repository) => ({
-            id: String(repository.id),
-            full_name: repository.fullName,
-          })),
-        }
-      : {}),
-  }
-}
 
 function nextRepositories(
   current: readonly GitHubRepositoryChange[],

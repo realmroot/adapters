@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import { createApp } from '../src/app.js'
 import { createGitHubAdapter, type GitHubAdapterDependencies } from '../src/providers/github/adapter.js'
+import { GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE } from '../src/providers/github/authorization-details.js'
 import type { GitHubAdapterConfig } from '../src/providers/github/config.js'
 import type { GitHubConnectionStore } from '../src/providers/github/connections.js'
 import type { GitHubProvider } from '../src/providers/github/types.js'
@@ -25,7 +26,7 @@ const principal = {
   actor: { issuer: config.realmrootIssuer, subject: 'agt_1', profile: 'ai_agent' as const },
   scopes: new Set(['metadata:read', 'issues:write']),
   connectionId: 'connection-1',
-  authorizationDetails: [{ type: 'github_installation', installation_id: '42' }],
+  authorizationDetails: [{ type: GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE, installation_id: '42' }],
 }
 
 describe('GitHub adapter contract', () => {
@@ -43,7 +44,7 @@ describe('GitHub adapter contract', () => {
         'pull_requests:read',
         'pull_requests:write',
       ],
-      authorization_details_types_supported: ['github_installation'],
+      authorization_details_types_supported: [GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE],
       dpop_bound_access_tokens_required: true,
     })
     const resource = await testApp().request('/github')

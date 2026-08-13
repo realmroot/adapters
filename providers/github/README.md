@@ -109,9 +109,9 @@ mean GitHub implements that capability natively.
 | `JWT-ACCESS-TOKEN` | 🟨 | GitHub installation access tokens do not expose the required RFC 9068 claims to the Resource Server. |
 | `DPOP` | 🟨 | GitHub API tokens are Bearer credentials; the adapter will require DPoP on its Agent-facing boundary. |
 | `JWK-THUMBPRINT` | 🟨 | The adapter owns the inbound `cnf.jkt` binding. |
-| `RICH-AUTHORIZATION` | 🟨 | The adapter carries `github_installation` authorization details through Realmroot grants and tokens; GitHub represents that boundary with App installations rather than RFC 9396. |
+| `RICH-AUTHORIZATION` | 🟨 | The adapter carries `https://adapters.realmroot.dev/authorization-details/github-installation` authorization details through Realmroot grants and tokens; GitHub represents that boundary with App installations rather than RFC 9396. |
 | `PUSHED-AUTHORIZATION` | ➖ | PAR is conditional on RFC 9396 use. |
-| `AUTHORIZATION-CATALOG` | ➖ | The RFC 9396 catalog extension is not used; ordinary adapter Resource discovery still enumerates installations and repositories. |
+| `AUTHORIZATION-CATALOG` | ✅ | The Adapter advertises the versioned authorization-detail catalog and returns installation labels separately from stable authorization details. |
 | `TOKEN-REVOCATION` | 🟨 | GitHub exposes provider-specific token and installation lifecycle operations rather than the profile's RFC 7009 contract. |
 | `LIFECYCLE-SIGNALS` | ✅ | GitHub App installation and webhook lifecycle can signal installation, permission, repository-selection, and revocation changes. |
 

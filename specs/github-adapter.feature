@@ -27,9 +27,10 @@ Feature: GitHub App adapter
   @journey:github-context-catalog @entrypoint:http
   Scenario: GitHub describes installation Contexts without exposing credentials
     Given the Adapter holds an active GitHub external authorization
-    When Realmroot receives the subject token authorization details
-    Then the adapter returns each active installation with its account name, account type, and repository selection
+    When Realmroot reads the advertised authorization-detail catalog with the connected subject token
+    Then the adapter returns each active installation with its account name, stable installation ID, account type, and repository selection
     And the response uses the shared authorization-detail catalog representation
+    And the authorization detail type is a stable URI owned by the Adapter
     But it does not expose installation credentials
 
   @journey:github-provider-revocation @entrypoint:http

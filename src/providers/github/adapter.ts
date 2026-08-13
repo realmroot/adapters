@@ -3,6 +3,7 @@ import type { AdapterEnv, AdapterModule } from '../../core/adapter.js'
 import { type AgentInfoResolver, createAgentInfoResolver } from '../../core/agent-info.js'
 import { badRequest, forbidden, HttpProblem, insufficientScope } from '../../core/problem.js'
 import type { AgentPrincipal, RealmrootAuthenticator } from '../../core/realmroot-auth.js'
+import { GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE } from './authorization-details.js'
 import { createGitHubProvider } from './client.js'
 import type { GitHubAdapterConfig } from './config.js'
 import type { GitHubAuthorizationContext, GitHubConnectionStore } from './connections.js'
@@ -56,7 +57,7 @@ export function createGitHubAdapter(
         resource,
         authorization_servers: [`${config.origin}/oauth/github`],
         scopes_supported: permissionsToScopes(await provider.appPermissions()),
-        authorization_details_types_supported: ['github_installation'],
+        authorization_details_types_supported: [GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE],
         bearer_methods_supported: [],
         dpop_bound_access_tokens_required: true,
       }),
@@ -371,7 +372,7 @@ export function createGitHubAdapter(
     if (!dependencies.connections) throw forbidden('A GitHub account connection is required.')
     const connected = (await dependencies.connections.externalAuthorization(principal.subject)).contexts
     const selectedIds = (principal.authorizationDetails ?? []).flatMap((detail) =>
-      detail.type === 'github_installation' && typeof detail.installation_id === 'string'
+      detail.type === GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE && typeof detail.installation_id === 'string'
         ? [installationId(detail.installation_id)]
         : [],
     )

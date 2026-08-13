@@ -201,7 +201,9 @@ Resource Servers and never appear in the audience URL:
   "resourceUrl": "http://127.0.0.1:4103/github",
   "connectorId": "YOUR_GITHUB_CONNECTOR_ID",
   "ownerOrganizationId": "YOUR_REALMROOT_ORGANIZATION_ID",
-  "authorizationDetails": [{ "type": "github_installation" }],
+  "authorizationDetails": [
+    { "type": "https://adapters.realmroot.dev/authorization-details/github-installation" }
+  ],
   "enabled": true,
   "availableToAgents": true,
   "visibility": "public"

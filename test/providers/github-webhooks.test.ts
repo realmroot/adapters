@@ -1,5 +1,6 @@
 import { createHmac } from 'node:crypto'
 import { describe, expect, it, vi } from 'vitest'
+import { GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE } from '../../src/providers/github/authorization-details.js'
 import type { GitHubConnectionStore } from '../../src/providers/github/connections.js'
 import { handleGitHubWebhook } from '../../src/providers/github/webhooks.js'
 
@@ -30,10 +31,10 @@ describe('GitHub lifecycle webhooks', () => {
         revision: 1,
         scopes: ['issues:read', 'issues:write', 'metadata:read'],
         affectedScopes: ['issues:read', 'issues:write', 'metadata:read'],
-        affectedAuthorizationDetails: [{ type: 'github_installation', installation_id: '42' }],
+        affectedAuthorizationDetails: [{ type: GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE, installation_id: '42' }],
         authorityConstraints: [
           {
-            authorizationDetails: [{ type: 'github_installation', installation_id: '42' }],
+            authorizationDetails: [{ type: GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE, installation_id: '42' }],
             scopes: ['issues:read', 'issues:write', 'metadata:read'],
           },
         ],
@@ -99,10 +100,10 @@ describe('GitHub lifecycle webhooks', () => {
         occurredAt: '2027-01-15T08:00:00.000Z',
         revision: 1,
         scopes: ['metadata:read'],
-        authorizationDetails: [{ type: 'github_installation', installation_id: '42' }],
+        authorizationDetails: [{ type: GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE, installation_id: '42' }],
         authorityConstraints: [
           {
-            authorizationDetails: [{ type: 'github_installation', installation_id: '42' }],
+            authorizationDetails: [{ type: GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE, installation_id: '42' }],
             scopes: ['metadata:read'],
           },
         ],

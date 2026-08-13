@@ -1,9 +1,58 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { D1ExternalOAuthStore, ExternalOAuthIntent } from '../../src/core/external-oauth-store.js'
+import { GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE } from '../../src/providers/github/authorization-details.js'
 import type { D1GitHubConnections } from '../../src/providers/github/connections.js'
 import { createGitHubExternalAuthorization } from '../../src/providers/github/external-authorization.js'
 
 describe('GitHub external authorization', () => {
+  it('[spec: github-adapter/github-context-catalog] exposes stable installation details with human labels', async () => {
+    const contexts = [
+      {
+        installationId: 701,
+        accountLogin: 'realmroot',
+        targetType: 'Organization',
+        scopes: ['metadata:read'],
+        repositorySelection: 'all' as const,
+        repositories: [],
+      },
+    ]
+    const external = createGitHubExternalAuthorization({
+      origin: 'https://adapter.example',
+      connection: {} as never,
+      connections: {
+        externalAuthorization: vi.fn(async () => ({ scopes: ['metadata:read'], contexts })),
+      } as unknown as D1GitHubConnections,
+      oauthStore: {} as D1ExternalOAuthStore,
+      scopes: ['metadata:read'],
+    })
+
+    await expect(
+      external.authorization.authorizationDetailsCatalog?.list({ subject: '70', limit: 10, offset: 0 }),
+    ).resolves.toEqual({
+      items: [
+        {
+          authorizationDetail: {
+            type: GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE,
+            installation_id: '701',
+            account_login: 'realmroot',
+            target_type: 'Organization',
+            repository_selection: 'all',
+          },
+          display: {
+            label: 'realmroot',
+            description: 'Organization GitHub App installation',
+            metadata: {
+              installation_id: '701',
+              target_type: 'Organization',
+              repository_selection: 'all',
+            },
+          },
+        },
+      ],
+      pagination: { limit: 10, offset: 0, total: 1, hasMore: false, nextOffset: null },
+    })
+  })
+
   it('accepts read scopes implied by a write installation permission', async () => {
     const installation = {
       id: 701,
@@ -61,7 +110,7 @@ function intent(): ExternalOAuthIntent {
     redirectUri: 'https://id.realmroot.dev/oauth/account-connection/callback',
     realmrootState: 'realmroot-state',
     scopes: ['metadata:read', 'openid', 'pull_requests:read'],
-    authorizationDetails: [{ type: 'github_installation' }],
+    authorizationDetails: [{ type: GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE }],
     codeChallenge: 'challenge',
     providerStage: 'oauth',
     providerData: {},

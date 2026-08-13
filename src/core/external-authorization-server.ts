@@ -30,6 +30,16 @@ export type ExternalProviderAuthorization = {
   resource: string
   scopes: readonly string[]
   authorizationDetailsTypes?: readonly string[]
+  authorizationDetailsCatalog?: {
+    scope: string
+    list(input: { subject: string; limit: number; offset: number }): Promise<{
+      items: Array<{
+        authorizationDetail: Record<string, unknown>
+        display: { label: string; description?: string; metadata?: Record<string, string> }
+      }>
+      pagination: { limit: number; offset: number; total: number; hasMore: boolean; nextOffset: number | null }
+    }>
+  }
   authorizationDetailsSubset?(input: {
     requested: Array<Record<string, unknown>>
     granted: Array<Record<string, unknown>>
@@ -343,6 +353,24 @@ export async function createExternalAuthorizationServer(input: {
           preferred_username: verified.payload.name,
         })
       })
+      const authorizationDetailsCatalog = input.provider.authorizationDetailsCatalog
+      if (authorizationDetailsCatalog) {
+        app.get(`/oauth/${input.provider.id}/authorization-details`, async (c) => {
+          const token = bearer(c.req.raw)
+          const verified = await verifyAccessToken(token, input.provider.resource, 'subject')
+          const scopes = normalizeScopes(String(verified.payload.scope ?? ''))
+          if (!scopes.includes(authorizationDetailsCatalog.scope)) {
+            throw oauthError('insufficient_scope', 'The access token does not authorize catalog discovery.', 403)
+          }
+          return c.json(
+            await authorizationDetailsCatalog.list({
+              subject: String(verified.payload.sub),
+              limit: paginationInteger(c.req.query('limit'), 'limit', 50, 1),
+              offset: paginationInteger(c.req.query('offset'), 'offset', 0, 0),
+            }),
+          )
+        })
+      }
     },
     authenticator: {
       async authenticate(request, audience) {
@@ -376,6 +404,7 @@ export async function createExternalAuthorizationServer(input: {
   }
 
   function metadata() {
+    const catalog = input.provider.authorizationDetailsCatalog
     return {
       issuer,
       authorization_endpoint: `${issuer}/authorize`,
@@ -386,6 +415,13 @@ export async function createExternalAuthorizationServer(input: {
       userinfo_endpoint: `${issuer}/userinfo`,
       scopes_supported: input.provider.scopes,
       authorization_details_types_supported: input.provider.authorizationDetailsTypes ?? [],
+      ...(catalog
+        ? {
+            authorization_details_catalog_endpoint: `${issuer}/authorization-details`,
+            authorization_details_catalog_scope: catalog.scope,
+            authorization_details_catalog_version: 1,
+          }
+        : {}),
       response_types_supported: ['code'],
       response_modes_supported: ['query'],
       grant_types_supported: ['authorization_code', 'refresh_token', jwtBearerGrant, tokenExchangeGrant],
@@ -571,6 +607,15 @@ function stringArray(value: unknown) {
 
 function normalizeScopes(value: string) {
   return [...new Set(value.split(/\s+/).filter(Boolean))].sort()
+}
+
+function paginationInteger(value: string | undefined, name: string, fallback: number, minimum: number) {
+  if (value === undefined) return fallback
+  const parsed = Number(value)
+  if (!Number.isSafeInteger(parsed) || parsed < minimum || (name === 'limit' && parsed > 100)) {
+    throw oauthError('invalid_request', `${name} is invalid.`)
+  }
+  return parsed
 }
 
 function validRedirectUri(value: string) {

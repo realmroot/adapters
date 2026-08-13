@@ -18,7 +18,7 @@ installation through resource-oriented authorization details:
 
 ```json
 {
-  "type": "github_installation",
+  "type": "https://adapters.realmroot.dev/authorization-details/github-installation",
   "installation_id": "12345678",
   "account_login": "saltbo",
   "target_type": "User"
@@ -27,6 +27,16 @@ installation through resource-oriented authorization details:
 
 Authorization details identify resources only. They never carry GitHub
 permissions.
+
+The authorization-detail type uses the Adapter's stable URI namespace because
+the Adapter defines and enforces this RFC 9396 extension. GitHub does not define
+the type, so the identifier must not use a GitHub-owned domain.
+
+The Adapter also advertises its authorization-detail catalog from OAuth
+metadata. The catalog returns the opaque detail above together with a separate
+human-facing display value: the GitHub account login is the Context label and
+the installation ID remains stable metadata. Realmroot and Toolbox never use
+the display label as authorization input.
 
 ## Permission translation
 

@@ -5,7 +5,7 @@ import {
   createExternalAuthorizationServer,
   type ExternalProviderAuthorization,
 } from '../../src/core/external-authorization-server.js'
-import type { D1ExternalOAuthStore, ExternalOAuthIntent } from '../../src/core/external-oauth-store.js'
+import { type D1ExternalOAuthStore, type ExternalOAuthIntent, sha256 } from '../../src/core/external-oauth-store.js'
 
 describe('external authorization server', () => {
   it('publishes the standard OAuth surface for one provider', async () => {
@@ -29,6 +29,48 @@ describe('external authorization server', () => {
       code_challenge_methods_supported: ['S256'],
       dpop_signing_alg_values_supported: ['ES256'],
       authorization_details_types_supported: ['example_context'],
+      authorization_details_catalog_endpoint: 'https://adapter.example/oauth/example/authorization-details',
+      authorization_details_catalog_scope: 'authorization-details:read',
+      authorization_details_catalog_version: 1,
+    })
+  })
+
+  it('serves the provider catalog to a connected subject token', async () => {
+    const { app, provider } = await testServer()
+    const tokenResponse = await app.request('/oauth/example/token', {
+      method: 'POST',
+      headers: {
+        authorization: `Basic ${btoa('client-1:secret')}`,
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code: 'code-1',
+        redirect_uri: 'https://id.realmroot.dev/callback',
+        code_verifier: 'verifier',
+      }),
+    })
+    expect(tokenResponse.status).toBe(200)
+    const token = (await tokenResponse.json()) as { access_token: string }
+
+    const response = await app.request('/oauth/example/authorization-details?limit=10&offset=0', {
+      headers: { authorization: `Bearer ${token.access_token}` },
+    })
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      items: [
+        {
+          authorizationDetail: { type: 'example_context', project_id: 'project-1' },
+          display: { label: 'Project One' },
+        },
+      ],
+      pagination: { limit: 10, offset: 0, total: 1, hasMore: false, nextOffset: null },
+    })
+    expect(provider.authorizationDetailsCatalog?.list).toHaveBeenCalledWith({
+      subject: 'provider-user-1',
+      limit: 10,
+      offset: 0,
     })
   })
 
@@ -148,7 +190,7 @@ async function testServer(options: { intent?: ExternalOAuthIntent; providerCallb
     client: vi.fn(async (_providerId: string, clientId: string) => ({
       clientId,
       providerId: 'example',
-      clientSecretHash: 'unused',
+      clientSecretHash: await sha256('secret'),
       redirectUris: ['https://id.realmroot.dev/callback'],
       jwksUri: 'https://id.realmroot.dev/api/auth/jwks',
     })),
@@ -156,12 +198,33 @@ async function testServer(options: { intent?: ExternalOAuthIntent; providerCallb
     intentByProviderState: vi.fn(async () => options.intent ?? exampleIntent()),
     advanceIntent: vi.fn(async () => undefined),
     completeIntent: vi.fn(async () => undefined),
+    consumeCode: vi.fn(async () => ({
+      providerId: 'example',
+      clientId: 'client-1',
+      subject: 'provider-user-1',
+      displayName: 'Provider User',
+      scopes: ['authorization-details:read', 'items:read', 'openid'],
+      authorizationDetails: [{ type: 'example_context', project_id: 'project-1' }],
+    })),
+    createRefresh: vi.fn(async () => undefined),
   }
   const provider: ExternalProviderAuthorization = {
     id: 'example',
     resource: 'https://adapter.example/example',
-    scopes: ['openid', 'offline_access', 'items:read'],
+    scopes: ['openid', 'offline_access', 'authorization-details:read', 'items:read'],
     authorizationDetailsTypes: ['example_context'],
+    authorizationDetailsCatalog: {
+      scope: 'authorization-details:read',
+      list: vi.fn(async ({ limit, offset }) => ({
+        items: [
+          {
+            authorizationDetail: { type: 'example_context', project_id: 'project-1' },
+            display: { label: 'Project One' },
+          },
+        ],
+        pagination: { limit, offset, total: 1, hasMore: false, nextOffset: null },
+      })),
+    },
     begin: vi.fn(({ providerState }) => ({
       url: `https://provider.example/authorize?state=${providerState}`,
       stage: 'provider',

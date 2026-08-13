@@ -1,6 +1,7 @@
 import { env, SELF } from 'cloudflare:test'
 import { describe, expect, it } from 'vitest'
 import { sha256Base64Url } from '../../src/core/digest.js'
+import { GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE } from '../../src/providers/github/authorization-details.js'
 import { D1GitHubConnections } from '../../src/providers/github/connections.js'
 import { D1RuntimeState } from '../../src/storage/d1-runtime-state.js'
 
@@ -42,7 +43,7 @@ describe('Cloudflare Worker runtime', () => {
       code_challenge: await sha256Base64Url(verifier),
       code_challenge_method: 'S256' as const,
       scope: 'metadata:read issues:write',
-      authorization_details: [{ type: 'github_installation' }],
+      authorization_details: [{ type: GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE }],
     }
     await connections.create(request, 'provider-state')
     const intent = await connections.findByProviderState('provider-state', 'pending_oauth')
@@ -212,7 +213,7 @@ describe('Cloudflare Worker runtime', () => {
       code_challenge: await sha256Base64Url(verifier),
       code_challenge_method: 'S256' as const,
       scope: 'metadata:read',
-      authorization_details: [{ type: 'github_installation' }],
+      authorization_details: [{ type: GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE }],
     }
     await connections.create(request, 'provider-state-revoke')
     const intent = await connections.findByProviderState('provider-state-revoke', 'pending_oauth')

@@ -3,9 +3,16 @@ import type { AdapterEnv, AdapterModule } from '../../core/adapter.js'
 import type { ExternalProviderAuthorization } from '../../core/external-authorization-server.js'
 import { type D1ExternalOAuthStore, sha256 } from '../../core/external-oauth-store.js'
 import { badRequest, forbidden } from '../../core/problem.js'
+import {
+  GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE,
+  githubInstallationAuthorizationDetail,
+  githubInstallationAuthorizationDetailDisplay,
+} from './authorization-details.js'
 import type { D1GitHubConnections } from './connections.js'
 import { permissionsToScopes } from './permissions.js'
 import type { GitHubConnectionProvider } from './types.js'
+
+const authorizationDetailsCatalogScope = 'authorization-details:read'
 
 export function createGitHubExternalAuthorization(input: {
   origin: string
@@ -22,9 +29,12 @@ export function createGitHubExternalAuthorization(input: {
     granted: Array<Record<string, unknown>>
   }) =>
     requested.every((detail) => {
-      if (detail.type !== 'github_installation' || typeof detail.installation_id !== 'string') return false
+      if (detail.type !== GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE || typeof detail.installation_id !== 'string')
+        return false
       const installation = granted.find(
-        (candidate) => candidate.type === 'github_installation' && candidate.installation_id === detail.installation_id,
+        (candidate) =>
+          candidate.type === GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE &&
+          candidate.installation_id === detail.installation_id,
       )
       if (!installation) return false
       if (!Array.isArray(detail.repositories)) return true
@@ -53,16 +63,41 @@ export function createGitHubExternalAuthorization(input: {
   const authorization: ExternalProviderAuthorization = {
     id: 'github',
     resource: `${input.origin}/github`,
-    scopes: ['openid', 'offline_access', ...input.scopes],
-    authorizationDetailsTypes: ['github_installation'],
+    scopes: ['openid', 'offline_access', authorizationDetailsCatalogScope, ...input.scopes],
+    authorizationDetailsTypes: [GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE],
+    authorizationDetailsCatalog: {
+      scope: authorizationDetailsCatalogScope,
+      async list({ subject, limit, offset }) {
+        const contexts = (await input.connections.externalAuthorization(subject)).contexts
+        const items = contexts.slice(offset, offset + limit).map((context) => ({
+          authorizationDetail: githubInstallationAuthorizationDetail(context),
+          display: githubInstallationAuthorizationDetailDisplay(context),
+        }))
+        const nextOffset = offset + limit < contexts.length ? offset + limit : null
+        return {
+          items,
+          pagination: {
+            limit,
+            offset,
+            total: contexts.length,
+            hasMore: nextOffset !== null,
+            nextOffset,
+          },
+        }
+      },
+    },
     authorizationDetailsSubset,
     async validateGrant({ subject, scopes, authorizationDetails }) {
       const active = await input.connections.externalAuthorization(subject)
       return (
-        scopes.every((scope) => ['openid', 'offline_access'].includes(scope) || active.scopes.includes(scope)) &&
+        scopes.every(
+          (scope) =>
+            ['openid', 'offline_access', authorizationDetailsCatalogScope].includes(scope) ||
+            active.scopes.includes(scope),
+        ) &&
         authorizationDetailsSubset({
           requested: authorizationDetails,
-          granted: active.contexts.map(contextAuthorizationDetail),
+          granted: active.contexts.map(githubInstallationAuthorizationDetail),
         })
       )
     },
@@ -101,7 +136,9 @@ export function createGitHubExternalAuthorization(input: {
         : installations
       const contexts = await input.connections.upsertExternalAuthorization(user, selected)
       const providerScopes = new Set(selected.flatMap((installation) => permissionsToScopes(installation.permissions)))
-      const requestedProviderScopes = intent.scopes.filter((scope) => !['openid', 'offline_access'].includes(scope))
+      const requestedProviderScopes = intent.scopes.filter(
+        (scope) => !['openid', 'offline_access', authorizationDetailsCatalogScope].includes(scope),
+      )
       if (requestedProviderScopes.some((scope) => !providerScopes.has(scope))) {
         throw forbidden('The selected GitHub installation does not grant every requested scope.')
       }
@@ -111,7 +148,7 @@ export function createGitHubExternalAuthorization(input: {
           subject: String(user.id),
           displayName: user.name ?? user.login,
           scopes: intent.scopes,
-          authorizationDetails: contexts.map(contextAuthorizationDetail),
+          authorizationDetails: contexts.map(githubInstallationAuthorizationDetail),
         },
       }
     },
@@ -144,26 +181,6 @@ export function createGitHubExternalAuthorization(input: {
         })
       },
     },
-  }
-}
-
-function contextAuthorizationDetail(
-  context: Awaited<ReturnType<D1GitHubConnections['activeInstallationsForReference']>>[number],
-) {
-  return {
-    type: 'github_installation',
-    installation_id: String(context.installationId),
-    account_login: context.accountLogin,
-    target_type: context.targetType,
-    repository_selection: context.repositorySelection,
-    ...(context.repositorySelection === 'selected'
-      ? {
-          repositories: context.repositories.map((repository) => ({
-            id: String(repository.id),
-            full_name: repository.fullName,
-          })),
-        }
-      : {}),
   }
 }
 
