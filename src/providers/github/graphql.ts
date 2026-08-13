@@ -1,4 +1,4 @@
-import { getOperationAST, Kind, parse } from 'graphql'
+import { getOperationAST, Kind, parse, type SelectionSetNode } from 'graphql'
 import { z } from 'zod'
 import { badRequest, failedDependency } from '../../core/problem.js'
 import type { GitHubProvider } from './types.js'
@@ -55,7 +55,10 @@ const issueCommentSchema = z.object({ node_id: z.string().min(1), html_url: z.ur
 
 export type GitHubCreatePullRequest = z.infer<typeof createInputSchema> & { responseField: string }
 export type GitHubMergePullRequest = z.infer<typeof mergeInputSchema> & { responseField: string }
-export type GitHubAddComment = z.infer<typeof addCommentInputSchema> & { responseField: string }
+export type GitHubAddComment = z.infer<typeof addCommentInputSchema> & {
+  responseField: string
+  responseSelection: SelectionSetNode | undefined
+}
 
 export function parseGitHubCreatePullRequest(body: BodyInit | null): GitHubCreatePullRequest | null {
   if (typeof body !== 'string') return null
@@ -126,7 +129,11 @@ export function parseGitHubAddComment(body: BodyInit | null): GitHubAddComment |
   }
   const input = addCommentInputSchema.safeParse(request.variables?.[inputArgument.value.name.value])
   if (!input.success) throw badRequest('GitHub addComment input is invalid.')
-  return { ...input.data, responseField: field.alias?.value ?? field.name.value }
+  return {
+    ...input.data,
+    responseField: field.alias?.value ?? field.name.value,
+    responseSelection: field.selectionSet,
+  }
 }
 
 export async function resolveGitHubRepositoryName(input: {
@@ -276,16 +283,36 @@ export async function createGitHubCommentWithRest(input: {
   return new Response(
     JSON.stringify({
       data: {
-        [input.comment.responseField]: {
+        [input.comment.responseField]: projectSelection(input.comment.responseSelection, {
           clientMutationId: input.comment.clientMutationId ?? null,
-          commentEdge: {
-            node: { id: parsed.data.node_id, url: parsed.data.html_url, body: parsed.data.body },
-          },
-        },
+          subject: { id: input.comment.subjectId },
+          commentEdge: { node: { id: parsed.data.node_id, url: parsed.data.html_url, body: parsed.data.body } },
+          timelineEdge: null,
+        }),
       },
     }),
     { status: 200, headers },
   )
+}
+
+function projectSelection(selectionSet: SelectionSetNode | undefined, source: Record<string, unknown>) {
+  if (!selectionSet) return {}
+  const projected: Record<string, unknown> = {}
+  for (const selection of selectionSet.selections) {
+    if (selection.kind === Kind.FRAGMENT_SPREAD) continue
+    if (selection.kind === Kind.INLINE_FRAGMENT) {
+      Object.assign(projected, projectSelection(selection.selectionSet, source))
+      continue
+    }
+    const value = source[selection.name.value]
+    projected[selection.alias?.value ?? selection.name.value] =
+      selection.selectionSet && isRecord(value) ? projectSelection(selection.selectionSet, value) : (value ?? null)
+  }
+  return projected
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 export async function mergeGitHubPullRequestWithRest(input: {

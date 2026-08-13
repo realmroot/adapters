@@ -103,7 +103,7 @@ describe('GitHub GraphQL compatibility', () => {
           variables: { input: { subjectId: 'pull-request-1', body: 'Comment', clientMutationId: 'client-1' } },
         }),
       ),
-    ).toEqual({
+    ).toMatchObject({
       subjectId: 'pull-request-1',
       body: 'Comment',
       clientMutationId: 'client-1',
@@ -205,6 +205,7 @@ describe('GitHub GraphQL compatibility', () => {
       subjectId: 'pull-request-1',
       body: 'Comment',
       responseField: 'addComment',
+      responseSelection: undefined,
     }
     const denied = new Response('denied', { status: 403 })
     await expect(
