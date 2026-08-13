@@ -185,7 +185,7 @@ describe('GitHub adapter contract', () => {
           title: 'Fix adapter',
           head: 'codex/fix',
           base: 'main',
-          body: 'Details',
+          body: expect.stringContaining('🤖 Created by [Build Agent]'),
           draft: true,
           maintainer_can_modify: true,
         })
@@ -230,6 +230,65 @@ describe('GitHub adapter contract', () => {
     expect(provider.installationToken).toHaveBeenNthCalledWith(2, {
       installationId: 42,
       permissions: { pull_requests: 'write' },
+      repositories: ['example'],
+    })
+  })
+
+  it('[spec: github-adapter/github-graphql-proxy] preserves the GitHub CLI addComment mutation', async () => {
+    const provider = fakeProvider()
+    provider.request = vi
+      .fn()
+      .mockImplementationOnce(async (request: Request) => {
+        expect(request.url).toBe('https://api.github.com/graphql')
+        await expect(request.json()).resolves.toMatchObject({ variables: { id: 'pull-request-1' } })
+        return Response.json({
+          data: { node: { number: 24, repository: { nameWithOwner: 'realmroot/example' } } },
+        })
+      })
+      .mockImplementationOnce(async (request: Request) => {
+        expect(request.url).toBe('https://api.github.com/repos/realmroot/example/issues/24/comments')
+        const body = (await request.json()) as { body: string }
+        expect(body.body).toContain('A real comment')
+        expect(body.body).toContain('🤖 Created by [Build Agent]')
+        return Response.json(
+          {
+            node_id: 'issue-comment-1',
+            html_url: 'https://github.test/pull/24#issuecomment-1',
+            body: body.body,
+          },
+          { status: 201 },
+        )
+      })
+    const response = await testApp({
+      provider,
+      authenticator: {
+        authenticate: vi.fn(async () => ({
+          ...principal,
+          scopes: new Set(['issues:write', 'metadata:read']),
+        })),
+      },
+    }).request('/github/graphql', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: 'mutation Comment($input: AddCommentInput!) { addComment(input: $input) { clientMutationId } }',
+        variables: {
+          input: { subjectId: 'pull-request-1', body: 'A real comment', clientMutationId: 'client-1' },
+        },
+      }),
+    })
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      data: { addComment: { clientMutationId: 'client-1' } },
+    })
+    expect(provider.installationToken).toHaveBeenNthCalledWith(1, {
+      installationId: 42,
+      permissions: { metadata: 'read' },
+    })
+    expect(provider.installationToken).toHaveBeenNthCalledWith(2, {
+      installationId: 42,
+      permissions: { issues: 'write' },
       repositories: ['example'],
     })
   })
@@ -490,7 +549,7 @@ describe('GitHub adapter contract', () => {
     expect(response.status).toBe(201)
   })
 
-  it('[spec: github-adapter/github-create-issue] injects attribution without changing GitHub response semantics', async () => {
+  it('[spec: github-adapter/github-attributed-content] injects attribution without changing GitHub response semantics', async () => {
     const provider = fakeProvider()
     provider.request = vi.fn(async (upstream: Request) => {
       const input = (await upstream.json()) as { title: string; labels: string[]; body: string }
@@ -513,7 +572,7 @@ describe('GitHub adapter contract', () => {
     expect(await response.json()).toEqual({ id: 1, number: 2 })
   })
 
-  it('[spec: github-adapter/github-create-issue] injects attribution into GitHub CLI GraphQL issue creation', async () => {
+  it('[spec: github-adapter/github-attributed-content] injects attribution into GitHub CLI GraphQL issue creation', async () => {
     const provider = fakeProvider()
     provider.request = vi.fn(async (upstream: Request) => {
       expect(upstream.url).toBe('https://api.github.com/graphql')

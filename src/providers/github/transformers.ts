@@ -26,43 +26,188 @@ const graphqlRequestSchema = z
   })
   .passthrough()
 
-const attributionRules = [
-  {
-    behavior: 'agent-attribution',
-    rest: {
-      method: 'POST',
-      path: '/repos/{owner}/{repo}/issues',
-      pattern: /^\/repos\/[^/]+\/[^/]+\/issues$/,
-    },
-    graphql: { method: 'POST', path: '/graphql', operation: 'mutation', field: 'createIssue' },
-  },
-  {
-    behavior: 'agent-attribution',
-    rest: {
-      method: 'POST',
-      path: '/repos/{owner}/{repo}/issues/{issue_number}/comments',
-      pattern: /^\/repos\/[^/]+\/[^/]+\/issues\/\d+\/comments$/,
-    },
-  },
-  {
-    behavior: 'agent-attribution',
-    rest: {
-      method: 'POST',
-      path: '/repos/{owner}/{repo}/pulls/{pull_number}/comments',
-      pattern: /^\/repos\/[^/]+\/[^/]+\/pulls\/\d+\/comments$/,
-    },
-  },
-] as const
+type AttributionMode = 'always' | 'when-present'
 
-const publishedAttributionTargets = attributionRules.flatMap((rule) => {
-  const targets: { method: string; path: string; behavior: string }[] = [
-    { method: rule.rest.method, path: rule.rest.path, behavior: rule.behavior },
-  ]
-  if ('graphql' in rule) {
-    targets.push({ method: rule.graphql.method, path: rule.graphql.path, behavior: rule.behavior })
-  }
-  return targets
-})
+type RestAttributionRule = {
+  behavior: 'agent-attribution'
+  method: 'POST' | 'PATCH' | 'PUT'
+  path: string
+  pattern: RegExp
+  body: AttributionMode
+  reviewComments?: true
+}
+
+type GraphqlAttributionRule = {
+  behavior: 'agent-attribution'
+  method: 'POST'
+  path: '/graphql'
+  operation: 'mutation'
+  field: string
+  body: AttributionMode
+  reviewComments?: true
+}
+
+const restAttributionRules = [
+  {
+    behavior: 'agent-attribution',
+    method: 'POST',
+    path: '/repos/{owner}/{repo}/issues',
+    pattern: /^\/repos\/[^/]+\/[^/]+\/issues$/,
+    body: 'always',
+  },
+  {
+    behavior: 'agent-attribution',
+    method: 'PATCH',
+    path: '/repos/{owner}/{repo}/issues/{issue_number}',
+    pattern: /^\/repos\/[^/]+\/[^/]+\/issues\/\d+$/,
+    body: 'when-present',
+  },
+  {
+    behavior: 'agent-attribution',
+    method: 'POST',
+    path: '/repos/{owner}/{repo}/issues/{issue_number}/comments',
+    pattern: /^\/repos\/[^/]+\/[^/]+\/issues\/\d+\/comments$/,
+    body: 'always',
+  },
+  {
+    behavior: 'agent-attribution',
+    method: 'PATCH',
+    path: '/repos/{owner}/{repo}/issues/comments/{comment_id}',
+    pattern: /^\/repos\/[^/]+\/[^/]+\/issues\/comments\/\d+$/,
+    body: 'always',
+  },
+  {
+    behavior: 'agent-attribution',
+    method: 'POST',
+    path: '/repos/{owner}/{repo}/pulls',
+    pattern: /^\/repos\/[^/]+\/[^/]+\/pulls$/,
+    body: 'always',
+  },
+  {
+    behavior: 'agent-attribution',
+    method: 'PATCH',
+    path: '/repos/{owner}/{repo}/pulls/{pull_number}',
+    pattern: /^\/repos\/[^/]+\/[^/]+\/pulls\/\d+$/,
+    body: 'when-present',
+  },
+  {
+    behavior: 'agent-attribution',
+    method: 'POST',
+    path: '/repos/{owner}/{repo}/pulls/{pull_number}/comments',
+    pattern: /^\/repos\/[^/]+\/[^/]+\/pulls\/\d+\/comments$/,
+    body: 'always',
+  },
+  {
+    behavior: 'agent-attribution',
+    method: 'POST',
+    path: '/repos/{owner}/{repo}/pulls/{pull_number}/comments/{comment_id}/replies',
+    pattern: /^\/repos\/[^/]+\/[^/]+\/pulls\/\d+\/comments\/\d+\/replies$/,
+    body: 'always',
+  },
+  {
+    behavior: 'agent-attribution',
+    method: 'PATCH',
+    path: '/repos/{owner}/{repo}/pulls/comments/{comment_id}',
+    pattern: /^\/repos\/[^/]+\/[^/]+\/pulls\/comments\/\d+$/,
+    body: 'always',
+  },
+  {
+    behavior: 'agent-attribution',
+    method: 'POST',
+    path: '/repos/{owner}/{repo}/pulls/{pull_number}/reviews',
+    pattern: /^\/repos\/[^/]+\/[^/]+\/pulls\/\d+\/reviews$/,
+    body: 'when-present',
+    reviewComments: true,
+  },
+  {
+    behavior: 'agent-attribution',
+    method: 'POST',
+    path: '/repos/{owner}/{repo}/pulls/{pull_number}/reviews/{review_id}/events',
+    pattern: /^\/repos\/[^/]+\/[^/]+\/pulls\/\d+\/reviews\/\d+\/events$/,
+    body: 'when-present',
+  },
+  {
+    behavior: 'agent-attribution',
+    method: 'PUT',
+    path: '/repos/{owner}/{repo}/pulls/{pull_number}/reviews/{review_id}',
+    pattern: /^\/repos\/[^/]+\/[^/]+\/pulls\/\d+\/reviews\/\d+$/,
+    body: 'always',
+  },
+  {
+    behavior: 'agent-attribution',
+    method: 'POST',
+    path: '/repos/{owner}/{repo}/commits/{commit_sha}/comments',
+    pattern: /^\/repos\/[^/]+\/[^/]+\/commits\/[^/]+\/comments$/,
+    body: 'always',
+  },
+  {
+    behavior: 'agent-attribution',
+    method: 'PATCH',
+    path: '/repos/{owner}/{repo}/comments/{comment_id}',
+    pattern: /^\/repos\/[^/]+\/[^/]+\/comments\/\d+$/,
+    body: 'always',
+  },
+  {
+    behavior: 'agent-attribution',
+    method: 'POST',
+    path: '/repos/{owner}/{repo}/releases',
+    pattern: /^\/repos\/[^/]+\/[^/]+\/releases$/,
+    body: 'always',
+  },
+  {
+    behavior: 'agent-attribution',
+    method: 'PATCH',
+    path: '/repos/{owner}/{repo}/releases/{release_id}',
+    pattern: /^\/repos\/[^/]+\/[^/]+\/releases\/\d+$/,
+    body: 'when-present',
+  },
+  {
+    behavior: 'agent-attribution',
+    method: 'POST',
+    path: '/orgs/{org}/projectsV2/{project_number}/drafts',
+    pattern: /^\/orgs\/[^/]+\/projectsV2\/\d+\/drafts$/,
+    body: 'always',
+  },
+] as const satisfies readonly RestAttributionRule[]
+
+const graphqlBodies = [
+  { field: 'createIssue', body: 'always' },
+  { field: 'updateIssue', body: 'when-present' },
+  { field: 'addProjectV2DraftIssue', body: 'always' },
+  { field: 'updateProjectV2DraftIssue', body: 'when-present' },
+  { field: 'createProjectV2StatusUpdate', body: 'always' },
+  { field: 'updateProjectV2StatusUpdate', body: 'when-present' },
+  { field: 'createPullRequest', body: 'always' },
+  { field: 'updatePullRequest', body: 'when-present' },
+  { field: 'revertPullRequest', body: 'always' },
+  { field: 'addComment', body: 'always' },
+  { field: 'createDiscussion', body: 'always' },
+  { field: 'updateDiscussion', body: 'when-present' },
+  { field: 'addDiscussionComment', body: 'always' },
+  { field: 'updateDiscussionComment', body: 'always' },
+  { field: 'updateIssueComment', body: 'always' },
+  { field: 'addPullRequestReview', body: 'when-present', reviewComments: true },
+  { field: 'submitPullRequestReview', body: 'when-present' },
+  { field: 'updatePullRequestReview', body: 'always' },
+  { field: 'addPullRequestReviewComment', body: 'when-present' },
+  { field: 'updatePullRequestReviewComment', body: 'always' },
+  { field: 'addPullRequestReviewThread', body: 'always' },
+  { field: 'addPullRequestReviewThreadReply', body: 'always' },
+] as const satisfies readonly Pick<GraphqlAttributionRule, 'field' | 'body' | 'reviewComments'>[]
+
+const graphqlAttributionRules: readonly GraphqlAttributionRule[] = graphqlBodies.map((rule) => ({
+  behavior: 'agent-attribution' as const,
+  method: 'POST' as const,
+  path: '/graphql' as const,
+  operation: 'mutation' as const,
+  ...rule,
+}))
+
+const publishedAttributionTargets = [...restAttributionRules, ...graphqlAttributionRules].map((rule) => ({
+  method: rule.method,
+  path: rule.path,
+  behavior: rule.behavior,
+}))
 
 export const githubAttributionTransformations = [
   ...new Map(publishedAttributionTargets.map((target) => [`${target.method} ${target.path}`, target])).values(),
@@ -75,25 +220,26 @@ export async function transformGitHubRequest(input: {
   agentInfo: AgentInfoResolver
   requestId: string
 }) {
-  const restRule = attributionRules.find(
-    (rule) => rule.rest.method === input.request.method && rule.rest.pattern.test(input.upstreamPath),
+  const restRule = restAttributionRules.find(
+    (rule) => rule.method === input.request.method && rule.pattern.test(input.upstreamPath),
   )
-  if (restRule) return transformRestRequest(input)
-  const graphqlRules = attributionRules.flatMap((rule) =>
-    'graphql' in rule && rule.graphql.method === input.request.method && rule.graphql.path === input.upstreamPath
-      ? [rule.graphql]
-      : [],
+  if (restRule) return transformRestRequest(input, restRule)
+  const graphqlRules = graphqlAttributionRules.filter(
+    (rule) => rule.method === input.request.method && rule.path === input.upstreamPath,
   )
   if (graphqlRules.length > 0) return transformGraphqlRequest(input, graphqlRules)
   return input.request.body
 }
 
-async function transformRestRequest(input: {
-  request: Request
-  principal: AgentPrincipal
-  agentInfo: AgentInfoResolver
-  requestId: string
-}) {
+async function transformRestRequest(
+  input: {
+    request: Request
+    principal: AgentPrincipal
+    agentInfo: AgentInfoResolver
+    requestId: string
+  },
+  rule: RestAttributionRule,
+) {
   requireJson(input.request, 'This attributed GitHub operation requires a JSON request body.')
   const raw = await boundedBody(input.request)
   let json: unknown
@@ -103,11 +249,20 @@ async function transformRestRequest(input: {
     throw badRequest('The request body must be valid JSON.')
   }
   const body = attributedJsonSchema.parse(json)
+  const hasBody = body.body !== undefined && body.body !== null
+  const hasReviewComments = rule.reviewComments && Array.isArray(body.comments) && body.comments.length > 0
+  if (rule.body === 'when-present' && !hasBody && !hasReviewComments) return raw
   const display = await input.agentInfo.resolve(input.principal)
-  return JSON.stringify({
+  const transformed: Record<string, unknown> = {
     ...body,
-    body: attributedBody(body.body, input.principal, display, input.requestId),
-  })
+  }
+  if (rule.body === 'always' || hasBody) {
+    transformed.body = attributedBody(body.body, input.principal, display, input.requestId)
+  }
+  if (rule.reviewComments) {
+    transformed.comments = attributedReviewComments(body.comments, input.principal, display, input.requestId)
+  }
+  return JSON.stringify(transformed)
 }
 
 async function transformGraphqlRequest(
@@ -117,7 +272,7 @@ async function transformGraphqlRequest(
     agentInfo: AgentInfoResolver
     requestId: string
   },
-  rules: readonly { operation: 'mutation'; field: string }[],
+  rules: readonly GraphqlAttributionRule[],
 ) {
   if (!input.request.headers.get('content-type')?.toLowerCase().startsWith('application/json')) {
     return input.request.body
@@ -134,8 +289,8 @@ async function transformGraphqlRequest(
   const operation = getOperationAST(document, body.operationName ?? undefined)
   if (operation?.operation !== 'mutation') return raw
 
-  const attributedMutationFields = new Set(
-    rules.filter((rule) => rule.operation === operation.operation).map((rule) => rule.field),
+  const attributedMutationFields = new Map(
+    rules.filter((rule) => rule.operation === operation.operation).map((rule) => [rule.field, rule]),
   )
   const fields = collectFields(operation.selectionSet, document)
   const attributedFields = new Set([...fields].filter((field) => attributedMutationFields.has(field.name.value)))
@@ -147,6 +302,8 @@ async function transformGraphqlRequest(
   const transformed = visit(document, {
     Field(node) {
       if (!attributedFields.has(node)) return
+      const rule = attributedMutationFields.get(node.name.value)
+      if (!rule) return
       const inputArgument = node.arguments?.find((argument) => argument.name.value === 'input')
       if (!inputArgument) throw badRequest(`${node.name.value} requires an input value for Agent attribution.`)
       if (inputArgument.value.kind === Kind.VARIABLE) {
@@ -154,40 +311,30 @@ async function transformGraphqlRequest(
         if (attributedVariables.has(name)) return
         const value = variables[name]
         if (!isObject(value)) throw badRequest(`${node.name.value} input variable must be an object.`)
-        variables[name] = {
-          ...value,
-          body: attributedBody(optionalBody(value.body), input.principal, display, input.requestId),
-        }
+        variables[name] = attributeGraphqlInput(value, rule, input.principal, display, input.requestId)
         attributedVariables.add(name)
         return
       }
       if (inputArgument.value.kind !== Kind.OBJECT) {
         throw badRequest(`${node.name.value} input must be an object or variable.`)
       }
-      const objectValue = inputArgument.value
-      const bodyField = objectValue.fields.find((field) => field.name.value === 'body')
-      if (bodyField?.value.kind === Kind.VARIABLE) {
-        const name = bodyField.value.name.value
-        if (!attributedVariables.has(name)) {
-          variables[name] = attributedBody(optionalBody(variables[name]), input.principal, display, input.requestId)
-          attributedVariables.add(name)
-        }
-        return
-      }
-      const value = bodyField ? graphqlString(bodyField, node.name.value) : undefined
-      const replacement = stringField('body', attributedBody(value, input.principal, display, input.requestId))
+      const objectValue = transformGraphqlObject(
+        inputArgument.value,
+        rule,
+        node.name.value,
+        variables,
+        attributedVariables,
+        input.principal,
+        display,
+        input.requestId,
+      )
       return {
         ...node,
         arguments: node.arguments?.map((argument) =>
           argument === inputArgument
             ? {
                 ...argument,
-                value: {
-                  ...objectValue,
-                  fields: bodyField
-                    ? objectValue.fields.map((field) => (field === bodyField ? replacement : field))
-                    : [...objectValue.fields, replacement],
-                },
+                value: objectValue,
               }
             : argument,
         ),
@@ -195,6 +342,127 @@ async function transformGraphqlRequest(
     },
   })
   return JSON.stringify({ ...body, query: print(transformed), variables })
+}
+
+function attributeGraphqlInput(
+  value: Record<string, unknown>,
+  rule: GraphqlAttributionRule,
+  principal: AgentPrincipal,
+  display: Awaited<ReturnType<AgentInfoResolver['resolve']>>,
+  requestId: string,
+) {
+  const transformed = { ...value }
+  if (rule.body === 'always' || value.body !== undefined) {
+    transformed.body = attributedBody(optionalBody(value.body), principal, display, requestId)
+  }
+  if (rule.reviewComments) {
+    transformed.comments = attributedReviewComments(value.comments, principal, display, requestId)
+  }
+  return transformed
+}
+
+function attributedReviewComments(
+  value: unknown,
+  principal: AgentPrincipal,
+  display: Awaited<ReturnType<AgentInfoResolver['resolve']>>,
+  requestId: string,
+) {
+  if (value === undefined) return undefined
+  if (!Array.isArray(value)) throw badRequest('GitHub review comments must be an array.')
+  return value.map((comment) => {
+    if (!isObject(comment)) throw badRequest('Each GitHub review comment must be an object.')
+    return {
+      ...comment,
+      body: attributedBody(optionalBody(comment.body), principal, display, requestId),
+    }
+  })
+}
+
+function transformGraphqlObject(
+  objectValue: Extract<ObjectFieldNode['value'], { kind: Kind.OBJECT }>,
+  rule: GraphqlAttributionRule,
+  operation: string,
+  variables: Record<string, unknown>,
+  attributedVariables: Set<string>,
+  principal: AgentPrincipal,
+  display: Awaited<ReturnType<AgentInfoResolver['resolve']>>,
+  requestId: string,
+) {
+  const bodyField = objectValue.fields.find((field) => field.name.value === 'body')
+  let fields = [...objectValue.fields]
+  if (bodyField?.value.kind === Kind.VARIABLE) {
+    const name = bodyField.value.name.value
+    if (!attributedVariables.has(name)) {
+      variables[name] = attributedBody(optionalBody(variables[name]), principal, display, requestId)
+      attributedVariables.add(name)
+    }
+  } else if (bodyField || rule.body === 'always') {
+    const value = bodyField ? graphqlString(bodyField, operation) : undefined
+    const replacement = stringField('body', attributedBody(value, principal, display, requestId))
+    fields = bodyField ? fields.map((field) => (field === bodyField ? replacement : field)) : [...fields, replacement]
+  }
+  if (rule.reviewComments) {
+    fields = transformGraphqlReviewComments(
+      fields,
+      operation,
+      variables,
+      attributedVariables,
+      principal,
+      display,
+      requestId,
+    )
+  }
+  return { ...objectValue, fields }
+}
+
+function transformGraphqlReviewComments(
+  fields: readonly ObjectFieldNode[],
+  operation: string,
+  variables: Record<string, unknown>,
+  attributedVariables: Set<string>,
+  principal: AgentPrincipal,
+  display: Awaited<ReturnType<AgentInfoResolver['resolve']>>,
+  requestId: string,
+) {
+  const commentsField = fields.find((field) => field.name.value === 'comments')
+  if (!commentsField) return [...fields]
+  if (commentsField.value.kind === Kind.VARIABLE) {
+    const name = commentsField.value.name.value
+    if (!attributedVariables.has(name)) {
+      variables[name] = attributedReviewComments(variables[name], principal, display, requestId)
+      attributedVariables.add(name)
+    }
+    return [...fields]
+  }
+  if (commentsField.value.kind !== Kind.LIST) throw badRequest(`${operation} comments must be a list or variable.`)
+  const replacement: ObjectFieldNode = {
+    ...commentsField,
+    value: {
+      ...commentsField.value,
+      values: commentsField.value.values.map((comment) => {
+        if (comment.kind !== Kind.OBJECT) throw badRequest(`${operation} review comments must be objects.`)
+        const body = comment.fields.find((field) => field.name.value === 'body')
+        if (!body) throw badRequest(`${operation} review comments require a body.`)
+        if (body.value.kind === Kind.VARIABLE) {
+          const name = body.value.name.value
+          if (!attributedVariables.has(name)) {
+            variables[name] = attributedBody(optionalBody(variables[name]), principal, display, requestId)
+            attributedVariables.add(name)
+          }
+          return comment
+        }
+        return {
+          ...comment,
+          fields: comment.fields.map((field) =>
+            field === body
+              ? stringField('body', attributedBody(graphqlString(body, operation), principal, display, requestId))
+              : field,
+          ),
+        }
+      }),
+    },
+  }
+  return fields.map((field) => (field === commentsField ? replacement : field))
 }
 
 function collectFields(selectionSet: SelectionSetNode, document: DocumentNode) {

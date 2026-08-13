@@ -25,6 +25,113 @@ describe('GitHub attribution transformations', () => {
     expect(JSON.parse(String(omitted)).query).toContain('Created by [Build Agent]')
   })
 
+  it.each([
+    ['POST', '/repos/realmroot/example/issues'],
+    ['PATCH', '/repos/realmroot/example/issues/42'],
+    ['POST', '/repos/realmroot/example/issues/42/comments'],
+    ['PATCH', '/repos/realmroot/example/issues/comments/7'],
+    ['POST', '/repos/realmroot/example/pulls'],
+    ['PATCH', '/repos/realmroot/example/pulls/42'],
+    ['POST', '/repos/realmroot/example/pulls/42/comments'],
+    ['POST', '/repos/realmroot/example/pulls/42/comments/7/replies'],
+    ['PATCH', '/repos/realmroot/example/pulls/comments/7'],
+    ['POST', '/repos/realmroot/example/pulls/42/reviews/7/events'],
+    ['PUT', '/repos/realmroot/example/pulls/42/reviews/7'],
+    ['POST', '/repos/realmroot/example/commits/main/comments'],
+    ['PATCH', '/repos/realmroot/example/comments/7'],
+    ['POST', '/repos/realmroot/example/releases'],
+    ['PATCH', '/repos/realmroot/example/releases/7'],
+    ['POST', '/orgs/realmroot/projectsV2/42/drafts'],
+  ] as const)('attributes REST content sent through %s %s', async (method, path) => {
+    const transformed = await transform(restRequest(method, path, { body: 'Original' }), path)
+    expect(JSON.parse(String(transformed)).body).toContain('🤖 Created by [Build Agent]')
+  })
+
+  it('attributes REST review bodies and every inline review comment', async () => {
+    const path = '/repos/realmroot/example/pulls/42/reviews'
+    const transformed = await transform(
+      restRequest('POST', path, {
+        body: 'Review summary',
+        comments: [
+          { path: 'src/index.ts', line: 10, body: 'First comment' },
+          { path: 'src/index.ts', line: 20, body: 'Second comment' },
+        ],
+      }),
+      path,
+    )
+    const json = JSON.parse(String(transformed))
+    expect(json.body).toContain('Created by [Build Agent]')
+    expect(json.comments).toHaveLength(2)
+    expect(json.comments.every((comment: { body: string }) => comment.body.includes('Created by [Build Agent]'))).toBe(
+      true,
+    )
+  })
+
+  it.each([
+    'createIssue',
+    'updateIssue',
+    'addProjectV2DraftIssue',
+    'updateProjectV2DraftIssue',
+    'createProjectV2StatusUpdate',
+    'updateProjectV2StatusUpdate',
+    'createPullRequest',
+    'updatePullRequest',
+    'revertPullRequest',
+    'addComment',
+    'createDiscussion',
+    'updateDiscussion',
+    'addDiscussionComment',
+    'updateDiscussionComment',
+    'updateIssueComment',
+    'addPullRequestReview',
+    'submitPullRequestReview',
+    'updatePullRequestReview',
+    'addPullRequestReviewComment',
+    'updatePullRequestReviewComment',
+    'addPullRequestReviewThread',
+    'addPullRequestReviewThreadReply',
+  ])('attributes the GraphQL %s mutation body', async (field) => {
+    const transformed = await transform(
+      graphqlRequest(`mutation Write($input: ExampleInput!) { ${field}(input: $input) { clientMutationId } }`, {
+        input: { body: 'Original' },
+      }),
+    )
+    expect(JSON.parse(String(transformed)).variables.input.body).toContain('Created by [Build Agent]')
+  })
+
+  it('attributes GraphQL inline and variable review comments', async () => {
+    const variable = await transform(
+      graphqlRequest(
+        'mutation Review($input: AddPullRequestReviewInput!) { addPullRequestReview(input: $input) { clientMutationId } }',
+        { input: { comments: [{ path: 'src/index.ts', line: 10, body: 'Variable comment' }] } },
+      ),
+    )
+    expect(JSON.parse(String(variable)).variables.input.comments[0].body).toContain('Created by [Build Agent]')
+
+    const inline = await transform(
+      graphqlRequest(
+        'mutation { addPullRequestReview(input: { comments: [{ path: "src/index.ts", line: 10, body: "Inline comment" }] }) { clientMutationId } }',
+      ),
+    )
+    expect(JSON.parse(String(inline)).query).toContain('Created by [Build Agent]')
+  })
+
+  it('does not invent a body for REST or GraphQL update operations without content', async () => {
+    const path = '/repos/realmroot/example/pulls/42'
+    const rest = await transform(restRequest('PATCH', path, { state: 'closed' }), path)
+    expect(String(rest)).toBe(JSON.stringify({ state: 'closed' }))
+
+    const graphql = await transform(
+      graphqlRequest(
+        'mutation Update($input: ExampleInput!) { updatePullRequest(input: $input) { clientMutationId } }',
+        {
+          input: { pullRequestId: 'PR_1', state: 'CLOSED' },
+        },
+      ),
+    )
+    expect(JSON.parse(String(graphql)).variables.input).toEqual({ pullRequestId: 'PR_1', state: 'CLOSED' })
+  })
+
   it('rejects invalid attributed REST and GraphQL body shapes', async () => {
     await expect(
       transform(
@@ -105,6 +212,14 @@ function request(body: string, contentType: string) {
     method: 'POST',
     headers: { 'content-type': contentType },
     body,
+  })
+}
+
+function restRequest(method: string, path: string, body: Record<string, unknown>) {
+  return new Request(`https://adapter.example${path}`, {
+    method,
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
   })
 }
 

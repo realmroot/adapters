@@ -9,10 +9,13 @@ import { createGitHubConnectionProvider, createGitHubProvider } from './client.j
 import type { GitHubAdapterConfig } from './config.js'
 import type { GitHubAuthorizationContext, GitHubConnectionIntent, GitHubConnectionStore } from './connections.js'
 import {
+  createGitHubCommentWithRest,
   createGitHubPullRequestWithRest,
   mergeGitHubPullRequestWithRest,
+  parseGitHubAddComment,
   parseGitHubCreatePullRequest,
   parseGitHubMergePullRequest,
+  resolveGitHubCommentTarget,
   resolveGitHubPullRequestTarget,
   resolveGitHubRepositoryName,
 } from './graphql.js'
@@ -294,6 +297,53 @@ export function createGitHubAdapter(
           pullRequest: createPullRequest,
         })
         await auditNative(c, principal, installation, 'graphql-create-pull-request-rest-compatibility', response.status)
+        return response
+      }
+      const addComment = parseGitHubAddComment(body)
+      if (addComment) {
+        const commentScope = principal.scopes.has('issues:write')
+          ? 'issues:write'
+          : principal.scopes.has('pull_requests:write')
+            ? 'pull_requests:write'
+            : null
+        if (!principal.scopes.has('metadata:read') || !commentScope) {
+          throw insufficientScope('The Agent token does not authorize a GitHub comment.', [
+            ['metadata:read', 'issues:write'],
+            ['metadata:read', 'pull_requests:write'],
+          ])
+        }
+        const lookupToken = await provider.installationToken({
+          installationId: installation.installationId,
+          permissions: scopesToPermissions(new Set(['metadata:read']), available),
+          ...(installation.repositorySelection === 'selected'
+            ? {
+                repositories: installation.repositories.map(
+                  (repository) => repository.fullName.split('/').at(-1) as string,
+                ),
+              }
+            : {}),
+        })
+        const target = await resolveGitHubCommentTarget({
+          provider,
+          token: lookupToken,
+          apiOrigin: config.githubApiOrigin,
+          subjectId: addComment.subjectId,
+        })
+        const repository = repositoryTarget(`/repos/${target.nameWithOwner}`, installation)
+        const commentToken = await provider.installationToken({
+          installationId: installation.installationId,
+          permissions: scopesToPermissions(new Set([commentScope]), available),
+          repositories: [repository as string],
+        })
+        const response = await createGitHubCommentWithRest({
+          provider,
+          token: commentToken,
+          apiOrigin: config.githubApiOrigin,
+          nameWithOwner: target.nameWithOwner,
+          number: target.number,
+          comment: addComment,
+        })
+        await auditNative(c, principal, installation, 'graphql-add-comment-rest-compatibility', response.status)
         return response
       }
       const mergePullRequest = parseGitHubMergePullRequest(body)

@@ -133,7 +133,7 @@ Feature: GitHub App adapter
     When GitHub CLI sends a GraphQL request through the adapter
     Then the adapter mints an installation credential constrained to the approved scopes
     And the GraphQL request and response are preserved
-    And unsupported createPullRequest and mergePullRequest mutations use GitHub's installation-compatible REST operations
+    And unsupported createPullRequest, addComment, and mergePullRequest mutations use GitHub's installation-compatible REST operations
     And the GitHub credential is never returned
 
   @journey:github-git-transport @entrypoint:http
@@ -145,20 +145,20 @@ Feature: GitHub App adapter
     And workflow authority is included on writes only when it was explicitly approved
     And the GitHub credential is never returned
 
-  @journey:github-create-issue @entrypoint:http
-  Scenario: An authorized Agent creates an attributed issue
-    Given the Agent has issues:write for that installation
+  @journey:github-attributed-content @entrypoint:http
+  Scenario: An authorized Agent writes attributed GitHub content
+    Given the Agent has write authority for the selected GitHub installation
     And the selected repository belongs to the installation
-    When the Agent creates an issue through GitHub REST or GraphQL
+    When the Agent writes user-visible GitHub content through any supported interface
     Then the adapter downscopes the GitHub credential to that repository and the requested permissions
     And GitHub records the GitHub App as its native actor
-    And the issue body identifies the originating Realmroot Agent
+    And every written body identifies the originating Realmroot Agent
     And the original GitHub response is returned unchanged
 
   @journey:github-reserved-attribution @entrypoint:http
   Scenario: An Agent cannot forge attribution
-    Given the Agent has issues:write
-    When the issue body contains a Realmroot attribution marker
+    Given the Agent has GitHub write authority
+    When a written body contains a Realmroot attribution marker
     Then the adapter rejects the request before calling GitHub
 
   @journey:provider-isolation @entrypoint:architecture
