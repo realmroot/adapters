@@ -340,14 +340,29 @@ describe('GitHub adapter contract', () => {
 
   it('[spec: github-adapter/github-git-transport] constrains Smart HTTP fetch and push to repository authority', async () => {
     const provider = fakeProvider()
+    provider.appPermissions = vi.fn(async () => ({ contents: 'write', workflows: 'write' }) as const)
     provider.request = vi.fn(async (request: Request, _token: string, mode) => {
       expect(mode).toBe('git')
       return new Response(request.url.includes('receive') ? 'push' : 'fetch')
     })
+    const connections = fakeConnections()
+    connections.activeInstallationsForOwner = vi.fn(async () => [
+      {
+        installationId: 42,
+        accountLogin: 'realmroot',
+        targetType: 'Organization',
+        scopes: ['contents:read', 'contents:write', 'workflows:read', 'workflows:write'],
+        repositorySelection: 'all' as const,
+        repositories: [],
+      },
+    ])
     const authenticated = {
-      authenticate: vi.fn(async () => ({ ...principal, scopes: new Set(['contents:read', 'contents:write']) })),
+      authenticate: vi.fn(async () => ({
+        ...principal,
+        scopes: new Set(['contents:read', 'contents:write', 'workflows:write']),
+      })),
     }
-    const app = testApp({ provider, authenticator: authenticated })
+    const app = testApp({ provider, authenticator: authenticated, connections })
     const fetchResponse = await app.request('/github/git/realmroot/example.git/info/refs?service=git-upload-pack')
     expect(fetchResponse.status).toBe(200)
     expect(provider.installationToken).toHaveBeenLastCalledWith({
@@ -362,9 +377,44 @@ describe('GitHub adapter contract', () => {
     expect(pushResponse.status).toBe(200)
     expect(provider.installationToken).toHaveBeenLastCalledWith({
       installationId: 42,
-      permissions: { contents: 'write' },
+      permissions: { contents: 'write', workflows: 'write' },
       repositories: ['example'],
     })
+  })
+
+  it('[spec: github-adapter/github-git-transport] challenges for workflow authority before a native Git push', async () => {
+    const provider = fakeProvider()
+    provider.appPermissions = vi.fn(async () => ({ contents: 'write', workflows: 'write' }) as const)
+    const connections = fakeConnections()
+    connections.activeInstallationsForOwner = vi.fn(async () => [
+      {
+        installationId: 42,
+        accountLogin: 'realmroot',
+        targetType: 'Organization',
+        scopes: ['contents:read', 'contents:write', 'workflows:read', 'workflows:write'],
+        repositorySelection: 'all' as const,
+        repositories: [],
+      },
+    ])
+    const app = testApp({
+      provider,
+      connections,
+      authenticator: {
+        authenticate: vi.fn(async () => ({ ...principal, scopes: new Set(['contents:write']) })),
+      },
+    })
+
+    const response = await app.request('/github/git/realmroot/example.git/git-receive-pack', {
+      method: 'POST',
+      body: 'pack',
+    })
+
+    expect(response.status).toBe(403)
+    expect(response.headers.get('www-authenticate')).toBe(
+      'DPoP error="insufficient_scope", scope="contents:write workflows:write"',
+    )
+    expect(provider.installationToken).not.toHaveBeenCalled()
+    expect(provider.request).not.toHaveBeenCalled()
   })
 
   it('[spec: github-adapter/github-permission-translation] returns permissions as scopes and resources as authorization details', async () => {

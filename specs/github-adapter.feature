@@ -141,8 +141,8 @@ Feature: GitHub App adapter
     Given the Agent has approved repository contents authority
     When Git performs Smart HTTP discovery, fetch, or push through the adapter
     Then the adapter constrains the installation credential to that repository
-    And read transport requires contents read while write transport requires contents write
-    And workflow authority is included on writes only when it was explicitly approved
+    And read transport requires contents read
+    And write transport requires contents write and workflows write because the adapter cannot inspect the complete Git pack before forwarding it
     And the GitHub credential is never returned
 
   @journey:github-attributed-content @entrypoint:http
