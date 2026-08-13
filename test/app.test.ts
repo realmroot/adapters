@@ -255,7 +255,7 @@ describe('GitHub adapter contract', () => {
       authenticator: {
         authenticate: vi.fn(async () => ({
           ...principal,
-          scopes: new Set(['metadata:read', 'pull_requests:write']),
+          scopes: new Set(['contents:write', 'metadata:read']),
         })),
       },
     }).request('/github/graphql', {
@@ -274,7 +274,7 @@ describe('GitHub adapter contract', () => {
     })
     expect(provider.installationToken).toHaveBeenNthCalledWith(2, {
       installationId: 42,
-      permissions: { pull_requests: 'write' },
+      permissions: { contents: 'write' },
       repositories: ['example'],
     })
   })
