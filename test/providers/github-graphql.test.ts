@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  createGitHubCommentWithRest,
   createGitHubPullRequestWithRest,
   mergeGitHubPullRequestWithRest,
+  parseGitHubAddComment,
   parseGitHubCreatePullRequest,
   parseGitHubMergePullRequest,
+  resolveGitHubCommentTarget,
   resolveGitHubPullRequestTarget,
   resolveGitHubRepositoryName,
 } from '../../src/providers/github/graphql.js'
@@ -91,6 +94,26 @@ describe('GitHub GraphQL compatibility', () => {
     ).toThrow('input is invalid')
   })
 
+  it('recognizes and validates addComment mutations', () => {
+    expect(parseGitHubAddComment(JSON.stringify({ query: 'query { viewer { login } }' }))).toBeNull()
+    expect(
+      parseGitHubAddComment(
+        JSON.stringify({
+          query: 'mutation Comment($input: AddCommentInput!) { added: addComment(input: $input) { clientMutationId } }',
+          variables: { input: { subjectId: 'pull-request-1', body: 'Comment', clientMutationId: 'client-1' } },
+        }),
+      ),
+    ).toEqual({
+      subjectId: 'pull-request-1',
+      body: 'Comment',
+      clientMutationId: 'client-1',
+      responseField: 'added',
+    })
+    expect(() =>
+      parseGitHubAddComment(JSON.stringify({ query: 'mutation { addComment(input: {}) { clientMutationId } }' })),
+    ).toThrow('requires one input variable')
+  })
+
   it('fails closed when the repository lookup response is invalid', async () => {
     const provider = fakeProvider(new Response(null, { status: 502 }))
     await expect(
@@ -167,6 +190,43 @@ describe('GitHub GraphQL compatibility', () => {
         pullRequest: merge,
       }),
     ).rejects.toThrow('invalid pull request merge response')
+  })
+
+  it('fails closed on invalid comment lookup and REST responses', async () => {
+    await expect(
+      resolveGitHubCommentTarget({
+        provider: fakeProvider(Response.json({ data: { node: null } })),
+        token: 'installation-token',
+        apiOrigin: 'https://api.github.com',
+        subjectId: 'pull-request-1',
+      }),
+    ).rejects.toThrow('could not resolve the comment target')
+    const comment = {
+      subjectId: 'pull-request-1',
+      body: 'Comment',
+      responseField: 'addComment',
+    }
+    const denied = new Response('denied', { status: 403 })
+    await expect(
+      createGitHubCommentWithRest({
+        provider: fakeProvider(denied),
+        token: 'installation-token',
+        apiOrigin: 'https://api.github.com',
+        nameWithOwner: 'realmroot/adapters',
+        number: 24,
+        comment,
+      }),
+    ).resolves.toBe(denied)
+    await expect(
+      createGitHubCommentWithRest({
+        provider: fakeProvider(Response.json({ id: 1 }, { status: 201 })),
+        token: 'installation-token',
+        apiOrigin: 'https://api.github.com',
+        nameWithOwner: 'realmroot/adapters',
+        number: 24,
+        comment,
+      }),
+    ).rejects.toThrow('invalid comment response')
   })
 })
 

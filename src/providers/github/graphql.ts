@@ -29,6 +29,11 @@ const mergeInputSchema = z.object({
   expectedHeadOid: z.string().optional(),
   clientMutationId: z.string().nullable().optional(),
 })
+const addCommentInputSchema = z.object({
+  subjectId: z.string().min(1),
+  body: z.string(),
+  clientMutationId: z.string().nullable().optional(),
+})
 const pullRequestLookupSchema = z.object({
   data: z.object({
     node: z.object({
@@ -38,9 +43,19 @@ const pullRequestLookupSchema = z.object({
   }),
 })
 const mergedPullRequestSchema = z.object({ sha: z.string().min(1), merged: z.literal(true) })
+const commentTargetSchema = z.object({
+  data: z.object({
+    node: z.object({
+      number: z.number().int().positive(),
+      repository: z.object({ nameWithOwner: z.string().min(3) }),
+    }),
+  }),
+})
+const issueCommentSchema = z.object({ node_id: z.string().min(1), html_url: z.url(), body: z.string() })
 
 export type GitHubCreatePullRequest = z.infer<typeof createInputSchema> & { responseField: string }
 export type GitHubMergePullRequest = z.infer<typeof mergeInputSchema> & { responseField: string }
+export type GitHubAddComment = z.infer<typeof addCommentInputSchema> & { responseField: string }
 
 export function parseGitHubCreatePullRequest(body: BodyInit | null): GitHubCreatePullRequest | null {
   if (typeof body !== 'string') return null
@@ -87,6 +102,30 @@ export function parseGitHubMergePullRequest(body: BodyInit | null): GitHubMergeP
   }
   const input = mergeInputSchema.safeParse(request.variables?.[inputArgument.value.name.value])
   if (!input.success) throw badRequest('GitHub mergePullRequest input is invalid.')
+  return { ...input.data, responseField: field.alias?.value ?? field.name.value }
+}
+
+export function parseGitHubAddComment(body: BodyInit | null): GitHubAddComment | null {
+  if (typeof body !== 'string') return null
+  let request: z.infer<typeof requestSchema>
+  let document: ReturnType<typeof parse>
+  try {
+    request = requestSchema.parse(JSON.parse(body))
+    document = parse(request.query)
+  } catch {
+    return null
+  }
+  const operation = getOperationAST(document, request.operationName ?? undefined)
+  if (operation?.operation !== 'mutation') return null
+  const fields = operation.selectionSet.selections.filter((selection) => selection.kind === Kind.FIELD)
+  if (fields.length !== 1 || fields[0]?.name.value !== 'addComment') return null
+  const field = fields[0]
+  const inputArgument = field.arguments?.find((argument) => argument.name.value === 'input')
+  if (!inputArgument || inputArgument.value.kind !== Kind.VARIABLE) {
+    throw badRequest('GitHub addComment compatibility requires one input variable.')
+  }
+  const input = addCommentInputSchema.safeParse(request.variables?.[inputArgument.value.name.value])
+  if (!input.success) throw badRequest('GitHub addComment input is invalid.')
   return { ...input.data, responseField: field.alias?.value ?? field.name.value }
 }
 
@@ -179,6 +218,74 @@ export async function resolveGitHubPullRequestTarget(input: {
     nameWithOwner: parsed.data.data.node.repository.nameWithOwner,
     number: parsed.data.data.node.number,
   }
+}
+
+export async function resolveGitHubCommentTarget(input: {
+  provider: GitHubProvider
+  token: string
+  apiOrigin: string
+  subjectId: string
+}) {
+  const response = await input.provider.request(
+    new Request(new URL('/graphql', input.apiOrigin), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        query: `query RealmrootCommentTarget($id: ID!) {
+          node(id: $id) {
+            ... on Issue { number repository { nameWithOwner } }
+            ... on PullRequest { number repository { nameWithOwner } }
+          }
+        }`,
+        variables: { id: input.subjectId },
+      }),
+    }),
+    input.token,
+  )
+  const parsed = commentTargetSchema.safeParse(await response.json().catch(() => null))
+  if (!response.ok || !parsed.success) throw failedDependency('GitHub could not resolve the comment target.')
+  return {
+    nameWithOwner: parsed.data.data.node.repository.nameWithOwner,
+    number: parsed.data.data.node.number,
+  }
+}
+
+export async function createGitHubCommentWithRest(input: {
+  provider: GitHubProvider
+  token: string
+  apiOrigin: string
+  nameWithOwner: string
+  number: number
+  comment: GitHubAddComment
+}) {
+  const response = await input.provider.request(
+    new Request(new URL(`/repos/${input.nameWithOwner}/issues/${input.number}/comments`, input.apiOrigin), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ body: input.comment.body }),
+    }),
+    input.token,
+  )
+  if (!response.ok) return response
+  const parsed = issueCommentSchema.safeParse(await response.json().catch(() => null))
+  if (!parsed.success) throw failedDependency('GitHub returned an invalid comment response.')
+  const headers = new Headers(response.headers)
+  headers.delete('content-length')
+  headers.delete('content-encoding')
+  headers.set('content-type', 'application/json; charset=utf-8')
+  return new Response(
+    JSON.stringify({
+      data: {
+        [input.comment.responseField]: {
+          clientMutationId: input.comment.clientMutationId ?? null,
+          commentEdge: {
+            node: { id: parsed.data.node_id, url: parsed.data.html_url, body: parsed.data.body },
+          },
+        },
+      },
+    }),
+    { status: 200, headers },
+  )
 }
 
 export async function mergeGitHubPullRequestWithRest(input: {
