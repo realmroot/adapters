@@ -160,7 +160,7 @@ export function createGitHubExternalAuthorization(input: {
           url: input.connection.installationPermissionUpdateUrl(selectedInstallation, providerState),
         }
       }
-      const contexts = await input.connections.upsertExternalAuthorization(user, selected)
+      const contexts = await input.connections.upsertExternalAuthorization(user, installations)
       return {
         type: 'complete',
         grant: {
