@@ -128,9 +128,6 @@ describe('GitHub external authorization', () => {
         getUser: vi.fn(async () => ({ id: 70, login: 'controller', name: 'Controller' })),
         listUserInstallations: vi.fn(async () => [installation]),
         newInstallationUrl: vi.fn(async () => 'https://github.com/apps/example/installations/new'),
-        installationPermissionUpdateUrl: vi.fn(
-          () => 'https://github.com/organizations/realmroot/settings/installations/701/permissions/update',
-        ),
       },
       connections: connections as unknown as D1GitHubConnections,
       oauthStore: {} as D1ExternalOAuthStore,
@@ -176,9 +173,9 @@ describe('GitHub external authorization', () => {
       providerState: 'permission-update-state',
       stage: 'install',
       data: { expectedInstallationId: 701, permissionUpdateAttempted: true },
-      url: 'https://github.com/organizations/realmroot/settings/installations/701/permissions/update?state=permission-update-state',
+      url: 'https://github.com/apps/example/installations/new?state=permission-update-state',
     })
-    expect(connection.installationPermissionUpdateUrl).toHaveBeenCalledWith(installation, 'permission-update-state')
+    expect(connection.newInstallationUrl).toHaveBeenCalledWith('permission-update-state')
     expect(connections.upsertExternalAuthorization).not.toHaveBeenCalled()
   })
 
@@ -267,10 +264,6 @@ function githubConnection(installations: ReturnType<typeof githubInstallation>[]
     listUserInstallations: vi.fn(async () => installations),
     newInstallationUrl: vi.fn(
       async (state: string) => `https://github.com/apps/example/installations/new?state=${state}`,
-    ),
-    installationPermissionUpdateUrl: vi.fn(
-      (installation: ReturnType<typeof githubInstallation>, state: string) =>
-        `https://github.com/organizations/${installation.accountLogin}/settings/installations/${installation.id}/permissions/update?state=${state}`,
     ),
   }
 }
