@@ -33,4 +33,5 @@ export interface GitHubConnectionProvider {
   getUser(token: string): Promise<GitHubUser>
   listUserInstallations(token: string): Promise<GitHubInstallation[]>
   newInstallationUrl(state: string): Promise<string>
+  installationPermissionUpdateUrl(installation: GitHubInstallation, state: string): string
 }

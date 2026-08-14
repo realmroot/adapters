@@ -76,6 +76,36 @@ describe('GitHub provider HTTP boundary', () => {
 })
 
 describe('GitHub account connection OAuth boundary', () => {
+  it('targets the selected installation permission review page', () => {
+    const provider = createGitHubConnectionProvider({
+      appId: '123',
+      privateKey: privateKey('pkcs8'),
+      clientId: 'client-id',
+      clientSecret: 'client-secret',
+      redirectUri: 'https://adapters.realmroot.dev/github/oauth/callback',
+      apiOrigin: 'https://api.github.test',
+    })
+    const installation = {
+      id: 42,
+      accountLogin: 'realmroot',
+      targetType: 'Organization',
+      permissions: { metadata: 'read' as const },
+      repositorySelection: 'all' as const,
+      repositories: [],
+      updatedAt: '2027-01-15T08:00:00+00:00',
+    }
+
+    expect(provider.installationPermissionUpdateUrl(installation, 'provider-state')).toBe(
+      'https://github.com/organizations/realmroot/settings/installations/42/permissions/update?state=provider-state',
+    )
+    expect(
+      provider.installationPermissionUpdateUrl(
+        { ...installation, accountLogin: 'controller', targetType: 'User' },
+        'provider-state',
+      ),
+    ).toBe('https://github.com/settings/installations/42/permissions/update?state=provider-state')
+  })
+
   it('selects the adapter callback when the GitHub App has multiple callback URLs', async () => {
     const requests: Array<{ url: string; body: unknown }> = []
     const provider = createGitHubConnectionProvider({

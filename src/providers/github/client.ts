@@ -166,6 +166,20 @@ export function createGitHubConnectionProvider(
       url.searchParams.set('state', state)
       return url.toString()
     },
+    installationPermissionUpdateUrl(installation, state) {
+      const url =
+        installation.targetType === 'Organization'
+          ? new URL(
+              `/organizations/${encodeURIComponent(installation.accountLogin)}/settings/installations/${installation.id}/permissions/update`,
+              'https://github.com',
+            )
+          : installation.targetType === 'User'
+            ? new URL(`/settings/installations/${installation.id}/permissions/update`, 'https://github.com')
+            : null
+      if (!url) throw failedDependency(`GitHub installation target type ${installation.targetType} is unsupported.`)
+      url.searchParams.set('state', state)
+      return url.toString()
+    },
   }
 
   async function listInstallationRepositories(token: string, installationId: number) {

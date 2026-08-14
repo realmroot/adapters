@@ -44,11 +44,11 @@ The GitHub App Setup URL is
 `https://adapters.realmroot.dev/github/account-connection-installations`, with
 GitHub's **Redirect on update** option enabled. When an existing installation
 lacks a newly requested App permission, the Adapter keeps the original OAuth
-intent and redirects the owner through GitHub's installation update flow. The
-Setup URL accepts only the installation selected by the authorization detail,
-then resumes the same Realmroot authorization transaction. The Adapter retries
-the permission check once and fails closed if the owner did not approve the
-update.
+intent and redirects the owner to that installation's dedicated
+`/permissions/update` page. The Setup URL accepts only the installation
+selected by the authorization detail, then resumes the same Realmroot
+authorization transaction. The Adapter retries the permission check once and
+fails closed if the owner did not approve the update.
 
 Incomplete permission upgrades are not persisted as connected authority and do
 not surface an intermediate Adapter error page during the normal approval
