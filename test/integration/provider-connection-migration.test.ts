@@ -207,14 +207,14 @@ describe('Provider connection migration', () => {
       env.MIGRATION_DB.prepare(
         "SELECT revoked_at IS NOT NULL AS revoked FROM external_oauth_refresh WHERE provider_id = 'github'",
       ).first(),
-    ).resolves.toEqual({ revoked: 0 })
+    ).resolves.toEqual({ revoked: 1 })
     await expect(
       env.MIGRATION_DB.prepare(
         "SELECT COUNT(*) AS count FROM github_connection_binding WHERE status = 'active'",
       ).first(),
-    ).resolves.toEqual({ count: 2 })
+    ).resolves.toEqual({ count: 0 })
     await expect(
       env.MIGRATION_DB.prepare('SELECT COUNT(*) AS count FROM github_connection_context').first(),
-    ).resolves.toEqual({ count: 1 })
+    ).resolves.toEqual({ count: 0 })
   })
 })
