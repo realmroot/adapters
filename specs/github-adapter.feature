@@ -40,6 +40,7 @@ Feature: GitHub App adapter
     Given the Adapter holds an active GitHub external authorization
     When Realmroot reads the advertised authorization-detail catalog with the connected subject token
     Then the adapter returns each active installation with its account name, stable installation ID, account type, and repository selection
+    And reports the exact scopes currently granted by each installation
     And the response uses the shared authorization-detail catalog representation
     And the authorization detail type is a stable URI owned by the Adapter
     But it does not expose installation credentials

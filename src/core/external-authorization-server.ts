@@ -35,6 +35,7 @@ export type ExternalProviderAuthorization = {
     list(input: { subject: string; limit: number; offset: number }): Promise<{
       items: Array<{
         authorizationDetail: Record<string, unknown>
+        grantedScopes?: string[]
         display: { label: string; description?: string; metadata?: Record<string, string> }
       }>
       pagination: { limit: number; offset: number; total: number; hasMore: boolean; nextOffset: number | null }

@@ -39,6 +39,7 @@ describe('GitHub external authorization', () => {
             target_type: 'Organization',
             repository_selection: 'all',
           },
+          grantedScopes: ['metadata:read'],
           display: {
             label: 'realmroot',
             description: 'Organization GitHub App installation',
@@ -52,6 +53,49 @@ describe('GitHub external authorization', () => {
       ],
       pagination: { limit: 10, offset: 0, total: 1, hasMore: false, nextOffset: null },
     })
+  })
+
+  it('rejects a scope that another installation grants but the selected installation does not', async () => {
+    const contexts = [
+      {
+        installationId: 701,
+        accountLogin: 'saltbo',
+        targetType: 'User',
+        scopes: ['metadata:read'],
+        repositorySelection: 'all' as const,
+        repositories: [],
+      },
+      {
+        installationId: 702,
+        accountLogin: 'realmroot',
+        targetType: 'Organization',
+        scopes: ['administration:write', 'metadata:read'],
+        repositorySelection: 'all' as const,
+        repositories: [],
+      },
+    ]
+    const external = createGitHubExternalAuthorization({
+      origin: 'https://adapter.example',
+      connection: {} as never,
+      connections: {
+        externalAuthorization: vi.fn(async () => ({
+          scopes: ['administration:write', 'metadata:read'],
+          contexts,
+        })),
+      } as unknown as D1GitHubConnections,
+      oauthStore: {} as D1ExternalOAuthStore,
+      scopes: ['administration:write', 'metadata:read'],
+    })
+
+    await expect(
+      external.authorization.validateGrant?.({
+        subject: '70',
+        scopes: ['administration:write'],
+        authorizationDetails: [
+          { type: GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE, installation_id: '701' },
+        ],
+      }),
+    ).resolves.toBe(false)
   })
 
   it('accepts read scopes implied by a write installation permission', async () => {

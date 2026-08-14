@@ -71,6 +71,7 @@ export function createGitHubExternalAuthorization(input: {
         const contexts = (await input.connections.externalAuthorization(subject)).contexts
         const items = contexts.slice(offset, offset + limit).map((context) => ({
           authorizationDetail: githubInstallationAuthorizationDetail(context),
+          grantedScopes: context.scopes,
           display: githubInstallationAuthorizationDetailDisplay(context),
         }))
         const nextOffset = offset + limit < contexts.length ? offset + limit : null
@@ -89,11 +90,24 @@ export function createGitHubExternalAuthorization(input: {
     authorizationDetailsSubset,
     async validateGrant({ subject, scopes, authorizationDetails }) {
       const active = await input.connections.externalAuthorization(subject)
+      const requestedScopes = scopes.filter(
+        (scope) => !['openid', 'offline_access', authorizationDetailsCatalogScope].includes(scope),
+      )
+      const selectedContexts = authorizationDetails.map((detail) =>
+        active.contexts.find(
+          (context) =>
+            detail.type === GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE &&
+            detail.installation_id === String(context.installationId),
+        ),
+      )
       return (
         scopes.every(
           (scope) =>
             ['openid', 'offline_access', authorizationDetailsCatalogScope].includes(scope) ||
             active.scopes.includes(scope),
+        ) &&
+        selectedContexts.every(
+          (context) => context !== undefined && requestedScopes.every((scope) => context.scopes.includes(scope)),
         ) &&
         authorizationDetailsSubset({
           requested: authorizationDetails,
