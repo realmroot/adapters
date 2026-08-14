@@ -99,7 +99,7 @@ export function createGitHubProvider(input: GitHubClientInput): GitHubProvider {
         signal: AbortSignal.timeout(mode === 'git' ? 10 * 60_000 : 30_000),
       }),
     )
-    if (requireSuccess && !response.ok) throw providerFailure(response, request.url)
+    if (requireSuccess && !response.ok) throw await providerFailure(response, request.url)
     return response
   }
 }
@@ -224,10 +224,17 @@ function forwardedHeaders(input: Headers) {
   return headers
 }
 
-function providerFailure(response: Response, target: string) {
+async function providerFailure(response: Response, target: string) {
   const requestId = response.headers.get('x-github-request-id')
+  const body = z.object({ message: z.string().min(1).max(500) }).safeParse(
+    await response
+      .clone()
+      .json()
+      .catch(() => null),
+  )
+  const message = body.success ? `: ${body.data.message}` : ''
   return failedDependency(
-    `GitHub rejected ${new URL(target, 'https://api.github.com').pathname} with ${response.status}${requestId ? ` (${requestId})` : ''}.`,
+    `GitHub rejected ${new URL(target, 'https://api.github.com').pathname} with ${response.status}${requestId ? ` (${requestId})` : ''}${message}.`,
   )
 }
 
