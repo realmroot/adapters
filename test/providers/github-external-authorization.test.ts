@@ -183,7 +183,7 @@ describe('GitHub external authorization', () => {
     })
   })
 
-  it('grants only the concrete installation requested by the provider connection', async () => {
+  it('returns the complete installation snapshot after a concrete connection request', async () => {
     const selected = githubInstallation({ administration: 'write' })
     const other = {
       ...selected,
@@ -221,6 +221,10 @@ describe('GitHub external authorization', () => {
           expect.objectContaining({
             type: GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE,
             installation_id: String(selected.id),
+          }),
+          expect.objectContaining({
+            type: GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE,
+            installation_id: String(other.id),
           }),
         ],
       },
@@ -310,6 +314,10 @@ describe('GitHub external authorization', () => {
           expect.objectContaining({
             type: GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE,
             installation_id: '701',
+          }),
+          expect.objectContaining({
+            type: GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE,
+            installation_id: '702',
           }),
         ],
       },
