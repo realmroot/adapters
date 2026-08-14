@@ -9,7 +9,10 @@ export function createApp(adapters: readonly AdapterModule[]) {
 
   app.use('*', async (c, next) => {
     const startedAt = Date.now()
-    c.set('requestId', crypto.randomUUID())
+    const requestId = c.req.header('cf-ray') || crypto.randomUUID()
+    const correlationId = validCorrelationId(c.req.header('x-correlation-id')) ?? requestId
+    c.set('requestId', requestId)
+    c.set('correlationId', correlationId)
     try {
       await next()
     } finally {
@@ -18,6 +21,7 @@ export function createApp(adapters: readonly AdapterModule[]) {
       const record = JSON.stringify({
         event: 'request.complete',
         requestId: c.get('requestId'),
+        correlationId: c.get('correlationId'),
         method: c.req.method,
         path: new URL(c.req.url).pathname,
         status: c.res.status,
@@ -52,6 +56,10 @@ export function createApp(adapters: readonly AdapterModule[]) {
     return problemResponse(problem, c.req.url, c.get('requestId'))
   })
   return app
+}
+
+function validCorrelationId(value: string | undefined) {
+  return value && /^[0-9a-f]{32}$/.test(value) ? value : null
 }
 
 function normalizeProblem(error: unknown) {

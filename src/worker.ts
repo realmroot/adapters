@@ -1,3 +1,4 @@
+import { tracing } from 'cloudflare:workers'
 import { createApp } from './app.js'
 import { loadConfig } from './config.js'
 import type { AdapterModule } from './core/adapter.js'
@@ -29,139 +30,144 @@ import { D1RuntimeState } from './storage/d1-runtime-state.js'
 
 export default {
   async fetch(request, env, executionContext) {
-    const config = loadConfig(env, request.url)
-    const githubConfig = loadGitHubConfig(env, config)
-    const cloudflareConfig = loadCloudflareConfig(env, config)
-    const linearConfig = loadLinearConfig(env, config)
-    const state = new D1RuntimeState(env.DB)
-    const oauthStore = new D1ExternalOAuthStore(env.DB)
-    const signingPrivateJwk = config.oauthSigningPrivateJwk ? JSON.parse(config.oauthSigningPrivateJwk) : undefined
-    const adapters: AdapterModule[] = []
+    return tracing.enterSpan('adapter.request.prepare', async (span) => {
+      span.setAttribute('url.path', new URL(request.url).pathname)
+      const config = loadConfig(env, request.url)
+      const githubConfig = loadGitHubConfig(env, config)
+      const cloudflareConfig = loadCloudflareConfig(env, config)
+      const linearConfig = loadLinearConfig(env, config)
+      const state = new D1RuntimeState(env.DB)
+      const oauthStore = new D1ExternalOAuthStore(env.DB)
+      const signingPrivateJwk = config.oauthSigningPrivateJwk ? JSON.parse(config.oauthSigningPrivateJwk) : undefined
+      const adapters: AdapterModule[] = []
 
-    if (
-      githubConfig.githubAppId &&
-      githubConfig.githubPrivateKey &&
-      githubConfig.githubClientId &&
-      githubConfig.githubClientSecret &&
-      signingPrivateJwk
-    ) {
-      const githubConnections = new D1GitHubConnections(env.DB, state)
-      const githubProvider = createGitHubProvider({
-        appId: githubConfig.githubAppId,
-        privateKey: githubConfig.githubPrivateKey,
-        apiOrigin: githubConfig.githubApiOrigin,
-      })
-      const githubExternal = createGitHubExternalAuthorization({
-        origin: config.origin,
-        connection: createGitHubConnectionProvider({
+      if (
+        githubConfig.githubAppId &&
+        githubConfig.githubPrivateKey &&
+        githubConfig.githubClientId &&
+        githubConfig.githubClientSecret &&
+        signingPrivateJwk
+      ) {
+        const githubConnections = new D1GitHubConnections(env.DB, state)
+        const githubProvider = createGitHubProvider({
           appId: githubConfig.githubAppId,
           privateKey: githubConfig.githubPrivateKey,
-          clientId: githubConfig.githubClientId,
-          clientSecret: githubConfig.githubClientSecret,
-          redirectUri: `${config.origin}/github/oauth/callback`,
           apiOrigin: githubConfig.githubApiOrigin,
-        }),
-        connections: githubConnections,
-        oauthStore,
-        scopes: permissionsToScopes(await githubProvider.appPermissions()),
-      })
-      const githubAuthorization = await createExternalAuthorizationServer({
-        origin: config.origin,
-        provider: githubExternal.authorization,
-        providerCallbackPath: '/github/oauth/callback',
-        store: oauthStore,
-        signingPrivateJwk,
-        replayStore: state,
-      })
-      adapters.push(
-        githubAuthorization,
-        githubExternal.installationCallback,
-        createGitHubAdapter(githubConfig, {
-          authenticator: githubAuthorization.authenticator,
-          provider: githubProvider,
-          audit: (record) => state.recordAudit(record),
+          cache: caches.default,
+          waitUntil: (promise) => executionContext.waitUntil(promise),
+        })
+        const githubExternal = createGitHubExternalAuthorization({
+          origin: config.origin,
+          connection: createGitHubConnectionProvider({
+            appId: githubConfig.githubAppId,
+            privateKey: githubConfig.githubPrivateKey,
+            clientId: githubConfig.githubClientId,
+            clientSecret: githubConfig.githubClientSecret,
+            redirectUri: `${config.origin}/github/oauth/callback`,
+            apiOrigin: githubConfig.githubApiOrigin,
+          }),
           connections: githubConnections,
-        }),
-      )
-    }
+          oauthStore,
+          scopes: permissionsToScopes(await githubProvider.appPermissions()),
+        })
+        const githubAuthorization = await createExternalAuthorizationServer({
+          origin: config.origin,
+          provider: githubExternal.authorization,
+          providerCallbackPath: '/github/oauth/callback',
+          store: oauthStore,
+          signingPrivateJwk,
+          replayStore: state,
+        })
+        adapters.push(
+          githubAuthorization,
+          githubExternal.installationCallback,
+          createGitHubAdapter(githubConfig, {
+            authenticator: githubAuthorization.authenticator,
+            provider: githubProvider,
+            audit: (record) => state.recordAudit(record),
+            connections: githubConnections,
+          }),
+        )
+      }
 
-    if (
-      linearConfig.linearClientId &&
-      linearConfig.linearClientSecret &&
-      linearConfig.linearCredentialEncryptionKey &&
-      signingPrivateJwk
-    ) {
-      const linearConnections = new D1LinearConnections(
-        env.DB,
-        createLinearCredentialCipher(linearConfig.linearCredentialEncryptionKey),
-        state,
-      )
-      const linearProvider = createLinearProvider({
-        clientId: linearConfig.linearClientId,
-        clientSecret: linearConfig.linearClientSecret,
-        redirectUri: `${config.origin}/linear/oauth/callback`,
-        apiOrigin: linearConfig.linearApiOrigin,
-        authorizationOrigin: linearConfig.linearAuthorizationOrigin,
-      })
-      const linearAuthorization = await createExternalAuthorizationServer({
-        origin: config.origin,
-        provider: createLinearExternalAuthorization({
+      if (
+        linearConfig.linearClientId &&
+        linearConfig.linearClientSecret &&
+        linearConfig.linearCredentialEncryptionKey &&
+        signingPrivateJwk
+      ) {
+        const linearConnections = new D1LinearConnections(
+          env.DB,
+          createLinearCredentialCipher(linearConfig.linearCredentialEncryptionKey),
+          state,
+        )
+        const linearProvider = createLinearProvider({
+          clientId: linearConfig.linearClientId,
+          clientSecret: linearConfig.linearClientSecret,
+          redirectUri: `${config.origin}/linear/oauth/callback`,
+          apiOrigin: linearConfig.linearApiOrigin,
+          authorizationOrigin: linearConfig.linearAuthorizationOrigin,
+        })
+        const linearAuthorization = await createExternalAuthorizationServer({
           origin: config.origin,
-          provider: linearProvider,
-          connections: linearConnections,
-          scopes: linearScopes,
-        }),
-        providerCallbackPath: '/linear/oauth/callback',
-        store: oauthStore,
-        signingPrivateJwk,
-        replayStore: state,
-      })
-      adapters.push(
-        linearAuthorization,
-        createLinearAdapter(linearConfig, {
-          authenticator: linearAuthorization.authenticator,
-          provider: linearProvider,
-          connections: linearConnections,
-          audit: (record) => state.recordAudit(record),
-        }),
-      )
-    }
-    if (cloudflareConfig) {
-      if (!signingPrivateJwk) throw new Error('Cloudflare external authorization is not configured.')
-      const cloudflareCredentials = new D1CloudflareCredentials(
-        env.DB,
-        createCredentialCipher(cloudflareConfig.credentialEncryptionKey),
-      )
-      const cloudflareProvider = createCloudflareOAuthProvider({
-        clientId: cloudflareConfig.clientId,
-        clientSecret: cloudflareConfig.clientSecret,
-        redirectUri: `${config.origin}/oauth/cloudflare/provider/callback`,
-        authorizationOrigin: cloudflareConfig.authorizationOrigin,
-      })
-      const cloudflareAuthorization = await createExternalAuthorizationServer({
-        origin: config.origin,
-        provider: createCloudflareExternalAuthorization({
+          provider: createLinearExternalAuthorization({
+            origin: config.origin,
+            provider: linearProvider,
+            connections: linearConnections,
+            scopes: linearScopes,
+          }),
+          providerCallbackPath: '/linear/oauth/callback',
+          store: oauthStore,
+          signingPrivateJwk,
+          replayStore: state,
+        })
+        adapters.push(
+          linearAuthorization,
+          createLinearAdapter(linearConfig, {
+            authenticator: linearAuthorization.authenticator,
+            provider: linearProvider,
+            connections: linearConnections,
+            audit: (record) => state.recordAudit(record),
+          }),
+        )
+      }
+      if (cloudflareConfig) {
+        if (!signingPrivateJwk) throw new Error('Cloudflare external authorization is not configured.')
+        const cloudflareCredentials = new D1CloudflareCredentials(
+          env.DB,
+          createCredentialCipher(cloudflareConfig.credentialEncryptionKey),
+        )
+        const cloudflareProvider = createCloudflareOAuthProvider({
+          clientId: cloudflareConfig.clientId,
+          clientSecret: cloudflareConfig.clientSecret,
+          redirectUri: `${config.origin}/oauth/cloudflare/provider/callback`,
+          authorizationOrigin: cloudflareConfig.authorizationOrigin,
+        })
+        const cloudflareAuthorization = await createExternalAuthorizationServer({
           origin: config.origin,
-          provider: cloudflareProvider,
-          credentials: cloudflareCredentials,
-          scopes: Object.keys(cloudflareManifest.scopes),
-        }),
-        store: oauthStore,
-        signingPrivateJwk,
-        replayStore: state,
-      })
-      adapters.push(
-        cloudflareAuthorization,
-        createCloudflareAdapter(cloudflareConfig, {
-          authenticator: cloudflareAuthorization.authenticator,
-          provider: cloudflareProvider,
-          credentials: cloudflareCredentials,
-          audit: (record) => state.recordAudit(record),
-          fetch,
-        }),
-      )
-    }
-    const app = createApp(adapters)
-    return app.fetch(request, env, executionContext)
+          provider: createCloudflareExternalAuthorization({
+            origin: config.origin,
+            provider: cloudflareProvider,
+            credentials: cloudflareCredentials,
+            scopes: Object.keys(cloudflareManifest.scopes),
+          }),
+          store: oauthStore,
+          signingPrivateJwk,
+          replayStore: state,
+        })
+        adapters.push(
+          cloudflareAuthorization,
+          createCloudflareAdapter(cloudflareConfig, {
+            authenticator: cloudflareAuthorization.authenticator,
+            provider: cloudflareProvider,
+            credentials: cloudflareCredentials,
+            audit: (record) => state.recordAudit(record),
+            fetch,
+          }),
+        )
+      }
+      const app = createApp(adapters)
+      return tracing.enterSpan('adapter.router.dispatch', () => app.fetch(request, env, executionContext))
+    })
   },
 } satisfies ExportedHandler<Env>
