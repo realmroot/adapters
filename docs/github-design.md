@@ -38,6 +38,26 @@ human-facing display value: the GitHub account login is the Context label and
 the installation ID remains stable metadata. Realmroot and Toolbox never use
 the display label as authorization input.
 
+## Installation permission upgrades
+
+GitHub does not return permission-update acceptance to the App's Setup URL.
+The Setup URL remains responsible for new installations and repository-access
+changes, but it is not the completion signal for a newly added App permission.
+
+When an existing installation lacks a newly requested permission, the Adapter
+keeps the original OAuth intent and opens the exact installation review URL at
+`/settings/installations/{installation_id}/permissions/update`. An
+Adapter-owned waiting page polls the preserved transaction while GitHub opens
+the review in a separate window. The signed `installation` webhook with action
+`new_permissions_accepted` updates Adapter-owned authority. Only after that
+target installation covers every requested scope does the Adapter complete the
+same OAuth transaction, close the GitHub window, and return the controller to
+Realmroot automatically.
+
+Incomplete permission upgrades are not persisted as connected authority and do
+not surface an intermediate Adapter error page during the normal approval
+flow.
+
 ## Permission translation
 
 The adapter reads the permissions configured on the GitHub App and exposes

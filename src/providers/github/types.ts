@@ -17,6 +17,7 @@ export interface GitHubProvider {
 export type GitHubUser = Readonly<{ id: number; login: string; name: string | null }>
 export type GitHubInstallation = Readonly<{
   id: number
+  htmlUrl: string
   accountLogin: string
   targetType: string
   permissions: GitHubPermissions
@@ -33,4 +34,5 @@ export interface GitHubConnectionProvider {
   getUser(token: string): Promise<GitHubUser>
   listUserInstallations(token: string): Promise<GitHubInstallation[]>
   newInstallationUrl(state: string): Promise<string>
+  permissionUpdateUrl(installation: GitHubInstallation): string
 }

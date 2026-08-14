@@ -53,6 +53,7 @@ describe('Cloudflare Worker runtime', () => {
       [
         {
           id: 101,
+          htmlUrl: 'https://github.com/organizations/realmroot/settings/installations/101',
           accountLogin: 'realmroot',
           targetType: 'Organization',
           permissions: { metadata: 'read', issues: 'write' },
@@ -62,6 +63,7 @@ describe('Cloudflare Worker runtime', () => {
         },
         {
           id: 102,
+          htmlUrl: 'https://github.com/settings/installations/102',
           accountLogin: 'controller',
           targetType: 'User',
           permissions: { metadata: 'read', issues: 'write' },
@@ -114,6 +116,7 @@ describe('Cloudflare Worker runtime', () => {
       [
         {
           id: 103,
+          htmlUrl: 'https://github.com/organizations/realmroot/settings/installations/103',
           accountLogin: 'realmroot',
           targetType: 'Organization',
           permissions: { metadata: 'read', issues: 'write' },
@@ -177,6 +180,7 @@ describe('Cloudflare Worker runtime', () => {
       [
         {
           id: 701,
+          htmlUrl: 'https://github.com/organizations/realmroot/settings/installations/701',
           accountLogin: 'realmroot',
           targetType: 'Organization',
           permissions: { metadata: 'read', pull_requests: 'read' },
@@ -223,6 +227,7 @@ describe('Cloudflare Worker runtime', () => {
       [
         {
           id: 201,
+          htmlUrl: 'https://github.com/organizations/realmroot/settings/installations/201',
           accountLogin: 'realmroot',
           targetType: 'Organization',
           permissions: { metadata: 'read' },
@@ -261,6 +266,7 @@ describe('Cloudflare Worker runtime', () => {
       [
         {
           id: 202,
+          htmlUrl: 'https://github.com/organizations/realmroot/settings/installations/202',
           accountLogin: 'realmroot',
           targetType: 'Organization',
           permissions: { metadata: 'read' },

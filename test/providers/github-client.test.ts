@@ -103,6 +103,9 @@ describe('GitHub account connection OAuth boundary', () => {
         redirect_uri: 'https://adapters.realmroot.dev/github/oauth/callback',
       },
     })
+    expect(provider.permissionUpdateUrl({ htmlUrl: 'https://github.com/settings/installations/42' } as never)).toBe(
+      'https://github.com/settings/installations/42/permissions/update',
+    )
   })
 
   it('loads selected repository membership with the installation context', async () => {
@@ -122,6 +125,7 @@ describe('GitHub account connection OAuth boundary', () => {
             installations: [
               {
                 id: 42,
+                html_url: 'https://github.com/organizations/realmroot/settings/installations/42',
                 account: { login: 'realmroot' },
                 target_type: 'Organization',
                 permissions: { metadata: 'read' },
@@ -154,6 +158,7 @@ describe('GitHub account connection OAuth boundary', () => {
     expect(installations).toHaveLength(1)
     expect(installations[0]).toMatchObject({
       id: 42,
+      htmlUrl: 'https://github.com/organizations/realmroot/settings/installations/42',
       accountLogin: 'realmroot',
       targetType: 'Organization',
       permissions: { metadata: 'read' },

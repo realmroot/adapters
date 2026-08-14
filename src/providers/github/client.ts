@@ -14,6 +14,7 @@ const userInstallationsSchema = z.object({
   installations: z.array(
     z.object({
       id: z.number().int().positive(),
+      html_url: z.url().refine((value) => new URL(value).origin === 'https://github.com'),
       account: z.object({ login: z.string().min(1) }),
       target_type: z.string().min(1),
       permissions: permissionsSchema,
@@ -99,7 +100,7 @@ export function createGitHubProvider(input: GitHubClientInput): GitHubProvider {
         signal: AbortSignal.timeout(mode === 'git' ? 10 * 60_000 : 30_000),
       }),
     )
-    if (requireSuccess && !response.ok) throw providerFailure(response, request.url)
+    if (requireSuccess && !response.ok) throw await providerFailure(response, request.url)
     return response
   }
 }
@@ -147,6 +148,7 @@ export function createGitHubConnectionProvider(
       return Promise.all(
         parsed.installations.map(async (installation) => ({
           id: installation.id,
+          htmlUrl: installation.html_url,
           accountLogin: installation.account.login,
           targetType: installation.target_type,
           permissions: installation.permissions,
@@ -165,6 +167,9 @@ export function createGitHubConnectionProvider(
       const url = new URL(`https://github.com/apps/${encodeURIComponent(app.slug)}/installations/new`)
       url.searchParams.set('state', state)
       return url.toString()
+    },
+    permissionUpdateUrl(installation) {
+      return `${installation.htmlUrl}/permissions/update`
     },
   }
 
@@ -224,10 +229,17 @@ function forwardedHeaders(input: Headers) {
   return headers
 }
 
-function providerFailure(response: Response, target: string) {
+async function providerFailure(response: Response, target: string) {
   const requestId = response.headers.get('x-github-request-id')
+  const body = z.object({ message: z.string().min(1).max(500) }).safeParse(
+    await response
+      .clone()
+      .json()
+      .catch(() => null),
+  )
+  const message = body.success ? `: ${body.data.message}` : ''
   return failedDependency(
-    `GitHub rejected ${new URL(target, 'https://api.github.com').pathname} with ${response.status}${requestId ? ` (${requestId})` : ''}.`,
+    `GitHub rejected ${new URL(target, 'https://api.github.com').pathname} with ${response.status}${requestId ? ` (${requestId})` : ''}${message}.`,
   )
 }
 

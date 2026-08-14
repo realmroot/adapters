@@ -173,6 +173,14 @@ export class D1ExternalOAuthStore {
     if (results[1]?.meta.changes !== 1) throw unauthorized('External OAuth authorization was already completed.')
   }
 
+  async cancelIntent(intent: ExternalOAuthIntent) {
+    const result = await this.db
+      .prepare("DELETE FROM external_oauth_intent WHERE id = ? AND status = 'pending'")
+      .bind(intent.id)
+      .run()
+    if (result.meta.changes !== 1) throw unauthorized('External OAuth authorization was already completed.')
+  }
+
   async consumeCode(input: { code: string; clientId: string; redirectUri: string; verifier: string }) {
     const codeHash = await sha256(input.code)
     const row = await this.db
