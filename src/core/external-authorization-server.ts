@@ -72,6 +72,13 @@ export type ExternalProviderAuthorization = {
     | { type: 'complete'; grant: Omit<ExternalOAuthGrant, 'providerId' | 'clientId'> }
     | { type: 'error'; error: 'access_denied' | 'server_error'; description: string }
   >
+  resume?(input: {
+    intent: ExternalOAuthIntent
+  }): Promise<
+    | { type: 'pending' }
+    | { type: 'complete'; grant: Omit<ExternalOAuthGrant, 'providerId' | 'clientId'> }
+    | { type: 'error'; error: 'access_denied' | 'server_error'; description: string }
+  >
 }
 
 export type ExternalAuthorizationServer = {
@@ -209,17 +216,28 @@ export async function createExternalAuthorizationServer(input: {
           await input.store.cancelIntent(intent)
           return c.redirect(authorizationErrorRedirect(intent, result.error, result.description))
         }
-        const code = opaque('code')
-        await input.store.completeIntent(
-          intent,
-          { ...result.grant, providerId: input.provider.id, clientId: intent.clientId },
-          code,
-        )
-        const callback = new URL(intent.redirectUri)
-        callback.searchParams.set('code', code)
-        callback.searchParams.set('state', intent.realmrootState)
-        return c.redirect(callback.toString())
+        return c.redirect(await completeAuthorization(input, intent, result.grant))
       })
+      const resume = input.provider.resume
+      if (resume) {
+        app.get(`/oauth/${input.provider.id}/continue`, async (c) => {
+          c.header('Cache-Control', 'no-store')
+          const intent = await input.store.intentByProviderState(await sha256(required(c.req.query('state'), 'state')))
+          const result = await resume({ intent })
+          if (result.type === 'pending') return c.json({ status: 'pending' }, 202)
+          if (result.type === 'error') {
+            await input.store.cancelIntent(intent)
+            return c.json({
+              status: 'failed',
+              redirectUrl: authorizationErrorRedirect(intent, result.error, result.description),
+            })
+          }
+          return c.json({
+            status: 'complete',
+            redirectUrl: await completeAuthorization(input, intent, result.grant),
+          })
+        })
+      }
       app.post(`/oauth/${input.provider.id}/token`, async (c) => {
         const client = await authenticateClient(input.store, input.provider.id, c.req.raw)
         const form = await c.req.formData()
@@ -501,6 +519,19 @@ export async function createExternalAuthorizationServer(input: {
     }
     return verified
   }
+}
+
+async function completeAuthorization(
+  input: Pick<Parameters<typeof createExternalAuthorizationServer>[0], 'provider' | 'store'>,
+  intent: ExternalOAuthIntent,
+  grant: Omit<ExternalOAuthGrant, 'providerId' | 'clientId'>,
+) {
+  const code = opaque('code')
+  await input.store.completeIntent(intent, { ...grant, providerId: input.provider.id, clientId: intent.clientId }, code)
+  const callback = new URL(intent.redirectUri)
+  callback.searchParams.set('code', code)
+  callback.searchParams.set('state', intent.realmrootState)
+  return callback.toString()
 }
 
 function authorizationErrorRedirect(

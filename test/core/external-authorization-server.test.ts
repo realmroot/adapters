@@ -171,6 +171,38 @@ describe('external authorization server', () => {
     )
   })
 
+  it('resumes a preserved provider authorization after an asynchronous provider decision', async () => {
+    const intent = { ...exampleIntent(), providerStage: 'permission-update' }
+    const { app, provider, store } = await testServer({ intent, resume: true })
+    if (!provider.resume) throw new Error('Expected resumable provider authorization.')
+    vi.mocked(provider.resume)
+      .mockResolvedValueOnce({ type: 'pending' })
+      .mockResolvedValueOnce({
+        type: 'complete',
+        grant: {
+          subject: 'provider-user-1',
+          displayName: 'Provider User',
+          scopes: intent.scopes,
+          authorizationDetails: intent.authorizationDetails,
+        },
+      })
+
+    const pending = await app.request('/oauth/example/continue?state=provider-state')
+    expect(pending.status).toBe(202)
+    expect(pending.headers.get('cache-control')).toBe('no-store')
+    await expect(pending.json()).resolves.toEqual({ status: 'pending' })
+
+    const completed = await app.request('/oauth/example/continue?state=provider-state')
+    expect(completed.status).toBe(200)
+    const body = (await completed.json()) as { status: string; redirectUrl: string }
+    expect(body.status).toBe('complete')
+    const callback = new URL(body.redirectUrl)
+    expect(callback.origin + callback.pathname).toBe('https://id.realmroot.dev/callback')
+    expect(callback.searchParams.get('state')).toBe('realmroot-state')
+    expect(callback.searchParams.get('code')).toMatch(/^code_/)
+    expect(store.completeIntent).toHaveBeenCalledWith(intent, expect.any(Object), callback.searchParams.get('code'))
+  })
+
   it('returns provider denial to Realmroot without requiring an authorization code', async () => {
     const intent = exampleIntent()
     const { app, provider, store } = await testServer({ intent })
@@ -223,7 +255,9 @@ describe('external authorization server', () => {
   })
 })
 
-async function testServer(options: { intent?: ExternalOAuthIntent; providerCallbackPath?: string } = {}) {
+async function testServer(
+  options: { intent?: ExternalOAuthIntent; providerCallbackPath?: string; resume?: boolean } = {},
+) {
   const store = {
     registerClient: vi.fn(async () => undefined),
     client: vi.fn(async (_providerId: string, clientId: string) => ({
@@ -278,6 +312,11 @@ async function testServer(options: { intent?: ExternalOAuthIntent; providerCallb
         authorizationDetails: intent.authorizationDetails,
       },
     })),
+    ...(options.resume
+      ? {
+          resume: vi.fn(async () => ({ type: 'pending' as const })),
+        }
+      : {}),
   }
   const { privateKey } = await generateKeyPair('ES256', { extractable: true })
   const signingPrivateJwk = await exportJWK(privateKey)

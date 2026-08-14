@@ -14,6 +14,7 @@ const userInstallationsSchema = z.object({
   installations: z.array(
     z.object({
       id: z.number().int().positive(),
+      html_url: z.url().refine((value) => new URL(value).origin === 'https://github.com'),
       account: z.object({ login: z.string().min(1) }),
       target_type: z.string().min(1),
       permissions: permissionsSchema,
@@ -147,6 +148,7 @@ export function createGitHubConnectionProvider(
       return Promise.all(
         parsed.installations.map(async (installation) => ({
           id: installation.id,
+          htmlUrl: installation.html_url,
           accountLogin: installation.account.login,
           targetType: installation.target_type,
           permissions: installation.permissions,
@@ -165,6 +167,9 @@ export function createGitHubConnectionProvider(
       const url = new URL(`https://github.com/apps/${encodeURIComponent(app.slug)}/installations/new`)
       url.searchParams.set('state', state)
       return url.toString()
+    },
+    permissionUpdateUrl(installation) {
+      return `${installation.htmlUrl}/permissions/update`
     },
   }
 
