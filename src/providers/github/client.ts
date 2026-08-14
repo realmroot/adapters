@@ -34,6 +34,8 @@ type GitHubClientInput = {
   privateKey: string
   apiOrigin: string
   fetcher?: typeof fetch
+  cache?: Cache
+  waitUntil?: (promise: Promise<unknown>) => void
   now?: () => number
 }
 
@@ -81,8 +83,21 @@ export function createGitHubProvider(input: GitHubClientInput): GitHubProvider {
   }
 
   async function readAppPermissions() {
+    const cacheKey = new Request(
+      `https://cache.realmroot.invalid/github/apps/${encodeURIComponent(input.appId)}/permissions`,
+    )
+    const cached = await input.cache?.match(cacheKey)
+    if (cached) return permissionsSchema.parse(await cached.json())
     const response = await githubRequest(new Request(new URL('/app', input.apiOrigin)), await appJwt())
-    return appSchema.parse(await response.json()).permissions
+    const permissions = appSchema.parse(await response.json()).permissions
+    if (input.cache) {
+      const write = input.cache.put(
+        cacheKey,
+        Response.json(permissions, { headers: { 'cache-control': 'public, max-age=10' } }),
+      )
+      input.waitUntil ? input.waitUntil(write) : await write
+    }
+    return permissions
   }
 
   async function githubRequest(request: Request, token: string, requireSuccess = true, mode: 'api' | 'git' = 'api') {

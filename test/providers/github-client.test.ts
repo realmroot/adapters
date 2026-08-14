@@ -73,6 +73,28 @@ describe('GitHub provider HTTP boundary', () => {
     })
     await expect(provider.appPermissions()).resolves.toEqual({ metadata: 'read', issues: 'write' })
   })
+
+  it('reuses Cloudflare Cache API App permissions across provider instances', async () => {
+    const responses = new Map<string, Response>()
+    const cache = {
+      match: async (request: RequestInfo | URL) => responses.get(String(request))?.clone(),
+      put: async (request: RequestInfo | URL, response: Response) => {
+        responses.set(String(request), response.clone())
+      },
+    } as Cache
+    const input = {
+      appId: '123',
+      privateKey: privateKey('pkcs8'),
+      apiOrigin,
+      cache,
+      now: () => 1_800_000_000_000,
+    }
+
+    await createGitHubProvider(input).appPermissions()
+    await createGitHubProvider(input).appPermissions()
+
+    expect(seen.filter((request) => request.url === '/app')).toHaveLength(1)
+  })
 })
 
 describe('GitHub account connection OAuth boundary', () => {
