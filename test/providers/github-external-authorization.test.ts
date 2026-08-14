@@ -91,9 +91,7 @@ describe('GitHub external authorization', () => {
       external.authorization.validateGrant?.({
         subject: '70',
         scopes: ['administration:write'],
-        authorizationDetails: [
-          { type: GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE, installation_id: '701' },
-        ],
+        authorizationDetails: [{ type: GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE, installation_id: '701' }],
       }),
     ).resolves.toBe(false)
   })
