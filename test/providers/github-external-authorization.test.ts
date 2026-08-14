@@ -88,12 +88,48 @@ describe('GitHub external authorization', () => {
     })
 
     await expect(
-      external.authorization.validateGrant?.({
+      external.authorization.validateScopes?.({
         subject: '70',
         scopes: ['administration:write'],
         authorizationDetails: [{ type: GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE, installation_id: '701' }],
       }),
     ).resolves.toBe(false)
+  })
+
+  it('accepts a scope granted by the selected installation after the subject token was issued', async () => {
+    const authorizationDetail = {
+      type: GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE,
+      installation_id: '701',
+    }
+    const external = createGitHubExternalAuthorization({
+      origin: 'https://adapter.example',
+      connection: {} as never,
+      connections: {
+        externalAuthorization: vi.fn(async () => ({
+          scopes: ['metadata:read'],
+          contexts: [
+            {
+              installationId: 701,
+              accountLogin: 'saltbo',
+              targetType: 'User',
+              scopes: ['actions:read', 'metadata:read'],
+              repositorySelection: 'all' as const,
+              repositories: [],
+            },
+          ],
+        })),
+      } as unknown as D1GitHubConnections,
+      oauthStore: {} as D1ExternalOAuthStore,
+      scopes: ['actions:read', 'metadata:read'],
+    })
+
+    await expect(
+      external.authorization.validateScopes?.({
+        subject: '70',
+        scopes: ['actions:read'],
+        authorizationDetails: [authorizationDetail],
+      }),
+    ).resolves.toBe(true)
   })
 
   it('accepts read scopes implied by a write installation permission', async () => {

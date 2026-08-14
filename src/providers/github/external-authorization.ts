@@ -88,6 +88,31 @@ export function createGitHubExternalAuthorization(input: {
       },
     },
     authorizationDetailsSubset,
+    async validateScopes({ subject, scopes, authorizationDetails }) {
+      const active = await input.connections.externalAuthorization(subject)
+      const requestedScopes = scopes.filter(
+        (scope) => !['openid', 'offline_access', authorizationDetailsCatalogScope].includes(scope),
+      )
+      if (authorizationDetails.length === 0) {
+        return requestedScopes.every((scope) => active.scopes.includes(scope))
+      }
+      const selectedContexts = authorizationDetails.map((detail) =>
+        active.contexts.find(
+          (context) =>
+            detail.type === GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE &&
+            detail.installation_id === String(context.installationId),
+        ),
+      )
+      return (
+        selectedContexts.every(
+          (context) => context !== undefined && requestedScopes.every((scope) => context.scopes.includes(scope)),
+        ) &&
+        authorizationDetailsSubset({
+          requested: authorizationDetails,
+          granted: active.contexts.map(githubInstallationAuthorizationDetail),
+        })
+      )
+    },
     async validateGrant({ subject, scopes, authorizationDetails }) {
       const active = await input.connections.externalAuthorization(subject)
       const requestedScopes = scopes.filter(
@@ -101,11 +126,6 @@ export function createGitHubExternalAuthorization(input: {
         ),
       )
       return (
-        scopes.every(
-          (scope) =>
-            ['openid', 'offline_access', authorizationDetailsCatalogScope].includes(scope) ||
-            active.scopes.includes(scope),
-        ) &&
         selectedContexts.every(
           (context) => context !== undefined && requestedScopes.every((scope) => context.scopes.includes(scope)),
         ) &&

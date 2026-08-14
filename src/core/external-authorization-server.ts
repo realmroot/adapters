@@ -45,6 +45,11 @@ export type ExternalProviderAuthorization = {
     requested: Array<Record<string, unknown>>
     granted: Array<Record<string, unknown>>
   }): boolean
+  validateScopes?(input: {
+    subject: string
+    scopes: string[]
+    authorizationDetails: Array<Record<string, unknown>>
+  }): Promise<boolean>
   validateGrant?(input: {
     subject: string
     scopes: string[]
@@ -281,10 +286,17 @@ export async function createExternalAuthorizationServer(input: {
           }
           const scopes = normalizeScopes(requiredForm(form, 'scope'))
           const subjectScopes = normalizeScopes(String(subject.payload.scope ?? ''))
-          if (scopes.some((scope) => !subjectScopes.includes(scope))) {
+          const authorizationDetails = parseAuthorizationDetails(form.get('authorization_details'))
+          const scopesGranted = input.provider.validateScopes
+            ? await input.provider.validateScopes({
+                subject: String(subject.payload.sub),
+                scopes,
+                authorizationDetails,
+              })
+            : scopes.every((scope) => subjectScopes.includes(scope))
+          if (!scopesGranted) {
             throw oauthError('invalid_scope', 'Requested scope exceeds the connected account.')
           }
-          const authorizationDetails = parseAuthorizationDetails(form.get('authorization_details'))
           const subjectDetails = authorizationDetailsValue(subject.payload.authorization_details)
           if (
             !(input.provider.authorizationDetailsSubset ?? authorizationDetailsSubset)({
