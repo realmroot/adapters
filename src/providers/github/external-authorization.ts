@@ -9,7 +9,6 @@ import {
   githubInstallationAuthorizationDetailDisplay,
 } from './authorization-details.js'
 import type { D1GitHubConnections } from './connections.js'
-import type { GitHubUserCredentialStore } from './credentials.js'
 import { permissionsToScopes } from './permissions.js'
 import type { GitHubConnectionProvider } from './types.js'
 
@@ -19,7 +18,6 @@ export function createGitHubExternalAuthorization(input: {
   origin: string
   connection: GitHubConnectionProvider
   connections: D1GitHubConnections
-  credentials: GitHubUserCredentialStore
   oauthStore: D1ExternalOAuthStore
   scopes: readonly string[]
 }): { authorization: ExternalProviderAuthorization; installationCallback: AdapterModule } {
@@ -137,8 +135,8 @@ export function createGitHubExternalAuthorization(input: {
         })
       )
     },
-    async revoke(subject) {
-      await Promise.all([input.connections.revokeExternalAuthorization(subject), input.credentials.revoke(subject)])
+    revoke(subject) {
+      return input.connections.revokeExternalAuthorization(subject)
     },
     begin({ providerState }) {
       return { url: input.connection.authorizationUrl(providerState), stage: 'oauth' }
@@ -150,15 +148,14 @@ export function createGitHubExternalAuthorization(input: {
       const callback = new URL(callbackUrl)
       const userToken = await input.connection.exchangeUserCode(required(callback.searchParams.get('code'), 'code'))
       const [user, installations] = await Promise.all([
-        input.connection.getUser(userToken.accessToken),
-        input.connection.listUserInstallations(userToken.accessToken),
+        input.connection.getUser(userToken),
+        input.connection.listUserInstallations(userToken),
       ])
       const expectedInstallationId =
         numberValue(intent.providerData.expectedInstallationId) ?? requestedInstallationId(intent.authorizationDetails)
       if (expectedInstallationId && !installations.some((installation) => installation.id === expectedInstallationId)) {
         throw forbidden('The GitHub user cannot manage the selected App installation.')
       }
-      await input.credentials.upsert(String(user.id), userToken)
       if (installations.length === 0) {
         const providerState = nextProviderState()
         return {

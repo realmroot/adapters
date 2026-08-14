@@ -8,7 +8,6 @@ GITHUB_APP_ID=replace-with-github-app-id
 GITHUB_PRIVATE_KEY=replace-with-pkcs1-or-pkcs8-private-key
 GITHUB_CLIENT_ID=replace-with-github-app-client-id
 GITHUB_CLIENT_SECRET=replace-with-github-app-client-secret
-GITHUB_CREDENTIAL_ENCRYPTION_KEY=replace-with-base64-encoded-32-byte-key
 GITHUB_WEBHOOK_SECRET=replace-with-github-app-webhook-secret
 CLOUDFLARE_API_ORIGIN=https://api.cloudflare.com/client/v4
 CLOUDFLARE_AUTHORIZATION_ORIGIN=https://dash.cloudflare.com

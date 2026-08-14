@@ -93,12 +93,7 @@ describe('GitHub account connection OAuth boundary', () => {
 
     const authorization = new URL(provider.authorizationUrl('provider-state'))
     expect(authorization.searchParams.get('redirect_uri')).toBe('https://adapters.realmroot.dev/github/oauth/callback')
-    await expect(provider.exchangeUserCode('authorization-code')).resolves.toEqual({
-      accessToken: 'user-token',
-      refreshToken: null,
-      expiresAt: null,
-      refreshTokenExpiresAt: null,
-    })
+    await expect(provider.exchangeUserCode('authorization-code')).resolves.toBe('user-token')
     expect(requests[0]).toEqual({
       url: 'https://github.com/login/oauth/access_token',
       body: {
@@ -111,37 +106,6 @@ describe('GitHub account connection OAuth boundary', () => {
     expect(provider.permissionUpdateUrl({ htmlUrl: 'https://github.com/settings/installations/42' } as never)).toBe(
       'https://github.com/settings/installations/42/permissions/update',
     )
-  })
-
-  it('refreshes an expiring delegated-user credential with the GitHub App client', async () => {
-    const provider = createGitHubConnectionProvider({
-      appId: '123',
-      privateKey: privateKey('pkcs8'),
-      clientId: 'client-id',
-      clientSecret: 'client-secret',
-      redirectUri: 'https://adapters.realmroot.dev/github/oauth/callback',
-      apiOrigin: 'https://api.github.test',
-      now: () => 1_800_000_000_000,
-      fetcher: async (_input, init) => {
-        expect(JSON.parse(String(init?.body))).toMatchObject({
-          grant_type: 'refresh_token',
-          refresh_token: 'old-refresh-token',
-        })
-        return Response.json({
-          access_token: 'fresh-user-token',
-          expires_in: 28_800,
-          refresh_token: 'fresh-refresh-token',
-          refresh_token_expires_in: 15_897_600,
-        })
-      },
-    })
-
-    await expect(provider.refreshUserToken('old-refresh-token')).resolves.toEqual({
-      accessToken: 'fresh-user-token',
-      refreshToken: 'fresh-refresh-token',
-      expiresAt: 1_800_028_800_000,
-      refreshTokenExpiresAt: 1_815_897_600_000,
-    })
   })
 
   it('loads selected repository membership with the installation context', async () => {

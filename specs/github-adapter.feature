@@ -140,16 +140,6 @@ Feature: GitHub App adapter
     And unsupported createPullRequest, addComment, and mergePullRequest mutations use GitHub's installation-compatible REST operations
     And the GitHub credential is never returned
 
-  @journey:github-cross-fork-pull-request @entrypoint:http
-  Scenario: An Agent opens a pull request from an installed fork to an external upstream
-    Given the selected GitHub installation owns the pull request head fork
-    And the connected GitHub user can access the upstream repository
-    When GitHub CLI creates a pull request against that external upstream
-    Then the adapter verifies the head belongs to the selected installation
-    And creates the pull request with the connected user's delegated credential
-    And repository pushes continue to use a repository-constrained installation credential
-    And the delegated credential is encrypted at rest and never returned
-
   @journey:github-git-transport @entrypoint:http
   Scenario: Native Git uses the GitHub installation through the adapter
     Given the Agent has approved repository contents authority

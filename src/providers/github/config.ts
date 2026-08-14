@@ -9,7 +9,6 @@ const githubEnvironmentSchema = z.object({
   GITHUB_PRIVATE_KEY: z.string().trim().min(1).optional(),
   GITHUB_CLIENT_ID: z.string().trim().min(1).optional(),
   GITHUB_CLIENT_SECRET: z.string().trim().min(1).optional(),
-  GITHUB_CREDENTIAL_ENCRYPTION_KEY: z.string().trim().min(1).optional(),
   GITHUB_WEBHOOK_SECRET: z.string().min(32).optional(),
 })
 
@@ -21,7 +20,6 @@ export type GitHubAdapterConfig = AppConfig & {
   githubPrivateKey?: string
   githubClientId?: string
   githubClientSecret?: string
-  githubCredentialEncryptionKey?: string
   githubWebhookSecret?: string
 }
 
@@ -36,9 +34,6 @@ export function loadGitHubConfig(environment: unknown, config: AppConfig): GitHu
     ...(parsed.GITHUB_PRIVATE_KEY ? { githubPrivateKey: parsed.GITHUB_PRIVATE_KEY } : {}),
     ...(parsed.GITHUB_CLIENT_ID ? { githubClientId: parsed.GITHUB_CLIENT_ID } : {}),
     ...(parsed.GITHUB_CLIENT_SECRET ? { githubClientSecret: parsed.GITHUB_CLIENT_SECRET } : {}),
-    ...(parsed.GITHUB_CREDENTIAL_ENCRYPTION_KEY
-      ? { githubCredentialEncryptionKey: parsed.GITHUB_CREDENTIAL_ENCRYPTION_KEY }
-      : {}),
     ...(parsed.GITHUB_WEBHOOK_SECRET ? { githubWebhookSecret: parsed.GITHUB_WEBHOOK_SECRET } : {}),
   }
 }

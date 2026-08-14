@@ -7,7 +7,6 @@ import { GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE } from './authorization-d
 import { createGitHubProvider } from './client.js'
 import type { GitHubAdapterConfig } from './config.js'
 import type { GitHubAuthorizationContext, GitHubConnectionStore } from './connections.js'
-import type { GitHubUserCredentialStore } from './credentials.js'
 import {
   createGitHubCommentWithRest,
   createGitHubPullRequestWithRest,
@@ -24,7 +23,7 @@ import { githubOpenApi } from './openapi.js'
 import { resolveGitHubOperationPermissions } from './operation-permissions.js'
 import { permissionsToScopes, scopesToPermissions } from './permissions.js'
 import { transformGitHubRequest } from './transformers.js'
-import type { GitHubConnectionProvider, GitHubProvider } from './types.js'
+import type { GitHubProvider } from './types.js'
 import { handleGitHubWebhook } from './webhooks.js'
 
 export type GitHubAdapterDependencies = {
@@ -33,8 +32,6 @@ export type GitHubAdapterDependencies = {
   agentInfo?: AgentInfoResolver
   provider?: GitHubProvider
   connections?: GitHubConnectionStore
-  connectionProvider?: GitHubConnectionProvider
-  userCredentials?: GitHubUserCredentialStore
 }
 
 export function createGitHubAdapter(
@@ -134,25 +131,29 @@ export function createGitHubAdapter(
             [...requiredScopes],
           ])
         }
-        const delegatedToken = await delegatedUserToken(principal.subject)
+        const lookupToken = await provider.installationToken({
+          installationId: installation.installationId,
+          permissions: scopesToPermissions(new Set(['metadata:read']), available),
+          ...(installation.repositorySelection === 'selected'
+            ? {
+                repositories: installation.repositories.map(
+                  (repository) => repository.fullName.split('/').at(-1) as string,
+                ),
+              }
+            : {}),
+        })
         const nameWithOwner = await resolveGitHubRepositoryName({
           provider,
-          token: delegatedToken,
+          token: lookupToken,
           apiOrigin: config.githubApiOrigin,
           repositoryId: createPullRequest.repositoryId,
         })
-        const [baseOwner, baseRepository] = nameWithOwner.split('/') as [string, string]
-        const sameInstallation = baseOwner.toLowerCase() === installation.accountLogin.toLowerCase()
-        const createToken = sameInstallation
-          ? await provider.installationToken({
-              installationId: installation.installationId,
-              permissions: scopesToPermissions(new Set(['pull_requests:write']), available),
-              ...repositoryRestriction(
-                installation,
-                repositoryTarget(`/repos/${nameWithOwner}`, installation) as string,
-              ),
-            })
-          : delegatedCrossForkToken(installation, baseRepository, createPullRequest.headRefName, delegatedToken)
+        const repository = repositoryTarget(`/repos/${nameWithOwner}`, installation)
+        const createToken = await provider.installationToken({
+          installationId: installation.installationId,
+          permissions: scopesToPermissions(new Set(['pull_requests:write']), available),
+          ...repositoryRestriction(installation, repository as string),
+        })
         const response = await createGitHubPullRequestWithRest({
           provider,
           token: createToken,
@@ -160,14 +161,7 @@ export function createGitHubAdapter(
           nameWithOwner,
           pullRequest: createPullRequest,
         })
-        await auditNative(
-          c,
-          principal,
-          installation,
-          'graphql-create-pull-request-rest-compatibility',
-          response.status,
-          sameInstallation ? undefined : { type: 'github_user', id: principal.subject },
-        )
+        await auditNative(c, principal, installation, 'graphql-create-pull-request-rest-compatibility', response.status)
         return response
       }
       const addComment = parseGitHubAddComment(body)
@@ -397,7 +391,6 @@ export function createGitHubAdapter(
     installation: GitHubAuthorizationContext,
     operation: string,
     status: number,
-    providerActor: { type: 'github_user'; id: string } | undefined = undefined,
   ) {
     await dependencies.audit({
       event: 'provider.operation',
@@ -406,54 +399,12 @@ export function createGitHubAdapter(
       operation,
       installationId: installation.installationId,
       originatingPrincipal: { issuer: principal.actor.issuer, subject: principal.actor.subject },
-      providerActor: providerActor ?? { type: 'github_app', id: config.githubAppId ?? 'injected-test-provider' },
+      providerActor: { type: 'github_app', id: config.githubAppId ?? 'injected-test-provider' },
       identityLevel: 'provider-delegated',
       result: { status },
       occurredAt: new Date().toISOString(),
     })
   }
-
-  async function delegatedUserToken(subject: string) {
-    if (!dependencies.userCredentials || !dependencies.connectionProvider) {
-      throw forbidden('GitHub delegated-user operations are not configured.')
-    }
-    const credential = await dependencies.userCredentials.credential(subject)
-    if (credential.expiresAt === null || credential.expiresAt > Date.now() + 30_000) return credential.accessToken
-    if (
-      !credential.refreshToken ||
-      (credential.refreshTokenExpiresAt !== null && credential.refreshTokenExpiresAt <= Date.now())
-    ) {
-      throw forbidden('Reconnect the GitHub account before creating cross-account pull requests.')
-    }
-    const refreshed = await dependencies.connectionProvider.refreshUserToken(credential.refreshToken)
-    if (!(await dependencies.userCredentials.replace(credential, refreshed))) {
-      return (await dependencies.userCredentials.credential(subject)).accessToken
-    }
-    return refreshed.accessToken
-  }
-}
-
-function delegatedCrossForkToken(
-  installation: GitHubAuthorizationContext,
-  baseRepository: string,
-  headRefName: string,
-  delegatedToken: string,
-) {
-  const separator = headRefName.indexOf(':')
-  const headOwner = separator > 0 ? headRefName.slice(0, separator) : ''
-  if (headOwner.toLowerCase() !== installation.accountLogin.toLowerCase()) {
-    throw forbidden('The pull request head must belong to the selected GitHub installation account.')
-  }
-  if (
-    installation.repositorySelection === 'selected' &&
-    !installation.repositories.some(
-      (repository) =>
-        repository.fullName.toLowerCase() === `${installation.accountLogin}/${baseRepository}`.toLowerCase(),
-    )
-  ) {
-    throw forbidden('The pull request head repository is outside the selected GitHub installation authority.')
-  }
-  return delegatedToken
 }
 
 function gitTransportTarget(requestUrl: string, method: string, origin: string) {

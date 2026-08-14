@@ -16,7 +16,6 @@ import { createGitHubAdapter } from './providers/github/adapter.js'
 import { createGitHubConnectionProvider, createGitHubProvider } from './providers/github/client.js'
 import { loadGitHubConfig } from './providers/github/config.js'
 import { D1GitHubConnections } from './providers/github/connections.js'
-import { D1GitHubUserCredentials } from './providers/github/credentials.js'
 import { createGitHubExternalAuthorization } from './providers/github/external-authorization.js'
 import { permissionsToScopes } from './providers/github/permissions.js'
 import { createLinearAdapter } from './providers/linear/adapter.js'
@@ -44,32 +43,25 @@ export default {
       githubConfig.githubPrivateKey &&
       githubConfig.githubClientId &&
       githubConfig.githubClientSecret &&
-      githubConfig.githubCredentialEncryptionKey &&
       signingPrivateJwk
     ) {
       const githubConnections = new D1GitHubConnections(env.DB, state)
-      const githubUserCredentials = new D1GitHubUserCredentials(
-        env.DB,
-        createCredentialCipher(githubConfig.githubCredentialEncryptionKey),
-      )
       const githubProvider = createGitHubProvider({
         appId: githubConfig.githubAppId,
         privateKey: githubConfig.githubPrivateKey,
         apiOrigin: githubConfig.githubApiOrigin,
       })
-      const githubConnectionProvider = createGitHubConnectionProvider({
-        appId: githubConfig.githubAppId,
-        privateKey: githubConfig.githubPrivateKey,
-        clientId: githubConfig.githubClientId,
-        clientSecret: githubConfig.githubClientSecret,
-        redirectUri: `${config.origin}/github/oauth/callback`,
-        apiOrigin: githubConfig.githubApiOrigin,
-      })
       const githubExternal = createGitHubExternalAuthorization({
         origin: config.origin,
-        connection: githubConnectionProvider,
+        connection: createGitHubConnectionProvider({
+          appId: githubConfig.githubAppId,
+          privateKey: githubConfig.githubPrivateKey,
+          clientId: githubConfig.githubClientId,
+          clientSecret: githubConfig.githubClientSecret,
+          redirectUri: `${config.origin}/github/oauth/callback`,
+          apiOrigin: githubConfig.githubApiOrigin,
+        }),
         connections: githubConnections,
-        credentials: githubUserCredentials,
         oauthStore,
         scopes: permissionsToScopes(await githubProvider.appPermissions()),
       })
@@ -89,8 +81,6 @@ export default {
           provider: githubProvider,
           audit: (record) => state.recordAudit(record),
           connections: githubConnections,
-          connectionProvider: githubConnectionProvider,
-          userCredentials: githubUserCredentials,
         }),
       )
     }

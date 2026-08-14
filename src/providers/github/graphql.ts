@@ -18,7 +18,7 @@ const createInputSchema = z.object({
   maintainerCanModify: z.boolean().optional(),
 })
 const repositoryLookupSchema = z.object({
-  data: z.object({ node: z.object({ nameWithOwner: z.string().regex(/^[^/]+\/[^/]+$/) }) }),
+  data: z.object({ node: z.object({ nameWithOwner: z.string().min(3) }) }),
 })
 const pullRequestSchema = z.object({ node_id: z.string().min(1), html_url: z.url() })
 const mergeInputSchema = z.object({
