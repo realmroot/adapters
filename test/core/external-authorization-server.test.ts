@@ -171,6 +171,45 @@ describe('external authorization server', () => {
     )
   })
 
+  it('returns provider denial to Realmroot without requiring an authorization code', async () => {
+    const intent = exampleIntent()
+    const { app, provider, store } = await testServer({ intent })
+
+    const response = await app.request(
+      '/oauth/example/provider/callback?state=provider-state&error=access_denied&error_description=The+user+cancelled',
+    )
+
+    expect(response.status).toBe(302)
+    const callback = new URL(response.headers.get('location') ?? '')
+    expect(callback.origin + callback.pathname).toBe('https://id.realmroot.dev/callback')
+    expect(callback.searchParams.get('state')).toBe('realmroot-state')
+    expect(callback.searchParams.get('error')).toBe('access_denied')
+    expect(callback.searchParams.get('error_description')).toBe('Provider authorization was denied.')
+    expect(store.cancelIntent).toHaveBeenCalledWith(intent)
+    expect(provider.complete).not.toHaveBeenCalled()
+  })
+
+  it('returns a provider completion denial to Realmroot instead of an Adapter error page', async () => {
+    const intent = exampleIntent()
+    const { app, provider, store } = await testServer({ intent })
+    vi.mocked(provider.complete).mockResolvedValueOnce({
+      type: 'error',
+      error: 'access_denied',
+      description: 'The requested provider permission was not approved.',
+    })
+
+    const response = await app.request('/oauth/example/provider/callback?state=provider-state&code=provider-code')
+
+    expect(response.status).toBe(302)
+    const callback = new URL(response.headers.get('location') ?? '')
+    expect(callback.origin + callback.pathname).toBe('https://id.realmroot.dev/callback')
+    expect(callback.searchParams.get('state')).toBe('realmroot-state')
+    expect(callback.searchParams.get('error')).toBe('access_denied')
+    expect(callback.searchParams.get('error_description')).toBe('The requested provider permission was not approved.')
+    expect(store.cancelIntent).toHaveBeenCalledWith(intent)
+    expect(store.completeIntent).not.toHaveBeenCalled()
+  })
+
   it('supports a provider callback path already registered with the upstream OAuth application', async () => {
     const intent = exampleIntent()
     const { app, store } = await testServer({ intent, providerCallbackPath: '/example/oauth/callback' })
@@ -198,6 +237,7 @@ async function testServer(options: { intent?: ExternalOAuthIntent; providerCallb
     intentByProviderState: vi.fn(async () => options.intent ?? exampleIntent()),
     advanceIntent: vi.fn(async () => undefined),
     completeIntent: vi.fn(async () => undefined),
+    cancelIntent: vi.fn(async () => undefined),
     consumeCode: vi.fn(async () => ({
       providerId: 'example',
       clientId: 'client-1',

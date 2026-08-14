@@ -64,6 +64,7 @@ export type ExternalProviderAuthorization = {
   }): Promise<
     | { type: 'continue'; url: string; stage: string; data: Record<string, unknown>; providerState: string }
     | { type: 'complete'; grant: Omit<ExternalOAuthGrant, 'providerId' | 'clientId'> }
+    | { type: 'error'; error: 'access_denied' | 'server_error'; description: string }
   >
 }
 
@@ -170,6 +171,19 @@ export async function createExternalAuthorizationServer(input: {
       app.get(providerCallbackPath, async (c) => {
         const state = required(c.req.query('state'), 'state')
         const intent = await input.store.intentByProviderState(await sha256(state))
+        const providerError = c.req.query('error')
+        if (providerError) {
+          await input.store.cancelIntent(intent)
+          return c.redirect(
+            authorizationErrorRedirect(
+              intent,
+              providerError === 'access_denied' ? 'access_denied' : 'server_error',
+              providerError === 'access_denied'
+                ? 'Provider authorization was denied.'
+                : 'Provider authorization failed.',
+            ),
+          )
+        }
         const result = await input.provider.complete({
           callbackUrl: c.req.url,
           intent,
@@ -184,6 +198,10 @@ export async function createExternalAuthorizationServer(input: {
             providerData: result.data,
           })
           return c.redirect(result.url)
+        }
+        if (result.type === 'error') {
+          await input.store.cancelIntent(intent)
+          return c.redirect(authorizationErrorRedirect(intent, result.error, result.description))
         }
         const code = opaque('code')
         await input.store.completeIntent(
@@ -470,6 +488,18 @@ export async function createExternalAuthorizationServer(input: {
     }
     return verified
   }
+}
+
+function authorizationErrorRedirect(
+  intent: ExternalOAuthIntent,
+  error: 'access_denied' | 'server_error',
+  description: string,
+) {
+  const callback = new URL(intent.redirectUri)
+  callback.searchParams.set('error', error)
+  callback.searchParams.set('error_description', description)
+  callback.searchParams.set('state', intent.realmrootState)
+  return callback.toString()
 }
 
 async function authenticateClient(store: D1ExternalOAuthStore, providerId: string, request: Request) {

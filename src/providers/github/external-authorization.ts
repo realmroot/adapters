@@ -142,7 +142,11 @@ export function createGitHubExternalAuthorization(input: {
       if (requestedProviderScopes.some((scope) => !providerScopes.has(scope))) {
         const selectedInstallation = selected.length === 1 ? selected[0] : undefined
         if (intent.providerData.permissionUpdateAttempted === true || !selectedInstallation) {
-          throw forbidden('The selected GitHub installation permission update was not approved.')
+          return {
+            type: 'error',
+            error: 'access_denied',
+            description: 'The selected GitHub installation permission update was not approved.',
+          }
         }
         const providerState = nextProviderState()
         return {

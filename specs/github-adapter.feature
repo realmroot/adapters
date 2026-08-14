@@ -29,9 +29,10 @@ Feature: GitHub App adapter
     Given an existing GitHub App installation lacks a newly requested permission
     When the owner authorizes that permission through Realmroot
     Then the adapter preserves the original authorization transaction
-    And redirects through the GitHub installation update flow
+    And redirects through the GitHub installation update flow with an opaque state
     And accepts only the target installation
     And resumes the same Realmroot authorization after GitHub returns
+    And returns a declined permission update to Realmroot as an OAuth denial
     But it does not show an adapter insufficient-scope page
 
   @journey:github-context-catalog @entrypoint:http

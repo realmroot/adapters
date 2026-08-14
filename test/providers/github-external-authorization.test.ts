@@ -159,7 +159,11 @@ describe('GitHub external authorization', () => {
         },
         nextProviderState: () => 'must-not-loop',
       }),
-    ).rejects.toMatchObject({ status: 403 })
+    ).resolves.toEqual({
+      type: 'error',
+      error: 'access_denied',
+      description: 'The selected GitHub installation permission update was not approved.',
+    })
     expect(connections.upsertExternalAuthorization).not.toHaveBeenCalled()
   })
 
