@@ -117,7 +117,8 @@ export function createGitHubExternalAuthorization(input: {
         input.connection.getUser(userToken),
         input.connection.listUserInstallations(userToken),
       ])
-      const expectedInstallationId = numberValue(intent.providerData.expectedInstallationId)
+      const expectedInstallationId =
+        numberValue(intent.providerData.expectedInstallationId) ?? requestedInstallationId(intent.authorizationDetails)
       if (expectedInstallationId && !installations.some((installation) => installation.id === expectedInstallationId)) {
         throw forbidden('The GitHub user cannot manage the selected App installation.')
       }
@@ -134,14 +135,28 @@ export function createGitHubExternalAuthorization(input: {
       const selected = expectedInstallationId
         ? installations.filter((installation) => installation.id === expectedInstallationId)
         : installations
-      const contexts = await input.connections.upsertExternalAuthorization(user, selected)
       const providerScopes = new Set(selected.flatMap((installation) => permissionsToScopes(installation.permissions)))
       const requestedProviderScopes = intent.scopes.filter(
         (scope) => !['openid', 'offline_access', authorizationDetailsCatalogScope].includes(scope),
       )
       if (requestedProviderScopes.some((scope) => !providerScopes.has(scope))) {
-        throw forbidden('The selected GitHub installation does not grant every requested scope.')
+        const selectedInstallation = selected.length === 1 ? selected[0] : undefined
+        if (intent.providerData.permissionUpdateAttempted === true || !selectedInstallation) {
+          throw forbidden('The selected GitHub installation permission update was not approved.')
+        }
+        const providerState = nextProviderState()
+        return {
+          type: 'continue',
+          providerState,
+          stage: 'install',
+          data: {
+            expectedInstallationId: selectedInstallation.id,
+            permissionUpdateAttempted: true,
+          },
+          url: await input.connection.newInstallationUrl(providerState),
+        }
       }
+      const contexts = await input.connections.upsertExternalAuthorization(user, selected)
       return {
         type: 'complete',
         grant: {
@@ -169,13 +184,17 @@ export function createGitHubExternalAuthorization(input: {
           if (intent.providerId !== 'github' || intent.providerStage !== 'install') {
             throw badRequest('GitHub installation authorization state is invalid.')
           }
+          const expectedInstallationId = numberValue(intent.providerData.expectedInstallationId)
+          if (expectedInstallationId && expectedInstallationId !== installationId) {
+            throw forbidden('GitHub returned a different App installation than the authorization requested.')
+          }
           const providerState = randomToken()
           await input.oauthStore.advanceIntent({
             id: intent.id,
             expectedStage: 'install',
             providerStateHash: await sha256(providerState),
             providerStage: 'oauth-selected',
-            providerData: { expectedInstallationId: installationId },
+            providerData: { ...intent.providerData, expectedInstallationId: installationId },
           })
           return c.redirect(input.connection.authorizationUrl(providerState))
         })
@@ -186,6 +205,16 @@ export function createGitHubExternalAuthorization(input: {
 
 function numberValue(value: unknown) {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : null
+}
+
+function requestedInstallationId(authorizationDetails: Array<Record<string, unknown>>) {
+  const ids = authorizationDetails.flatMap((detail) => {
+    if (detail.type !== GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE) return []
+    if (typeof detail.installation_id !== 'string' || !/^\d+$/.test(detail.installation_id)) return []
+    const id = Number(detail.installation_id)
+    return Number.isSafeInteger(id) && id > 0 ? [id] : []
+  })
+  return ids.length === 1 ? ids[0] : null
 }
 
 function required(value: string | null | undefined, name: string) {

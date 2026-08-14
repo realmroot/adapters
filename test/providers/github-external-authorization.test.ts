@@ -1,3 +1,4 @@
+import { Hono } from 'hono'
 import { describe, expect, it, vi } from 'vitest'
 import type { D1ExternalOAuthStore, ExternalOAuthIntent } from '../../src/core/external-oauth-store.js'
 import { GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE } from '../../src/providers/github/authorization-details.js'
@@ -100,7 +101,124 @@ describe('GitHub external authorization', () => {
       grant: { scopes: ['metadata:read', 'openid', 'pull_requests:read'] },
     })
   })
+
+  it('[spec: github-adapter/github-installation-permission-upgrade] continues through a target installation permission update', async () => {
+    const installation = githubInstallation({ administration: 'read' })
+    const connections = { upsertExternalAuthorization: vi.fn() }
+    const connection = githubConnection([installation])
+    const external = createGitHubExternalAuthorization({
+      origin: 'https://adapter.example',
+      connection,
+      connections: connections as unknown as D1GitHubConnections,
+      oauthStore: {} as D1ExternalOAuthStore,
+      scopes: ['administration:read', 'administration:write'],
+    })
+
+    await expect(
+      external.authorization.complete({
+        callbackUrl: 'https://adapter.example/github/oauth/callback?code=provider-code',
+        intent: {
+          ...intent(),
+          scopes: ['administration:write', 'openid'],
+          authorizationDetails: [{ type: GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE, installation_id: '701' }],
+        },
+        nextProviderState: () => 'permission-update-state',
+      }),
+    ).resolves.toEqual({
+      type: 'continue',
+      providerState: 'permission-update-state',
+      stage: 'install',
+      data: { expectedInstallationId: 701, permissionUpdateAttempted: true },
+      url: 'https://github.com/apps/example/installations/new?state=permission-update-state',
+    })
+    expect(connection.newInstallationUrl).toHaveBeenCalledWith('permission-update-state')
+    expect(connections.upsertExternalAuthorization).not.toHaveBeenCalled()
+  })
+
+  it('[spec: github-adapter/github-installation-permission-upgrade] stops after one rejected permission update', async () => {
+    const connections = { upsertExternalAuthorization: vi.fn() }
+    const external = createGitHubExternalAuthorization({
+      origin: 'https://adapter.example',
+      connection: githubConnection([githubInstallation({ administration: 'read' })]),
+      connections: connections as unknown as D1GitHubConnections,
+      oauthStore: {} as D1ExternalOAuthStore,
+      scopes: ['administration:read', 'administration:write'],
+    })
+
+    await expect(
+      external.authorization.complete({
+        callbackUrl: 'https://adapter.example/github/oauth/callback?code=provider-code',
+        intent: {
+          ...intent(),
+          scopes: ['administration:write', 'openid'],
+          providerStage: 'oauth-selected',
+          providerData: { expectedInstallationId: 701, permissionUpdateAttempted: true },
+        },
+        nextProviderState: () => 'must-not-loop',
+      }),
+    ).rejects.toMatchObject({ status: 403 })
+    expect(connections.upsertExternalAuthorization).not.toHaveBeenCalled()
+  })
+
+  it('preserves the permission update intent when GitHub returns through the Setup URL', async () => {
+    const oauthStore = {
+      intentByProviderState: vi.fn(async () => ({
+        ...intent(),
+        providerStage: 'install',
+        providerData: { expectedInstallationId: 701, permissionUpdateAttempted: true },
+      })),
+      advanceIntent: vi.fn(async () => undefined),
+    }
+    const connection = githubConnection([])
+    const external = createGitHubExternalAuthorization({
+      origin: 'https://adapter.example',
+      connection,
+      connections: {} as D1GitHubConnections,
+      oauthStore: oauthStore as unknown as D1ExternalOAuthStore,
+      scopes: ['administration:write'],
+    })
+    const app = new Hono()
+    external.installationCallback.register(app as never)
+
+    const response = await app.request(
+      'https://adapter.example/github/account-connection-installations?state=permission-update-state&installation_id=701',
+    )
+
+    expect(response.status).toBe(302)
+    expect(response.headers.get('location')).toMatch(/^https:\/\/github\.com\/login\/oauth\/authorize\?state=/)
+    expect(oauthStore.advanceIntent).toHaveBeenCalledWith({
+      id: 'intent-1',
+      expectedStage: 'install',
+      providerStateHash: expect.any(String),
+      providerStage: 'oauth-selected',
+      providerData: { expectedInstallationId: 701, permissionUpdateAttempted: true },
+    })
+  })
 })
+
+function githubInstallation(permissions: Record<string, 'read' | 'write'>) {
+  return {
+    id: 701,
+    accountLogin: 'realmroot',
+    targetType: 'Organization',
+    permissions: { metadata: 'read' as const, ...permissions },
+    repositorySelection: 'all' as const,
+    repositories: [],
+    updatedAt: '2027-01-15T07:00:00.000Z',
+  }
+}
+
+function githubConnection(installations: ReturnType<typeof githubInstallation>[]) {
+  return {
+    authorizationUrl: vi.fn((state: string) => `https://github.com/login/oauth/authorize?state=${state}`),
+    exchangeUserCode: vi.fn(async () => 'user-token'),
+    getUser: vi.fn(async () => ({ id: 70, login: 'controller', name: 'Controller' })),
+    listUserInstallations: vi.fn(async () => installations),
+    newInstallationUrl: vi.fn(
+      async (state: string) => `https://github.com/apps/example/installations/new?state=${state}`,
+    ),
+  }
+}
 
 function intent(): ExternalOAuthIntent {
   return {

@@ -24,6 +24,16 @@ Feature: GitHub App adapter
     Then the adapter keeps one stable external subject for the owner
     And replaces the installation authorization details with the newly authorized set
 
+  @journey:github-installation-permission-upgrade @entrypoint:http
+  Scenario: Authorization resumes after a GitHub installation permission upgrade
+    Given an existing GitHub App installation lacks a newly requested permission
+    When the owner authorizes that permission through Realmroot
+    Then the adapter preserves the original authorization transaction
+    And redirects through the GitHub installation update flow
+    And accepts only the target installation
+    And resumes the same Realmroot authorization after GitHub returns
+    But it does not show an adapter insufficient-scope page
+
   @journey:github-context-catalog @entrypoint:http
   Scenario: GitHub describes installation Contexts without exposing credentials
     Given the Adapter holds an active GitHub external authorization
