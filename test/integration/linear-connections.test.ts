@@ -62,6 +62,34 @@ describe('Linear connection persistence', () => {
     )
   })
 
+  it('replaces a legacy brokered workspace when external authorization is established', async () => {
+    const store = new D1LinearConnections(env.DB, cipher, state)
+    await connectWorkspace(store, 'legacy-owner', 'legacy', 'legacy-workspace', 'legacy-user')
+
+    const contexts = await store.upsertExternalAuthorization(
+      humanViewer('legacy-user').user,
+      appViewer('legacy-workspace', 'external-app-user'),
+      token('external-access', 'external-refresh'),
+    )
+
+    expect(contexts.map((context) => context.workspaceId)).toEqual(['legacy-workspace'])
+    await expect(store.externalCredentials('legacy-workspace')).resolves.toMatchObject([
+      {
+        brokerReference: 'linear:legacy-workspace',
+        workspaceId: 'legacy-workspace',
+        accessToken: 'external-access',
+        refreshToken: 'external-refresh',
+      },
+    ])
+    const legacy = await env.DB.prepare(
+      `SELECT status, access_token_ciphertext AS accessToken, refresh_token_ciphertext AS refreshToken
+       FROM linear_connection_context WHERE broker_reference = ? AND workspace_id = ?`,
+    )
+      .bind('connection-legacy', 'legacy-workspace')
+      .first<{ status: string; accessToken: string; refreshToken: string }>()
+    expect(legacy).toEqual({ status: 'revoked', accessToken: '', refreshToken: '' })
+  })
+
   it('serializes rotating refresh credentials with an optimistic lease', async () => {
     const store = new D1LinearConnections(env.DB, cipher, state)
     await connectWorkspace(store, 'refresh-owner', 'refresh', 'refresh-workspace', 'refresh-user')
@@ -173,7 +201,7 @@ async function request(
     code_challenge: await sha256Base64Url(verifier),
     code_challenge_method: 'S256' as const,
     scope: 'read write issues:create comments:create app:assignable app:mentionable',
-    authorization_details: [{ type: 'linear_workspace' }],
+    authorization_details: [],
   }
 }
 

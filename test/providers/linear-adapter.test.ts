@@ -1,7 +1,6 @@
 import { createHmac } from 'node:crypto'
 import { describe, expect, it, vi } from 'vitest'
 import { createApp } from '../../src/app.js'
-import type { BrokeredConnectionRequest } from '../../src/core/connection-request.js'
 import type { RealmrootAuthenticator } from '../../src/core/realmroot-auth.js'
 import { createLinearAdapter } from '../../src/providers/linear/adapter.js'
 import type { LinearAdapterConfig } from '../../src/providers/linear/config.js'
@@ -15,8 +14,8 @@ describe('Linear adapter', () => {
     expect(await metadata.json()).toMatchObject({
       resource: 'https://adapter.example/linear',
       scopes_supported: expect.arrayContaining(['read', 'write', 'app:mentionable']),
-      authorization_details_types_supported: ['linear_workspace'],
-      account_connection_modes_supported: ['brokered'],
+      authorization_details_types_supported: [],
+      authorization_servers: ['https://adapter.example/oauth/linear'],
     })
     const contract = await app.request('/linear/openapi.json')
     expect(contract.headers.get('content-type')).toContain('application/vnd.oai.openapi+json')
@@ -43,41 +42,9 @@ describe('Linear adapter', () => {
     })
     await expect((await app.request('/providers/linear/manifest')).json()).resolves.toMatchObject({
       provider: 'linear',
-      identity: { level: 'brokered', attribution: 'provider-native' },
+      identity: { level: 'provider-delegated', attribution: 'provider-native' },
       operations: { mode: 'transparent' },
     })
-  })
-
-  it('[spec: linear-adapter/linear-provider-connection] performs user identity and App installation in one connection flow', async () => {
-    const connections = fakeConnections()
-    const provider = fakeProvider()
-    const verifyConnection = vi.fn(async () => connectionRequest())
-    const app = createLinearApp({ connections, provider, connectionRequestVerifier: verifyConnection })
-    const start = await app.request('/linear/account-connection-authorizations?request=signed-request')
-    expect(start.status).toBe(302)
-    expect(start.headers.get('location')).toContain('actor=user')
-    expect(connections.create).toHaveBeenCalled()
-
-    vi.mocked(connections.findByProviderState).mockResolvedValueOnce(intent('pending_user'))
-    const userCallback = await app.request('/linear/oauth/callback?state=user-state&code=user-code')
-    expect(userCallback.status).toBe(302)
-    expect(userCallback.headers.get('location')).toContain('actor=app')
-    expect(connections.recordUser).toHaveBeenCalledWith(
-      expect.objectContaining({ status: 'pending_user' }),
-      expect.objectContaining({ user: expect.objectContaining({ id: 'linear-user-1' }) }),
-      expect.any(String),
-    )
-
-    vi.mocked(connections.findByProviderState).mockResolvedValueOnce(intent('pending_app'))
-    const appCallback = await app.request('/linear/oauth/callback?state=app-state&code=app-code')
-    expect(appCallback.status).toBe(302)
-    expect(appCallback.headers.get('location')).toContain('state=realmroot-state')
-    expect(connections.complete).toHaveBeenCalledWith(
-      expect.objectContaining({ status: 'pending_app' }),
-      expect.objectContaining({ workspace: expect.objectContaining({ id: 'workspace-1' }) }),
-      expect.objectContaining({ accessToken: 'linear-access' }),
-      expect.any(String),
-    )
   })
 
   it('[spec: linear-adapter/linear-transparent-graphql] proxies Linear and injects native Agent display fields', async () => {
@@ -138,21 +105,15 @@ describe('Linear adapter', () => {
   })
 })
 
-function createLinearApp(
-  overrides: {
-    provider?: LinearProvider
-    connections?: LinearConnectionStore
-    connectionRequestVerifier?: (request: string) => Promise<BrokeredConnectionRequest>
-  } = {},
-) {
+function createLinearApp(overrides: { provider?: LinearProvider; connections?: LinearConnectionStore } = {}) {
   const authenticator: RealmrootAuthenticator = {
     authenticate: vi.fn(async () => ({
-      subject: 'owner-1',
+      subject: 'workspace-1',
       issuer: 'https://id.example/api/auth',
       actor: { issuer: 'https://id.example/api/auth', subject: 'agent-1', profile: 'ai_agent' as const },
       scopes: new Set(['issues:create']),
       connectionId: 'connection-1',
-      authorizationDetails: [{ type: 'linear_workspace', workspace_id: 'workspace-1' }],
+      authorizationDetails: [],
     })),
   }
   return createApp([
@@ -168,8 +129,6 @@ function createLinearApp(
       },
       provider: overrides.provider ?? fakeProvider(),
       connections: overrides.connections ?? fakeConnections(),
-      connectionRequestVerifier: overrides.connectionRequestVerifier ?? vi.fn(async () => connectionRequest()),
-      revocationRequestVerifier: vi.fn(),
     }),
   ])
 }
@@ -249,38 +208,5 @@ function fakeConnections(): LinearConnectionStore {
     credentialsForRevocation: vi.fn(async () => []),
     revoke: vi.fn(async () => {}),
     applyLifecycleWebhook: vi.fn(async () => {}),
-  }
-}
-
-function intent(status: 'pending_user' | 'pending_app') {
-  return {
-    requestId: 'request-1',
-    connectionId: 'connection-1',
-    expectedExternalSubject: null,
-    ownerSubject: 'owner-1',
-    realmrootState: 'realmroot-state',
-    callbackUri: 'https://id.example/api/account-connections/oauth/callback',
-    codeChallenge: 'challenge',
-    scopesJson: '["read","write","issues:create","comments:create","app:assignable","app:mentionable"]',
-    linearUserId: status === 'pending_app' ? 'linear-user-1' : null,
-    linearUserName: status === 'pending_app' ? 'Jasper Van' : null,
-    status,
-    expiresAt: Date.now() + 60_000,
-  }
-}
-
-function connectionRequest(): BrokeredConnectionRequest {
-  return {
-    sub: 'owner-1',
-    jti: 'request-1',
-    state: 'realmroot-state',
-    connection_id: 'connection-1',
-    expected_external_subject: null,
-    owner_type: 'user',
-    callback_uri: 'https://id.example/api/account-connections/oauth/callback',
-    code_challenge: 'challenge-with-at-least-thirty-two-characters',
-    code_challenge_method: 'S256',
-    scope: 'read write issues:create comments:create app:assignable app:mentionable',
-    authorization_details: [{ type: 'linear_workspace' }],
   }
 }

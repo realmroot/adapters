@@ -7,12 +7,19 @@
 
 > [!IMPORTANT]
 > 项目目前处于 Alpha 阶段。GitHub 纵向切片已经作为独立 Cloudflare Worker
-> 运行，并使用独立 D1 持久化 DPoP 防重放、审计记录和签名 broker
-> 撤销；平台 webhook 生命周期处理尚未达到生产要求。
+> 运行，并提供标准 external OAuth 授权边界、独立 D1 状态和 provider webhook
+> 生命周期失效处理。
 
 Realmroot 原生 Resource Server 能识别执行操作的具体 Agent，但大多数外部平台
 暂时无法直接消费这种身份。本项目为外部平台提供 adapter，在保持 Realmroot
 安全边界的同时，使用平台所能提供的最强原生身份模型。
+
+> [!NOTE]
+> 对 Realmroot 而言，每个 Adapter 都是标准的 external authorization server 与
+> protected Resource。Realmroot 负责 Agent 身份、审批、grant，以及每个平台
+> 唯一的逻辑 Connector；Adapter 负责所有 provider 专用授权、凭证、生命周期、
+> 最终 DPoP token 签发和 API 执行。这是不可突破的架构边界，详见
+> [架构约束](docs/architecture.md#architecture-invariant)。
 
 ## 一座最终应该消失的桥
 
@@ -79,7 +86,7 @@ Agent 能以自己的稳定身份直接进入各种平台。详见
   产品 UI 与平台 actor 记录中都是一等参与者。目前还没有已实现的平台达到这一级别。
 - **Native service principal**：平台能识别独立的非人类主体，并在自己的审计
   系统中记录它。首个目标是 Cloudflare account-owned token。
-- **Brokered**：平台只能识别共享 adapter application，不能把每个 Realmroot
+- **Provider delegated**：平台只能识别共享 adapter application，不能把每个 Realmroot
   Agent 表示成独立 actor。GitHub 使用内容角标；Linear 提供更强的逐次原生显示
   归属，但两者的安全主体仍然都是共享 application。具体 Agent 由 Realmroot
   审计链权威记录。

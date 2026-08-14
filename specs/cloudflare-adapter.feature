@@ -1,5 +1,5 @@
 Feature: Cloudflare OAuth REST adapter
-  Realmroot Agents use a controller-authorized Cloudflare OAuth connection without receiving provider credentials.
+  Realmroot Agents use the Adapter as a standard external authorization server without receiving Cloudflare credentials.
 
   @journey:cloudflare-contract @entrypoint:http
   Scenario: Realmroot discovers the fail-closed Cloudflare REST contract
@@ -10,13 +10,14 @@ Feature: Cloudflare OAuth REST adapter
     And no unmatched path is forwarded
 
   @journey:cloudflare-token-exchange @entrypoint:http
-  Scenario: The Adapter obtains a request-local provider token from Realmroot
-    Given an Agent presents a DPoP-bound Realmroot token for the Cloudflare Adapter
-    And the token is bound to a Realmroot-custodied Provider Connection
+  Scenario: The Adapter issues an external proof-bound Agent token
+    Given the controller authorizes Cloudflare through the Adapter OAuth server
+    And Cloudflare consent selects the accounts available to its provider credential
     When the Agent invokes a published Cloudflare operation
-    Then the Adapter exchanges the original Agent token through the standard Realmroot OAuth token endpoint
-    And the Adapter Application and Agent and Provider scopes must all authorize the operation
-    And the Cloudflare access token exists only in request memory
+    Then Realmroot exchanges subject and actor tokens with the Adapter through RFC 8693
+    And the Adapter issues the final DPoP token without Realmroot re-signing it
+    And the Adapter token and stored Cloudflare credential scopes must authorize the operation
+    And account and zone identifiers remain ordinary Cloudflare API parameters
 
   @journey:cloudflare-transparent-rest @entrypoint:http
   Scenario: An authorized operation is transparently forwarded to Cloudflare
@@ -24,7 +25,6 @@ Feature: Cloudflare OAuth REST adapter
     When the Agent sends a Cloudflare REST request through the Adapter
     Then the method, path, query, body, conditional headers, idempotency key, and content type are preserved
     And inbound credentials, cookies, forwarding headers, and hop-by-hop headers are removed
-    And transient Realmroot discovery or token exchange failures are retried within one bounded deadline
     And the upstream origin is fixed to the Cloudflare v4 API
     And the status, body, ETag, pagination, rate-limit, and CF-Ray response data are preserved
     And no write request is automatically retried
@@ -41,7 +41,7 @@ Feature: Cloudflare OAuth REST adapter
   Scenario: Cloudflare reports the authority required by a rejected native request
     Given a Wrangler request reaches a published Cloudflare operation
     And the selected Agent credential satisfies none of its scope alternatives
-    When the adapter rejects the request before token exchange or Cloudflare forwarding
+    When the adapter rejects the request before Cloudflare forwarding
     Then the insufficient-scope challenge advertises every operation scope alternative
 
   @journey:cloudflare-wrangler-token-verification @entrypoint:http
@@ -49,7 +49,6 @@ Feature: Cloudflare OAuth REST adapter
     Given the Agent has at least one approved Cloudflare scope
     When Wrangler calls the Cloudflare token verification endpoint through the adapter
     Then the adapter authenticates the Agent proof-bound credential
-    And exchanges it for one approved Provider scope only for request-local verification
     And returns a Wrangler-compatible active credential response without exposing the Provider credential
     And Wrangler can resolve the Agent-facing user and approved Cloudflare accounts without a personal API token
     And personal membership roles are omitted because the command runs as the Agent rather than the controller

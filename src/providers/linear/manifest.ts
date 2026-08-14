@@ -6,7 +6,7 @@ export const linearManifest = {
   provider: 'linear',
   status: 'experimental',
   identity: {
-    level: 'brokered',
+    level: 'provider-delegated',
     visibleInProduct: true,
     visibleInAuditLog: true,
     attribution: 'provider-native',
@@ -25,7 +25,7 @@ export const linearManifest = {
       { method: 'POST', path: '/graphql', behavior: 'agent-display-for-issueCreate-and-commentCreate' },
     ],
   },
-  revocationSignals: ['realmroot-signed-broker-revocation', 'linear-oauth-app-revoked', 'token-rejection'],
+  revocationSignals: ['oauth-revocation', 'linear-oauth-app-revoked', 'token-rejection'],
   nativeReadinessGaps: ['ACTOR-CHAIN', 'ACTOR-PROFILE', 'DPOP', 'TOKEN-EXCHANGE'],
   retirementCondition:
     'Linear accepts the stable external Agent and proof-bound authority directly instead of recording the shared Realmroot App user as the security principal.',

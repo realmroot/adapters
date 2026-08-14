@@ -1,9 +1,9 @@
 Feature: Linear Agent adapter
-  Realmroot Agents use Linear's native App actor through one Provider Connection.
+  Realmroot Agents use Linear through the Adapter's standard external authorization server.
 
   @journey:linear-contract @entrypoint:http
   Scenario: Linear publishes one Agent-facing Resource Server
-    Given the Linear adapter trusts a Realmroot issuer
+    Given the Linear adapter publishes its own OAuth issuer
     When a client discovers the Linear Resource Server
     Then it advertises RFC 9728 metadata and an OpenAPI service description
     And it exposes Linear's official OAuth scopes without a provider prefix
@@ -11,24 +11,23 @@ Feature: Linear Agent adapter
     And it identifies the provider boundary as a shared native App actor with per-operation Agent attribution
 
   @journey:linear-provider-connection @entrypoint:http
-  Scenario: One Provider Connection identifies the user and installs the App
-    Given a Realmroot owner starts one Linear Provider connection
+  Scenario: One external authorization identifies the user and installs the App
+    Given a Realmroot owner starts Linear authorization through the Adapter
     When the owner authorizes their Linear user and then installs the App with actor app
-    Then the adapter binds the stable Linear user to that one Provider Connection
-    And it stores the installed workspace as a connection context
+    Then the adapter exposes the installed workspace as the external authorization subject
+    And the Provider Connection selects that workspace without an authorization detail or Context
     And provider credentials remain encrypted outside Realmroot and the Agent
 
   @journey:linear-workspace-reauthorization @entrypoint:http
-  Scenario: Reauthorization adds or refreshes workspace contexts without duplicating the connection
-    Given a Realmroot owner already has one Linear Provider Connection
-    When the same Linear user authorizes another workspace or refreshes an existing workspace
-    Then the adapter preserves the existing broker reference
-    And it keeps one active workspace context per Linear workspace
-    And a different Linear user cannot replace the active connection
+  Scenario: Reauthorization refreshes or replaces the selected workspace
+    Given a Realmroot owner already authorized one Linear workspace
+    When the owner refreshes that workspace or connects another workspace
+    Then the adapter exposes exactly one workspace through the Provider Connection
+    And Realmroot replaces the old external authorization instead of creating another Context
 
   @journey:linear-transparent-graphql @entrypoint:http
   Scenario: An authorized Agent calls the original Linear GraphQL API
-    Given the Agent token selects one connected Linear workspace
+    Given the Agent token subject identifies the connected Linear workspace
     And the token contains the official Linear scopes required by the selected GraphQL operation
     When the Agent posts the original GraphQL document and variables through the adapter
     Then the adapter forwards the GraphQL transport to Linear without inventing REST business endpoints

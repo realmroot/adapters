@@ -1,9 +1,9 @@
 import { z } from 'zod'
 import type { BrokerRequestReplayStore } from '../../core/broker-request-replay.js'
-import type { ConnectionEvent } from '../../core/connection-events.js'
 import type { BrokeredConnectionRequest } from '../../core/connection-request.js'
 import { sha256Base64Url } from '../../core/digest.js'
 import { badRequest, forbidden, HttpProblem, unauthorized } from '../../core/problem.js'
+import { githubInstallationAuthorizationDetail } from './authorization-details.js'
 import { mergePermissions, permissionsToScopes } from './permissions.js'
 import type { GitHubInstallation, GitHubUser } from './types.js'
 
@@ -53,9 +53,16 @@ export interface GitHubConnectionStore {
   }>
   activeInstallationsForOwner(ownerSubject: string, brokerReference: string): Promise<GitHubAuthorizationContext[]>
   activeInstallationsForReference(brokerReference: string): Promise<GitHubAuthorizationContext[]>
+  externalAuthorization(githubUserId: string): Promise<{
+    displayName: string
+    scopes: string[]
+    contexts: GitHubAuthorizationContext[]
+  }>
   revoke(input: { brokerReference: string; ownerSubject: string; jti: string; expiresAt: number }): Promise<void>
-  prepareLifecycleEvent(input: GitHubLifecycleChange): Promise<{ event: ConnectionEvent | null; completed: boolean }>
-  pendingLifecycleEvents(): Promise<ConnectionEvent[]>
+  prepareLifecycleEvent(
+    input: GitHubLifecycleChange,
+  ): Promise<{ event: GitHubLifecycleEvent | null; completed: boolean }>
+  pendingLifecycleEvents(): Promise<GitHubLifecycleEvent[]>
   completeLifecycleEvent(deliveryId: string): Promise<void>
 }
 
@@ -72,6 +79,37 @@ export type GitHubLifecycleChange = Readonly<{
   repositoriesRemoved?: readonly GitHubRepositoryChange[]
 }>
 
+type GitHubLifecycleEventCommon = Readonly<{
+  id: string
+  brokerReference: string
+  occurredAt: string
+  revision: number
+}>
+
+type GitHubLifecycleEvent = GitHubLifecycleEventCommon &
+  (
+    | Readonly<{
+        type: 'authorityChanged'
+        scopes: readonly string[]
+        affectedScopes: readonly string[]
+        affectedAuthorizationDetails: readonly Record<string, unknown>[]
+        authorityConstraints: readonly {
+          authorizationDetails: readonly Record<string, unknown>[]
+          scopes: readonly string[]
+        }[]
+      }>
+    | Readonly<{
+        type: 'resourcesChanged' | 'restored'
+        scopes: readonly string[]
+        authorizationDetails: readonly Record<string, unknown>[]
+        authorityConstraints: readonly {
+          authorizationDetails: readonly Record<string, unknown>[]
+          scopes: readonly string[]
+        }[]
+      }>
+    | Readonly<{ type: 'suspended' | 'revoked' }>
+  )
+
 export type GitHubRepositoryChange = Readonly<{ id: number; fullName: string }>
 export type GitHubAuthorizationContext = Readonly<{
   installationId: number
@@ -87,6 +125,128 @@ export class D1GitHubConnections implements GitHubConnectionStore {
     private readonly db: D1Database,
     private readonly brokerRequestReplay: BrokerRequestReplayStore,
   ) {}
+
+  async upsertExternalAuthorization(user: GitHubUser, installations: GitHubInstallation[]) {
+    const now = Date.now()
+    const existing = await this.db
+      .prepare(
+        `SELECT broker_reference AS brokerReference
+         FROM github_connection_binding
+         WHERE github_user_id = ? AND status = 'active'
+         ORDER BY updated_at DESC LIMIT 1`,
+      )
+      .bind(user.id)
+      .first<{ brokerReference: string }>()
+    const brokerReference = existing?.brokerReference ?? `github:${user.id}`
+    if (installations.length > 0) {
+      const placeholders = installations.map(() => '?').join(', ')
+      const occupied = await this.db
+        .prepare(
+          `SELECT broker_reference AS brokerReference
+           FROM github_connection_context
+           WHERE installation_id IN (${placeholders}) AND broker_reference <> ?
+           LIMIT 1`,
+        )
+        .bind(...installations.map((installation) => installation.id), brokerReference)
+        .first<{ brokerReference: string }>()
+      if (occupied) throw forbidden('The selected GitHub installation is already connected to another account.')
+    }
+    const grantedScopes = permissionsToScopes(
+      mergePermissions(installations.map((installation) => installation.permissions)),
+    )
+    const statements: D1PreparedStatement[] = [
+      this.db
+        .prepare(
+          `INSERT INTO github_connection_binding
+            (broker_reference, owner_subject, github_user_id, github_login, display_name, scopes_json, status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)
+           ON CONFLICT(broker_reference) DO UPDATE SET owner_subject = excluded.owner_subject,
+             github_user_id = excluded.github_user_id, github_login = excluded.github_login,
+             display_name = excluded.display_name, scopes_json = excluded.scopes_json,
+             status = 'active', updated_at = excluded.updated_at`,
+        )
+        .bind(
+          brokerReference,
+          String(user.id),
+          user.id,
+          user.login,
+          user.name ?? user.login,
+          JSON.stringify(grantedScopes),
+          now,
+          now,
+        ),
+      this.db.prepare('DELETE FROM github_connection_context WHERE broker_reference = ?').bind(brokerReference),
+      ...installations.map((installation) =>
+        this.db
+          .prepare(
+            `INSERT INTO github_connection_context
+              (broker_reference, installation_id, account_login, target_type, created_at,
+               status, scopes_json, updated_at, repository_selection)
+             VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
+          )
+          .bind(
+            brokerReference,
+            installation.id,
+            installation.accountLogin,
+            installation.targetType,
+            now,
+            JSON.stringify(permissionsToScopes(installation.permissions)),
+            now,
+            installation.repositorySelection,
+          ),
+      ),
+      ...installations.flatMap((installation) =>
+        installation.repositories.map((repository) =>
+          this.db
+            .prepare(
+              `INSERT INTO github_connection_repository (installation_id, repository_id, full_name, updated_at)
+               VALUES (?, ?, ?, ?) ON CONFLICT(installation_id, repository_id) DO UPDATE SET
+                 full_name = excluded.full_name, updated_at = excluded.updated_at`,
+            )
+            .bind(installation.id, repository.id, repository.fullName, now),
+        ),
+      ),
+    ]
+    await this.db.batch(statements)
+    return this.activeInstallationsForReference(brokerReference)
+  }
+
+  async revokeExternalAuthorization(githubUserId: string) {
+    const binding = await this.db
+      .prepare(
+        `SELECT broker_reference AS brokerReference FROM github_connection_binding
+         WHERE owner_subject = ? AND status = 'active'`,
+      )
+      .bind(githubUserId)
+      .first<{ brokerReference: string }>()
+    if (!binding) return
+    await this.db.batch([
+      this.db
+        .prepare(
+          `UPDATE github_connection_binding SET status = 'revoked', updated_at = ?
+           WHERE broker_reference = ? AND status = 'active'`,
+        )
+        .bind(Date.now(), binding.brokerReference),
+      this.db.prepare('DELETE FROM github_connection_context WHERE broker_reference = ?').bind(binding.brokerReference),
+    ])
+  }
+
+  async externalAuthorization(githubUserId: string) {
+    const binding = await this.db
+      .prepare(
+        `SELECT broker_reference AS brokerReference, display_name AS displayName, scopes_json AS scopesJson
+         FROM github_connection_binding
+         WHERE github_user_id = ? AND owner_subject = ? AND status = 'active'`,
+      )
+      .bind(Number(githubUserId), githubUserId)
+      .first<{ brokerReference: string; displayName: string; scopesJson: string }>()
+    if (!binding) throw forbidden('Active GitHub authorization is required.')
+    return {
+      displayName: binding.displayName,
+      scopes: JSON.parse(binding.scopesJson) as string[],
+      contexts: await this.activeInstallationsForReference(binding.brokerReference),
+    }
+  }
 
   async create(request: BrokeredConnectionRequest, providerState: string, now = Date.now()) {
     const result = await this.db
@@ -344,7 +504,7 @@ export class D1GitHubConnections implements GitHubConnectionStore {
 
   async prepareLifecycleEvent(
     input: GitHubLifecycleChange,
-  ): Promise<{ event: ConnectionEvent | null; completed: boolean }> {
+  ): Promise<{ event: GitHubLifecycleEvent | null; completed: boolean }> {
     const delivery = await this.db
       .prepare('SELECT fingerprint, event_json AS eventJson, state FROM github_webhook_delivery WHERE delivery_id = ?')
       .bind(input.deliveryId)
@@ -352,7 +512,7 @@ export class D1GitHubConnections implements GitHubConnectionStore {
     if (delivery) {
       if (delivery.fingerprint !== input.fingerprint) throw webhookDeliveryConflict()
       return {
-        event: JSON.parse(delivery.eventJson) as ConnectionEvent | null,
+        event: JSON.parse(delivery.eventJson) as GitHubLifecycleEvent | null,
         completed: delivery.state === 'completed',
       }
     }
@@ -436,9 +596,9 @@ export class D1GitHubConnections implements GitHubConnectionStore {
     })
     const activeContexts = nextContexts.filter((context) => context.status === 'active')
     const scopes = [...new Set(activeContexts.flatMap((context) => JSON.parse(context.scopesJson) as string[]))].sort()
-    const authorizationDetails = activeContexts.map(contextAuthorizationDetail)
+    const authorizationDetails = activeContexts.map(githubInstallationAuthorizationDetail)
     const authorityConstraints = activeContexts.map((context) => ({
-      authorizationDetails: [contextAuthorizationDetail(context)],
+      authorizationDetails: [githubInstallationAuthorizationDetail(context)],
       scopes: JSON.parse(context.scopesJson) as string[],
     }))
     const eventType = lifecycleEventType(input.type, contexts, activeContexts)
@@ -451,7 +611,7 @@ export class D1GitHubConnections implements GitHubConnectionStore {
       occurredAt: input.occurredAt,
       revision: selected.eventRevision + 1,
     }
-    let event: ConnectionEvent
+    let event: GitHubLifecycleEvent
     if (eventType === 'authorityChanged') {
       if (!nextSelected) throw new Error('The changed GitHub installation context is missing.')
       event = {
@@ -459,7 +619,7 @@ export class D1GitHubConnections implements GitHubConnectionStore {
         type: eventType,
         scopes,
         affectedScopes: JSON.parse(nextSelected.scopesJson) as string[],
-        affectedAuthorizationDetails: [contextAuthorizationDetail(nextSelected)],
+        affectedAuthorizationDetails: [githubInstallationAuthorizationDetail(nextSelected)],
         authorityConstraints,
       }
     } else if (eventType === 'resourcesChanged' || eventType === 'restored') {
@@ -734,7 +894,7 @@ export class D1GitHubConnections implements GitHubConnectionStore {
         "SELECT event_json AS eventJson FROM github_webhook_delivery WHERE state = 'pending' ORDER BY created_at",
       )
       .all<{ eventJson: string }>()
-    return result.results.map(({ eventJson }) => JSON.parse(eventJson) as ConnectionEvent)
+    return result.results.map(({ eventJson }) => JSON.parse(eventJson) as GitHubLifecycleEvent)
   }
 
   private async contexts(brokerReference: string) {
@@ -811,24 +971,6 @@ type LifecycleCursor = {
 }
 
 type RepositoryLifecycleCursor = { providerUpdatedAt: number; removed: 0 | 1 }
-
-function contextAuthorizationDetail(context: LifecycleContext) {
-  return {
-    type: 'github_installation',
-    installation_id: String(context.installationId),
-    account_login: context.accountLogin,
-    target_type: context.targetType,
-    repository_selection: context.repositorySelection,
-    ...(context.repositorySelection === 'selected'
-      ? {
-          repositories: context.repositories.map((repository) => ({
-            id: String(repository.id),
-            full_name: repository.fullName,
-          })),
-        }
-      : {}),
-  }
-}
 
 function nextRepositories(
   current: readonly GitHubRepositoryChange[],
@@ -923,7 +1065,7 @@ function lifecycleEventType(
   type: GitHubLifecycleChange['type'],
   previous: readonly LifecycleContext[],
   active: readonly LifecycleContext[],
-): ConnectionEvent['type'] {
+): GitHubLifecycleEvent['type'] {
   if (active.length === 0) return type === 'suspended' ? 'suspended' : 'revoked'
   if (type === 'restored' && previous.every((context) => context.status === 'suspended')) return 'restored'
   if (type === 'authorityChanged') return 'authorityChanged'

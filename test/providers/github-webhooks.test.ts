@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto'
 import { describe, expect, it, vi } from 'vitest'
-import type { ConnectionEventSink } from '../../src/core/connection-events.js'
+import { GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE } from '../../src/providers/github/authorization-details.js'
 import type { GitHubConnectionStore } from '../../src/providers/github/connections.js'
 import { handleGitHubWebhook } from '../../src/providers/github/webhooks.js'
 
@@ -9,18 +9,16 @@ const secret = 'github-webhook-secret'
 describe('GitHub lifecycle webhooks', () => {
   it('[spec: github-adapter/github-installation-lifecycle] verifies signatures before changing context', async () => {
     const connections = lifecycleStore()
-    const events = eventSink()
     const request = webhookRequest('installation', 'delivery-1', {
       action: 'suspend',
       installation: { id: 42 },
     })
     request.headers.set('X-Hub-Signature-256', 'sha256='.padEnd(71, '0'))
 
-    await expect(handleGitHubWebhook({ request, secret, connections, events })).rejects.toThrow(
+    await expect(handleGitHubWebhook({ request, secret, connections })).rejects.toThrow(
       'signature is missing or invalid',
     )
     expect(connections.prepareLifecycleEvent).not.toHaveBeenCalled()
-    expect(events.send).not.toHaveBeenCalled()
   })
 
   it('[spec: github-adapter/github-installation-lifecycle] translates permission acceptance into authority changed', async () => {
@@ -33,18 +31,16 @@ describe('GitHub lifecycle webhooks', () => {
         revision: 1,
         scopes: ['issues:read', 'issues:write', 'metadata:read'],
         affectedScopes: ['issues:read', 'issues:write', 'metadata:read'],
-        affectedAuthorizationDetails: [{ type: 'github_installation', installation_id: '42' }],
+        affectedAuthorizationDetails: [{ type: GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE, installation_id: '42' }],
         authorityConstraints: [
           {
-            authorizationDetails: [{ type: 'github_installation', installation_id: '42' }],
+            authorizationDetails: [{ type: GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE, installation_id: '42' }],
             scopes: ['issues:read', 'issues:write', 'metadata:read'],
           },
         ],
       },
       completed: false,
     })
-    const events = eventSink()
-
     await handleGitHubWebhook({
       request: webhookRequest('installation', 'delivery-2', {
         action: 'new_permissions_accepted',
@@ -56,7 +52,6 @@ describe('GitHub lifecycle webhooks', () => {
       }),
       secret,
       connections,
-      events,
     })
 
     expect(connections.prepareLifecycleEvent).toHaveBeenCalledWith({
@@ -68,7 +63,6 @@ describe('GitHub lifecycle webhooks', () => {
       providerUpdatedAt: Date.parse('2027-01-15T08:00:00.000Z'),
       scopes: ['issues:read', 'issues:write', 'metadata:read'],
     })
-    expect(events.send).toHaveBeenCalledOnce()
     expect(connections.completeLifecycleEvent).toHaveBeenCalledWith('delivery-2')
   })
 
@@ -86,7 +80,6 @@ describe('GitHub lifecycle webhooks', () => {
       }),
       secret,
       connections,
-      events: eventSink(),
     })
 
     expect(connections.prepareLifecycleEvent).toHaveBeenCalledWith(
@@ -107,18 +100,16 @@ describe('GitHub lifecycle webhooks', () => {
         occurredAt: '2027-01-15T08:00:00.000Z',
         revision: 1,
         scopes: ['metadata:read'],
-        authorizationDetails: [{ type: 'github_installation', installation_id: '42' }],
+        authorizationDetails: [{ type: GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE, installation_id: '42' }],
         authorityConstraints: [
           {
-            authorizationDetails: [{ type: 'github_installation', installation_id: '42' }],
+            authorizationDetails: [{ type: GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE, installation_id: '42' }],
             scopes: ['metadata:read'],
           },
         ],
       },
       completed: true,
     })
-    const events = eventSink()
-
     await handleGitHubWebhook({
       request: webhookRequest('installation_repositories', 'delivery-3', {
         action: 'removed',
@@ -129,46 +120,35 @@ describe('GitHub lifecycle webhooks', () => {
       }),
       secret,
       connections,
-      events,
     })
 
-    expect(events.send).not.toHaveBeenCalled()
     expect(connections.completeLifecycleEvent).not.toHaveBeenCalled()
   })
 
   it('verifies but ignores unrelated GitHub event types', async () => {
     const connections = lifecycleStore()
-    const events = eventSink()
-
     await handleGitHubWebhook({
       request: webhookRequest('issues', 'delivery-4', { action: 'opened' }),
       secret,
       connections,
-      events,
     })
 
     expect(connections.prepareLifecycleEvent).not.toHaveBeenCalled()
-    expect(events.send).not.toHaveBeenCalled()
   })
 
   it('ignores unsupported installation actions after signature verification', async () => {
     const connections = lifecycleStore()
-    const events = eventSink()
-
     await handleGitHubWebhook({
       request: webhookRequest('installation', 'delivery-5', { action: 'created', installation: { id: 42 } }),
       secret,
       connections,
-      events,
     })
 
     expect(connections.prepareLifecycleEvent).not.toHaveBeenCalled()
-    expect(events.send).not.toHaveBeenCalled()
   })
 
   it('rejects malformed supported lifecycle payloads at the HTTP boundary', async () => {
     const connections = lifecycleStore()
-    const events = eventSink()
     const body = '{invalid'
     const request = new Request('https://adapter.example/github/webhooks', {
       method: 'POST',
@@ -180,13 +160,12 @@ describe('GitHub lifecycle webhooks', () => {
       body,
     })
 
-    await expect(handleGitHubWebhook({ request, secret, connections, events })).rejects.toThrow('not valid JSON')
+    await expect(handleGitHubWebhook({ request, secret, connections })).rejects.toThrow('not valid JSON')
     expect(connections.prepareLifecycleEvent).not.toHaveBeenCalled()
   })
 
   it('[spec: github-adapter/github-installation-lifecycle] rejects oversized bodies before signature verification', async () => {
     const connections = lifecycleStore()
-    const events = eventSink()
     const body = 'x'.repeat(1024 * 1024 + 1)
     const request = new Request('https://adapter.example/github/webhooks', {
       method: 'POST',
@@ -198,7 +177,7 @@ describe('GitHub lifecycle webhooks', () => {
       body,
     })
 
-    await expect(handleGitHubWebhook({ request, secret, connections, events })).rejects.toThrow('exceeds 1048576 bytes')
+    await expect(handleGitHubWebhook({ request, secret, connections })).rejects.toThrow('exceeds 1048576 bytes')
     expect(connections.prepareLifecycleEvent).not.toHaveBeenCalled()
   })
 })
@@ -227,8 +206,4 @@ function lifecycleStore(
     prepareLifecycleEvent: ReturnType<typeof vi.fn<GitHubConnectionStore['prepareLifecycleEvent']>>
     completeLifecycleEvent: ReturnType<typeof vi.fn<GitHubConnectionStore['completeLifecycleEvent']>>
   }
-}
-
-function eventSink() {
-  return { send: vi.fn(async () => {}) } satisfies ConnectionEventSink
 }

@@ -7,8 +7,16 @@ Bring trusted Realmroot Agent identities to external platforms.
 
 > [!IMPORTANT]
 > This project is in alpha. The GitHub vertical slice runs as an independent
-> Cloudflare Worker with durable D1 state, signed broker revocation, and
-> webhook-driven GitHub installation lifecycle invalidation.
+> Cloudflare Worker with a standard external OAuth authorization boundary,
+> durable D1 state, and provider-webhook lifecycle invalidation.
+
+> [!NOTE]
+> Every Adapter is a standard external authorization server and protected
+> Resource from Realmroot's perspective. Realmroot owns Agent identity,
+> approval, grants, and one logical Connector per provider; the Adapter owns all
+> provider-specific authorization, credentials, lifecycle, token issuance, and
+> API execution. This boundary is an architecture invariant. See
+> [Architecture](docs/architecture.md#architecture-invariant).
 
 Realmroot-native resource servers can authenticate the exact Agent performing
 an operation. Most external platforms cannot consume that identity directly.
@@ -29,7 +37,7 @@ without an adapter in the request path.
 
 ```text
 Today
-Agent -> Realmroot -> Adapter -> Platform API
+Agent -> Adapter OAuth AS -> Adapter Resource Server -> Platform API
 
 End state
 Agent -- Realmroot-issued authority --> Agent-native Platform API
@@ -58,18 +66,18 @@ identity model has already passed a capability review.
 
 | Provider | Target identity model | Target provider-visible result | Wave | Status |
 | --- | --- | --- | ---: | --- |
-| GitHub | Brokered application actor | Shared GitHub App actor with trusted Agent attribution | 1 | Alpha |
-| Linear | Brokered native App actor | Shared App user with trusted per-operation Agent attribution | 1 | Experimental |
+| GitHub | Provider-delegated application actor | Shared GitHub App actor with trusted Agent attribution | 1 | Alpha |
+| Linear | Provider-delegated native App actor | Shared App user with trusted per-operation Agent attribution | 1 | Experimental |
 | Cloudflare | Native service principal | Dedicated account-owned token actor in audit logs | 1 | Design |
 | GitLab | Native service principal | Dedicated service account visible in groups, projects, and audit records | 2 | Proposal |
 | Bitbucket | Native service principal | Repository, project, or workspace access-token actor | 2 | Proposal |
 | Vercel | Native service principal | Dedicated integration identity with provider-side audit correlation | 2 | Proposal |
-| Slack | Brokered application actor | App/bot actor in conversations and platform audit surfaces | 3 | Proposal |
-| Microsoft Teams | Brokered application actor | Bot/application actor in Teams conversations | 3 | Proposal |
-| Jira | Brokered application actor | App actor on issues, comments, and workflow operations | 3 | Proposal |
-| Confluence | Brokered application actor | App actor on pages, comments, and content operations | 3 | Proposal |
-| Notion | Brokered integration actor | Integration actor on pages, databases, and comments | 3 | Proposal |
-| Asana | Brokered application actor | Application/delegated actor on tasks, projects, and comments | 3 | Proposal |
+| Slack | Provider-delegated application actor | App/bot actor in conversations and platform audit surfaces | 3 | Proposal |
+| Microsoft Teams | Provider-delegated application actor | Bot/application actor in Teams conversations | 3 | Proposal |
+| Jira | Provider-delegated application actor | App actor on issues, comments, and workflow operations | 3 | Proposal |
+| Confluence | Provider-delegated application actor | App actor on pages, comments, and content operations | 3 | Proposal |
+| Notion | Provider-delegated integration actor | Integration actor on pages, databases, and comments | 3 | Proposal |
+| Asana | Provider-delegated application actor | Application/delegated actor on tasks, projects, and comments | 3 | Proposal |
 | AWS | Native service principal | IAM role session and CloudTrail actor correlated to the Agent | 4 | Proposal |
 | Microsoft Entra | Native service principal | Workload identity/service principal in tenant audit records | 4 | Proposal |
 | Google Cloud | Native service principal | Service account or federated workload principal in Cloud Audit Logs | 4 | Proposal |
@@ -94,7 +102,7 @@ own audit trail, even when the principal is not rendered as a collaborator in
 the product UI. Cloudflare account-owned tokens are the initial target for this
 level.
 
-### Brokered
+### Provider delegated
 
 The provider recognizes the shared adapter application, but cannot represent
 each originating Realmroot Agent as a distinct native actor. Realmroot's audit
@@ -109,8 +117,10 @@ enforces.
 
 A provider adapter is responsible for:
 
+- exposing a standard OAuth authorization server to Realmroot, including
+  authorization code, refresh, JWT bearer, token exchange, DPoP, and revocation;
 - exposing RFC 9728 protected-resource metadata and OpenAPI discovery;
-- authenticating a DPoP-bound Realmroot Agent request;
+- authenticating the Adapter-issued DPoP-bound Agent token;
 - mapping the authenticated Agent to a provider-native actor when available;
 - keeping provider credentials outside Agent and CLI visibility;
 - translating provider permissions into Realmroot scopes without inventing a
@@ -180,18 +190,20 @@ pnpm exec wrangler d1 migrations apply realmroot-adapters-db --local
 pnpm exec wrangler dev --port 4103 --local-upstream 127.0.0.1:4103
 ```
 
-After configuring the GitHub App credentials, register one brokered Resource
-Server for GitHub and select the Realmroot GitHub Connector. Installations are
-account-connection contexts; they are not separate Resource Servers and never
-appear in the audience URL:
+After configuring the GitHub App credentials, register the Adapter as one
+external Resource Server and select the Realmroot GitHub Connector.
+Installations are RFC 9396 authorization details; they are not separate
+Resource Servers and never appear in the audience URL:
 
 ```json
 {
   "identifier": "github",
   "resourceUrl": "http://127.0.0.1:4103/github",
   "connectorId": "YOUR_GITHUB_CONNECTOR_ID",
-  "ownerOrganizationId": "org_platform",
-  "authorizationDetails": [{ "type": "github_installation" }],
+  "ownerOrganizationId": "YOUR_REALMROOT_ORGANIZATION_ID",
+  "authorizationDetails": [
+    { "type": "https://adapters.realmroot.dev/authorization-details/github-installation" }
+  ],
   "enabled": true,
   "availableToAgents": true,
   "visibility": "public"
@@ -215,8 +227,8 @@ Production setup URL:    https://adapters.realmroot.dev/github/account-connectio
 ```
 
 Keep both production callback URLs on the same GitHub App. Realmroot uses its
-callback for Connector authentication, while the adapter explicitly selects
-its callback for brokered account connection authorization.
+callback when the Connector authentication facet is enabled; the Adapter uses
+its callback for external resource authorization.
 
 Configure the GitHub App webhook URL as
 `https://adapters.realmroot.dev/github/webhooks`, select JSON payloads, and set
@@ -228,23 +240,9 @@ installation's GitHub `updated_at` value. Delivery GUIDs are idempotent event
 identities, never ordering values. When GitHub emits distinct changes with the
 same timestamp, restrictive suspension, repository selection, permission, and
 repository-removal changes win; independent repository deltas are merged.
-Accepted context changes are serialized per broker connection and carry a
-monotonically increasing `revision` in the generic Connection Event.
-Realmroot uses that causal revision to reject reversed same-time delivery.
-
-Register the adapter as a confidential Realmroot Application with the
-`client_credentials` grant. Configure `connection-events:write` for the
-Realmroot Resource Server, grant the matching Application Permission, and set
-`REALMROOT_APPLICATION_CLIENT_ID`, `REALMROOT_APPLICATION_CLIENT_SECRET`, and
-`REALMROOT_GITHUB_RESOURCE_SERVER_ID`. The adapter requests a resource-bound
-DPoP token for each delivery. Failed Connection Event delivery remains pending
-for a GitHub retry; an accepted delivery GUID is not emitted twice.
-Migration `0007` revokes pre-lifecycle GitHub connections because older schemas
-did not retain repository selection or selected repository membership. Reconnect
-those installations after applying the migration; the adapter will not widen
-unknown legacy authority to all repositories. The migration durably queues a
-generic revocation, and the Worker delivers it to Realmroot before serving
-requests so Connection and Agent-grant state cannot remain stale.
+Accepted lifecycle changes update Adapter-owned installation authority.
+Subsequent token issuance and API calls fail closed when an installation is
+removed, suspended, or reduced.
 
 For deployment, store the key without putting it in source or Wrangler vars:
 
@@ -254,9 +252,6 @@ pnpm exec wrangler secret put GITHUB_PRIVATE_KEY < github-app.private-key.pem
 pnpm exec wrangler secret put GITHUB_CLIENT_ID
 pnpm exec wrangler secret put GITHUB_CLIENT_SECRET
 pnpm exec wrangler secret put GITHUB_WEBHOOK_SECRET
-pnpm exec wrangler secret put REALMROOT_APPLICATION_CLIENT_ID
-pnpm exec wrangler secret put REALMROOT_APPLICATION_CLIENT_SECRET
-pnpm exec wrangler secret put REALMROOT_GITHUB_RESOURCE_SERVER_ID
 ```
 
 The first connected App currently needs repository Metadata read and Issues
@@ -314,25 +309,25 @@ enable Agent Session events yet. Put `LINEAR_CLIENT_ID`,
 base64-encoded `LINEAR_CREDENTIAL_ENCRYPTION_KEY` in `.dev.vars`; use Wrangler
 secrets for deployment.
 
-Register one brokered Resource Server and select the Linear Connector:
+Register the Adapter as one external Resource Server and select the Linear
+Connector:
 
 ```json
 {
   "identifier": "linear",
   "resourceUrl": "http://127.0.0.1:4103/linear",
   "connectorId": "YOUR_LINEAR_CONNECTOR_ID",
-  "ownerOrganizationId": "org_platform",
-  "authorizationDetails": [{ "type": "linear_workspace" }],
+  "ownerOrganizationId": "YOUR_REALMROOT_ORGANIZATION_ID",
   "enabled": true,
   "availableToAgents": true,
   "visibility": "public"
 }
 ```
 
-The user sees one Linear Connection. Behind that single flow, the adapter first
-identifies the stable Linear user and immediately revokes that temporary token,
-then authorizes the App actor for a workspace. Reauthorization can add another
-workspace context without creating another Connection.
+The user sees one Linear Provider Connection. The adapter identifies the stable
+Linear user, revokes the temporary user token, and authorizes the App actor for
+that workspace. The workspace is the Provider Connection subject; it is not
+represented by a separate authorization-detail type.
 
 The Agent-facing API remains Linear's original GraphQL transport:
 

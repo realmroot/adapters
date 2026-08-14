@@ -11,12 +11,37 @@ This is a transitional architecture. Its intended outcome is for the provider
 to implement the Agent-facing protocol boundary itself, after which the
 provider adapter leaves the request path.
 
+## Architecture invariant
+
+Realmroot sees every Adapter as one standard external authorization server and
+protected Resource. An Adapter never creates a third Realmroot authorization
+model or a private account-connection protocol.
+
+- Realmroot owns stable Agent identity, controller approval, Agent grants, one
+  logical Connector per provider, and that Connector's independent
+  authentication and resource-authorization facets.
+- The Adapter owns provider authorization, credentials, refresh, revocation,
+  lifecycle state, scope mapping, operation publication, final DPoP-token
+  issuance, and provider API execution.
+- Provider-specific OAuth stages, authorization-detail fields, webhook payloads,
+  credentials, permissions, and API routing stay outside Realmroot core.
+- The Agent calls only operations explicitly published by the Adapter's
+  OpenAPI contract. Transparent proxying preserves provider semantics but never
+  permits arbitrary upstream URLs or unpublished operations.
+- Adding a provider changes the Adapter provider module and Realmroot
+  configuration, not Realmroot core code.
+
+This boundary is mandatory. Any proposal that moves provider state or decisions
+into Realmroot, adds another authorization model, or introduces a private
+Realmroot-to-Adapter protocol requires an architecture decision and security
+review before implementation.
+
 ## Target architecture
 
 ```text
 Transitional path
 
-Realmroot Agent -> provider adapter -> legacy provider API
+Realmroot Agent -> provider adapter -> external provider API
 
 Target path
 
@@ -35,7 +60,7 @@ does not become a permanent proxy or a central catalog of provider permissions.
 
 ```text
 Realmroot Agent
-  DPoP proof + short-lived Realmroot authority
+  DPoP proof + short-lived Adapter authority
             |
             v
 Adapter Agent boundary
@@ -52,21 +77,26 @@ Provider boundary
   provider-native actor and audit
 ```
 
-The adapter terminates the Realmroot-facing request but does not weaken it. A
+The adapter is both the external authorization server and the protected
+resource boundary. Realmroot manages one logical Connector per provider and
+the controller-facing account connection, while the Adapter owns provider
+OAuth details, credentials, webhook state, and final Agent-token issuance.
+Realmroot returns that final token unchanged and does not interpret provider
+fields inside authorization details.
+
+The adapter terminates the Agent-facing request but does not weaken it. A
 provider bearer credential may exist behind the adapter only when required by
 the provider. It is never returned across the Agent boundary.
 
 ## Deployment boundary
 
 The adapter is deployed as an independent Cloudflare Worker. It does not run
-inside the Realmroot Worker and does not share Realmroot's database. A brokered
-provider may keep provider bindings and encrypted credentials in adapter D1.
-A connector-backed provider instead keeps OAuth credentials only in Realmroot
-and lets a confidential Adapter Application exchange the current Agent token
-for a request-local provider access token. Adapter D1 then contains only
-runtime replay and audit state for that provider. Provider credentials never
-cross the Agent boundary. The Worker runtime uses Web Crypto and Fetch APIs
-without a Node process or filesystem.
+inside the Realmroot Worker and does not share Realmroot's database. Provider
+bindings and encrypted provider credentials stay in Adapter D1. Realmroot
+stores only its Connector client credentials, the controller-visible provider
+connection identity, and the resource authorization record. Provider
+credentials never cross the Agent boundary. The Worker runtime uses Web Crypto
+and Fetch APIs without a Node process or filesystem.
 
 ## Identity model
 
@@ -83,7 +113,7 @@ Each provider declares an identity level:
 ```text
 native-agent
 native-service-principal
-brokered
+provider-delegated
 ```
 
 It also declares two independent visibility properties:
@@ -180,29 +210,11 @@ Revocation is fail-closed. A removed installation, disabled principal, reduced
 permission, removed Resource, expired grant, or failed credential renewal stops
 subsequent access.
 
-GitHub lifecycle deliveries terminate at the provider boundary. Their HMAC
-signature is verified over the unmodified body before parsing or state
-mutation. Provider-private installation context is updated once per GitHub
-delivery GUID, then a generic Connection Event is sent to Realmroot by an
-authenticated, body-bound HMAC request. Pending deliveries remain retryable;
-completed delivery replays are no-ops. Adapter core owns Realmroot broker
-request replay storage, while GitHub owns its connection intents, bindings,
-contexts, and webhook delivery records.
-
-The provider timestamp in the GitHub installation object is the lifecycle
-ordering cursor. Delivery GUIDs identify events for idempotency and are never
-treated as chronological values. Equal-timestamp changes merge conservatively:
-suspension, selected-repository scope, permission reduction, and repository
-removal win over ambiguous restoration or expansion, while independent
-repository deltas merge. Deletion is terminal. Repository membership is stored
-in GitHub-private relational rows and rendered only as opaque authorization
-details at the generic backchannel boundary. The generic Connection Event keeps
-the delivery GUID as its event identity, so distinct same-timestamp changes are
-not deduplicated by `occurredAt`. An optimistic compare-and-set claim on the
-connection serializes accepted context changes across installations. The same
-atomic batch allocates a monotonically increasing, provider-agnostic `revision`
-that is signed into the Connection Event; Realmroot can therefore reject
-reversed outbound delivery when multiple accepted events share an `occurredAt`.
+Provider lifecycle deliveries terminate at the Adapter boundary. The provider
+module verifies their authenticity, durably deduplicates them, updates its own
+authority state, and makes subsequent token issuance and API execution fail
+closed. Provider event names, payloads, ordering cursors, and stored context do
+not cross into Realmroot.
 
 ## Audit record
 

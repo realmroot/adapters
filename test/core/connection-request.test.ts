@@ -3,6 +3,7 @@ import { exportJWK, generateKeyPair, SignJWT } from 'jose'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { AppConfig } from '../../src/config.js'
 import { createBrokerRequestVerifiers } from '../../src/core/connection-request.js'
+import { GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE } from '../../src/providers/github/authorization-details.js'
 
 let closeServer: (() => Promise<void>) | undefined
 
@@ -37,7 +38,7 @@ describe('Realmroot broker request authentication', () => {
       code_challenge: 'a'.repeat(43),
       code_challenge_method: 'S256',
       scope: 'github:metadata:read',
-      authorization_details: [{ type: 'github_installation' }],
+      authorization_details: [{ type: GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE }],
     })
       .setProtectedHeader({ alg: 'RS256', kid: 'realmroot-1', typ: 'JWT' })
       .setIssuer(config.realmrootIssuer)

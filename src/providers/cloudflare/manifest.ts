@@ -6,13 +6,13 @@ export const cloudflareManifest = {
   provider: 'cloudflare',
   status: 'experimental',
   identity: {
-    level: 'brokered',
+    level: 'provider-delegated',
     visibleInProduct: false,
     visibleInAuditLog: false,
     attribution: 'audit-only',
   },
   actorModes: ['oauth-delegated-user'],
-  credentialModes: ['realmroot-connector-oauth'],
+  credentialModes: ['adapter-external-oauth'],
   resourceTypes: ['account', 'zone', 'cloudflare-api-resource'],
   scopes: Object.fromEntries(
     [...new Set(cloudflareOperations.flatMap((operation) => operation.scopes))].map((scope) => [
@@ -26,7 +26,7 @@ export const cloudflareManifest = {
     openapi: '/cloudflare/openapi.json',
     transformations: [],
   },
-  revocationSignals: ['realmroot-provider-connection-revocation', 'cloudflare-oauth-revocation'],
+  revocationSignals: ['adapter-oauth-revocation', 'cloudflare-oauth-revocation'],
   nativeReadinessGaps: ['ACTOR-NATIVE', 'AGENT-DISPLAY', 'DPOP'],
   retirementCondition:
     'Cloudflare accepts the stable Realmroot Agent actor and proof-bound delegated authority directly at its API boundary.',

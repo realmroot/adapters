@@ -16,9 +16,9 @@ production use.
 
 | Provider | Identity level | Product UI | Provider audit | Status |
 | --- | --- | ---: | ---: | --- |
-| GitHub | Brokered | Shared App actor + content attribution | Shared App actor | Alpha vertical slice |
+| GitHub | Provider delegated | Shared App actor + content attribution | Shared App actor | Alpha vertical slice |
 | Cloudflare | Native service principal | Token management | Per-Agent token actor | Design |
-| Linear | Brokered native App actor | Per-operation Agent name/avatar on supported writes | Shared App actor | Experimental slice |
+| Linear | Provider-delegated native App actor | Per-operation Agent name/avatar on supported writes | Shared App actor | Experimental slice |
 
 ## Phase 0 — Contract and security baseline
 
@@ -72,7 +72,7 @@ represent each Realmroot Agent as a native actor.
 - Isolated attribution transformers for issues and comments.
 - DPoP Agent boundary and provider credential isolation.
 - Provider-native HTTP semantics and audit correlation.
-- Explicit brokered identity declaration; no false native-Agent claim.
+- Explicit provider-delegated identity declaration; no false native-Agent claim.
 
 Implemented in the alpha slice:
 
@@ -152,7 +152,7 @@ intended to answer; it is not a delivery-date commitment.
 
 ### Wave 1 — Identity-model baseline
 
-- **GitHub** — brokered application identity and trusted visible attribution.
+- **GitHub** — provider-delegated application identity and trusted visible attribution.
 - **Linear** — shared native App actor with per-operation Agent attribution.
 - **Cloudflare** — dedicated service-principal identity and provider-side audit.
 

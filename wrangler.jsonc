@@ -15,7 +15,8 @@
     "GITHUB_UPLOADS_ORIGIN": "https://uploads.github.com",
     "LINEAR_API_ORIGIN": "https://api.linear.app",
     "LINEAR_AUTHORIZATION_ORIGIN": "https://linear.app",
-    "CLOUDFLARE_API_ORIGIN": "https://api.cloudflare.com/client/v4"
+    "CLOUDFLARE_API_ORIGIN": "https://api.cloudflare.com/client/v4",
+    "CLOUDFLARE_AUTHORIZATION_ORIGIN": "https://dash.cloudflare.com"
   },
   "assets": { "directory": "./public" },
   "secrets": {
@@ -25,13 +26,14 @@
       "GITHUB_CLIENT_ID",
       "GITHUB_CLIENT_SECRET",
       "GITHUB_WEBHOOK_SECRET",
-      "REALMROOT_APPLICATION_CLIENT_ID",
-      "REALMROOT_APPLICATION_CLIENT_SECRET",
-      "REALMROOT_GITHUB_RESOURCE_SERVER_ID",
       "LINEAR_CLIENT_ID",
       "LINEAR_CLIENT_SECRET",
       "LINEAR_CREDENTIAL_ENCRYPTION_KEY",
-      "LINEAR_WEBHOOK_SECRET"
+      "LINEAR_WEBHOOK_SECRET",
+      "ADAPTER_OAUTH_SIGNING_PRIVATE_JWK",
+      "CLOUDFLARE_CLIENT_ID",
+      "CLOUDFLARE_CLIENT_SECRET",
+      "CLOUDFLARE_CREDENTIAL_ENCRYPTION_KEY"
     ]
   },
   "d1_databases": [

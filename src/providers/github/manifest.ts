@@ -9,7 +9,7 @@ export function githubManifest(permissions: GitHubPermissions) {
     provider: 'github',
     status: 'alpha',
     identity: {
-      level: 'brokered',
+      level: 'provider-delegated',
       visibleInProduct: true,
       visibleInAuditLog: true,
       attribution: 'content-injection',
@@ -29,7 +29,7 @@ export function githubManifest(permissions: GitHubPermissions) {
       openapi: '/github/openapi.json',
       transformations: githubAttributionTransformations,
     },
-    revocationSignals: ['realmroot-signed-broker-revocation', 'token-rejection'],
+    revocationSignals: ['oauth-revocation', 'github-installation-webhook', 'token-rejection'],
     nativeReadinessGaps: ['ACTOR-NATIVE', 'AGENT-DISPLAY', 'DPOP', 'TOKEN-EXCHANGE'],
     retirementCondition:
       'GitHub authenticates a stable external Agent, authorizes selected repositories and operations, and records that Agent as the native actor.',

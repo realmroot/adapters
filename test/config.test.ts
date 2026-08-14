@@ -14,9 +14,6 @@ describe('adapter Worker configuration', () => {
       GITHUB_APP_ID: '123',
       GITHUB_PRIVATE_KEY: 'private-key',
       GITHUB_WEBHOOK_SECRET: 'github-webhook-secret-with-32-characters',
-      REALMROOT_APPLICATION_CLIENT_ID: 'realmroot-client',
-      REALMROOT_APPLICATION_CLIENT_SECRET: 'realmroot-secret',
-      REALMROOT_GITHUB_RESOURCE_SERVER_ID: 'res_github',
       LINEAR_API_ORIGIN: 'https://api.linear.example/',
       LINEAR_AUTHORIZATION_ORIGIN: 'https://linear.example/',
       LINEAR_CLIENT_ID: 'linear-client',
@@ -38,9 +35,6 @@ describe('adapter Worker configuration', () => {
       githubAppId: '123',
       githubPrivateKey: 'private-key',
       githubWebhookSecret: 'github-webhook-secret-with-32-characters',
-      realmrootApplicationClientId: 'realmroot-client',
-      realmrootApplicationClientSecret: 'realmroot-secret',
-      realmrootGitHubResourceServerId: 'res_github',
     })
     expect(loadLinearConfig(environment, config)).toMatchObject({
       linearApiOrigin: 'https://api.linear.example',
@@ -56,13 +50,12 @@ describe('adapter Worker configuration', () => {
     expect(() => loadConfig({}, 'https://adapter.example/health')).toThrow()
   })
 
-  it('rejects short webhook secrets and partial Realmroot Application configuration', () => {
+  it('rejects short webhook secrets', () => {
     const base = {
       REALMROOT_ISSUER: 'https://local.realmroot.dev/api/auth',
       REALMROOT_JWKS_URL: 'https://local.realmroot.dev/api/auth/jwks',
     }
     const config = loadConfig(base, 'https://adapter.example/health')
     expect(() => loadGitHubConfig({ ...base, GITHUB_WEBHOOK_SECRET: 'short' }, config)).toThrow()
-    expect(() => loadGitHubConfig({ ...base, REALMROOT_APPLICATION_CLIENT_ID: 'client' }, config)).toThrow()
   })
 })

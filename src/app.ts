@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import type { AdapterEnv, AdapterModule } from './core/adapter.js'
+import { OAuthProtocolError } from './core/external-authorization-server.js'
 import { badRequest, HttpProblem } from './core/problem.js'
 
 export function createApp(adapters: readonly AdapterModule[]) {
@@ -39,6 +40,10 @@ export function createApp(adapters: readonly AdapterModule[]) {
     ),
   )
   app.onError((error, c) => {
+    if (error instanceof OAuthProtocolError) {
+      c.set('failure', { type: `urn:ietf:params:oauth:error:${error.code}` })
+      return c.json({ error: error.code, error_description: error.message }, error.status as 400)
+    }
     const problem = normalizeProblem(error)
     c.set('failure', {
       type: problem.type,

@@ -115,7 +115,7 @@ function principal(scopes: string[]): AgentPrincipal {
     actor: { issuer: 'https://id.example/api/auth', subject: 'agent-1', profile: 'ai_agent' },
     scopes: new Set(scopes),
     connectionId: 'connection-1',
-    authorizationDetails: [{ type: 'linear_workspace', workspace_id: 'workspace-1' }],
+    authorizationDetails: [],
   }
 }
 

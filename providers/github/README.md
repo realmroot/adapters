@@ -2,7 +2,7 @@
 
 Status: **alpha implementation**
 
-Identity level: **brokered**
+Identity level: **provider-delegated application actor**
 
 ## Actor semantics
 
@@ -28,9 +28,9 @@ one Realmroot owner + GitHub provider
         repository
 ```
 
-The current Worker implements this brokered account-connection flow. The
-installation is a concrete authorization context signed into target tokens,
-not a Resource Server URL or caller-selected path parameter.
+The current Worker exposes this through its standard external OAuth server.
+The installation is a concrete RFC 9396 authorization detail signed into target
+tokens, not a Resource Server URL or caller-selected path parameter.
 
 ## Initial operations
 
@@ -40,17 +40,13 @@ not a Resource Server URL or caller-selected path parameter.
 The current executable slice supports installation repository discovery, issue
 creation, and webhook-driven installation lifecycle invalidation. Pull
 requests, comments, reviews, and delegated user-token operations remain roadmap
-work. Realmroot-signed Provider Connection revocation is implemented.
+work. Standard OAuth revocation is implemented.
 
 GitHub sends lifecycle deliveries to `/github/webhooks`. The adapter verifies
-`X-Hub-Signature-256`, durably deduplicates `X-GitHub-Delivery`, updates only
-GitHub-private installation context, and translates supported actions into
-Realmroot's provider-agnostic Connection Events. Unrelated event families are
-ignored. Selected-repository membership remains in the GitHub-private schema;
-generic Connection Events carry complete opaque authorization details so
-Realmroot can revoke grants without adding GitHub fields to its core domain.
-Each accepted context change also carries a provider-agnostic monotonic
-connection revision so Realmroot can reject reversed same-time delivery.
+`X-Hub-Signature-256`, durably deduplicates `X-GitHub-Delivery`, and updates
+GitHub-private installation authority. Unrelated event families are ignored.
+Realmroot does not receive GitHub lifecycle events or interpret GitHub fields;
+future exchanges fail as soon as the Adapter observes removed authority.
 
 ## Initial credential modes
 
@@ -64,7 +60,8 @@ Provider credentials remain adapter-owned and are never returned to the Agent.
 
 Every write is correlated with the Realmroot Agent, approved repository and
 scopes, GitHub installation, real GitHub actor, provider request, and resulting
-GitHub URL. The adapter declares brokered identity in discovery metadata.
+GitHub URL. The adapter declares provider-delegated identity in discovery
+metadata.
 
 ## Known limitation
 
@@ -112,10 +109,9 @@ mean GitHub implements that capability natively.
 | `JWT-ACCESS-TOKEN` | 🟨 | GitHub installation access tokens do not expose the required RFC 9068 claims to the Resource Server. |
 | `DPOP` | 🟨 | GitHub API tokens are Bearer credentials; the adapter will require DPoP on its Agent-facing boundary. |
 | `JWK-THUMBPRINT` | 🟨 | The adapter owns the inbound `cnf.jkt` binding. |
-| `RICH-AUTHORIZATION` | 🟨 | The adapter carries `github_installation` authorization details through Realmroot grants and tokens; GitHub represents that boundary with App installations rather than RFC 9396. |
-| `BROKERED-ACCOUNT-CONNECTION` | 🟨 | The adapter implements the Realmroot extension and keeps GitHub OAuth and installation credentials within its Worker boundary; GitHub does not implement the exchange. |
+| `RICH-AUTHORIZATION` | 🟨 | The adapter carries `https://adapters.realmroot.dev/authorization-details/github-installation` authorization details through Realmroot grants and tokens; GitHub represents that boundary with App installations rather than RFC 9396. |
 | `PUSHED-AUTHORIZATION` | ➖ | PAR is conditional on RFC 9396 use. |
-| `AUTHORIZATION-CATALOG` | ➖ | The RFC 9396 catalog extension is not used; ordinary adapter Resource discovery still enumerates installations and repositories. |
+| `AUTHORIZATION-CATALOG` | ✅ | The Adapter advertises the versioned authorization-detail catalog and returns installation labels separately from stable authorization details. |
 | `TOKEN-REVOCATION` | 🟨 | GitHub exposes provider-specific token and installation lifecycle operations rather than the profile's RFC 7009 contract. |
 | `LIFECYCLE-SIGNALS` | ✅ | GitHub App installation and webhook lifecycle can signal installation, permission, repository-selection, and revocation changes. |
 
