@@ -152,7 +152,7 @@ export function createGitHubAdapter(
         const createToken = await provider.installationToken({
           installationId: installation.installationId,
           permissions: scopesToPermissions(new Set(['pull_requests:write']), available),
-          repositories: [repository as string],
+          ...repositoryRestriction(installation, repository as string),
         })
         const response = await createGitHubPullRequestWithRest({
           provider,
@@ -198,7 +198,7 @@ export function createGitHubAdapter(
         const commentToken = await provider.installationToken({
           installationId: installation.installationId,
           permissions: scopesToPermissions(new Set([commentScope]), available),
-          repositories: [repository as string],
+          ...repositoryRestriction(installation, repository as string),
         })
         const response = await createGitHubCommentWithRest({
           provider,
@@ -241,7 +241,7 @@ export function createGitHubAdapter(
         const mergeToken = await provider.installationToken({
           installationId: installation.installationId,
           permissions: scopesToPermissions(new Set(['contents:write']), available),
-          repositories: [repository as string],
+          ...repositoryRestriction(installation, repository as string),
         })
         const response = await mergeGitHubPullRequestWithRest({
           provider,
@@ -297,7 +297,7 @@ export function createGitHubAdapter(
       const token = await provider.installationToken({
         installationId: installation.installationId,
         permissions,
-        repositories: [repository as string],
+        ...repositoryRestriction(installation, repository as string),
       })
       const response = await provider.request(
         new Request(target.url, {
@@ -341,7 +341,7 @@ export function createGitHubAdapter(
       const token = await provider.installationToken({
         installationId: installation.installationId,
         permissions,
-        ...(repository ? { repositories: [repository] } : {}),
+        ...(repository ? repositoryRestriction(installation, repository) : {}),
       })
       const upstreamRequest = new Request(upstream, {
         method: c.req.method,
@@ -487,6 +487,10 @@ function repositoryTarget(path: string, installation: GitHubAuthorizationContext
     throw forbidden('The repository is outside the selected GitHub installation authority.')
   }
   return repository
+}
+
+function repositoryRestriction(installation: GitHubAuthorizationContext, repository: string) {
+  return installation.repositorySelection === 'selected' ? { repositories: [repository] } : {}
 }
 
 function installationId(value: string) {

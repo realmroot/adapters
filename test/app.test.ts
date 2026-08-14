@@ -196,7 +196,6 @@ describe('GitHub adapter contract', () => {
     expect(provider.installationToken).toHaveBeenNthCalledWith(2, {
       installationId: 42,
       permissions: { pull_requests: 'write' },
-      repositories: ['example'],
     })
   })
 
@@ -255,7 +254,6 @@ describe('GitHub adapter contract', () => {
     expect(provider.installationToken).toHaveBeenNthCalledWith(2, {
       installationId: 42,
       permissions: { issues: 'write' },
-      repositories: ['example'],
     })
   })
 
@@ -300,7 +298,6 @@ describe('GitHub adapter contract', () => {
     expect(provider.installationToken).toHaveBeenNthCalledWith(2, {
       installationId: 42,
       permissions: { contents: 'write' },
-      repositories: ['example'],
     })
   })
 
@@ -336,7 +333,6 @@ describe('GitHub adapter contract', () => {
     expect(provider.installationToken).toHaveBeenLastCalledWith({
       installationId: 42,
       permissions: { contents: 'read' },
-      repositories: ['example'],
     })
     const pushResponse = await app.request('/github/git/realmroot/example.git/git-receive-pack', {
       method: 'POST',
@@ -346,7 +342,6 @@ describe('GitHub adapter contract', () => {
     expect(provider.installationToken).toHaveBeenLastCalledWith({
       installationId: 42,
       permissions: { contents: 'write', workflows: 'write' },
-      repositories: ['example'],
     })
   })
 
@@ -435,7 +430,6 @@ describe('GitHub adapter contract', () => {
     expect(provider.installationToken).toHaveBeenCalledWith({
       installationId: 42,
       permissions: { issues: 'write' },
-      repositories: ['example'],
     })
   })
 
