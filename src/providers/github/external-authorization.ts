@@ -197,13 +197,16 @@ export function createGitHubExternalAuthorization(input: {
         }
       }
       const contexts = await input.connections.upsertExternalAuthorization(user, installations)
+      const grantedContexts = expectedInstallationId
+        ? contexts.filter((context) => context.installationId === expectedInstallationId)
+        : contexts
       return {
         type: 'complete',
         grant: {
           subject: String(user.id),
           displayName: user.name ?? user.login,
           scopes: intent.scopes,
-          authorizationDetails: contexts.map(githubInstallationAuthorizationDetail),
+          authorizationDetails: grantedContexts.map(githubInstallationAuthorizationDetail),
         },
       }
     },
@@ -231,7 +234,7 @@ export function createGitHubExternalAuthorization(input: {
           subject,
           displayName,
           scopes: intent.scopes,
-          authorizationDetails: active.contexts.map(githubInstallationAuthorizationDetail),
+          authorizationDetails: [githubInstallationAuthorizationDetail(selected)],
         },
       }
     },

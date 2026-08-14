@@ -183,6 +183,50 @@ describe('GitHub external authorization', () => {
     })
   })
 
+  it('grants only the concrete installation requested by the provider connection', async () => {
+    const selected = githubInstallation({ administration: 'write' })
+    const other = {
+      ...selected,
+      id: 702,
+      htmlUrl: 'https://github.com/settings/installations/702',
+      accountLogin: 'controller',
+      targetType: 'User',
+    }
+    const external = createGitHubExternalAuthorization({
+      origin: 'https://adapter.example',
+      connection: githubConnection([selected, other]),
+      connections: {
+        upsertExternalAuthorization: vi.fn(async () => [connectionContext(selected), connectionContext(other)]),
+      } as unknown as D1GitHubConnections,
+      oauthStore: {} as D1ExternalOAuthStore,
+      scopes: ['administration:read'],
+    })
+
+    await expect(
+      external.authorization.complete({
+        callbackUrl: 'https://adapter.example/github/oauth/callback?code=provider-code',
+        intent: {
+          ...intent(),
+          scopes: ['administration:read', 'openid'],
+          authorizationDetails: [
+            { type: GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE, installation_id: String(selected.id) },
+          ],
+        },
+        nextProviderState: () => 'next-state',
+      }),
+    ).resolves.toMatchObject({
+      type: 'complete',
+      grant: {
+        authorizationDetails: [
+          expect.objectContaining({
+            type: GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE,
+            installation_id: String(selected.id),
+          }),
+        ],
+      },
+    })
+  })
+
   it('[spec: github-adapter/github-installation-permission-upgrade] continues through a target installation permission update', async () => {
     const installation = githubInstallation({ administration: 'read' })
     const connections = { upsertExternalAuthorization: vi.fn() }
@@ -224,12 +268,19 @@ describe('GitHub external authorization', () => {
   it('[spec: github-adapter/github-installation-permission-upgrade] resumes only after the target installation accepts the permission', async () => {
     const before = githubInstallation({ administration: 'read' })
     const after = githubInstallation({ administration: 'write' })
+    const other = {
+      ...after,
+      id: 702,
+      htmlUrl: 'https://github.com/settings/installations/702',
+      accountLogin: 'controller',
+      targetType: 'User',
+    }
     const externalAuthorization = vi
       .fn()
       .mockResolvedValueOnce({ scopes: ['administration:read'], contexts: [connectionContext(before)] })
       .mockResolvedValueOnce({
         scopes: ['administration:read', 'administration:write'],
-        contexts: [connectionContext(after)],
+        contexts: [connectionContext(after), connectionContext(other)],
       })
     const external = createGitHubExternalAuthorization({
       origin: 'https://adapter.example',
