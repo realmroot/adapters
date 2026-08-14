@@ -199,6 +199,41 @@ describe('GitHub adapter contract', () => {
     })
   })
 
+  it('[spec: github-adapter/github-cross-installation-boundary] rejects pull requests outside the selected installation', async () => {
+    const provider = fakeProvider()
+    provider.request = vi.fn(async () => Response.json({ data: { node: { nameWithOwner: 'upstream/example' } } }))
+    const response = await testApp({
+      provider,
+      authenticator: {
+        authenticate: vi.fn(async () => ({
+          ...principal,
+          scopes: new Set(['metadata:read', 'pull_requests:write']),
+        })),
+      },
+    }).request('/github/graphql', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify({
+        query:
+          'mutation PullRequestCreate($input: CreatePullRequestInput!) { createPullRequest(input: $input) { pullRequest { id url } } }',
+        variables: {
+          input: {
+            repositoryId: 'upstream-repository',
+            baseRefName: 'main',
+            headRefName: 'realmroot:codex/fix',
+            title: 'Fix adapter',
+          },
+        },
+      }),
+    })
+
+    expect(response.status).toBe(403)
+    await expect(response.json()).resolves.toMatchObject({
+      detail: 'The target repository must belong to the selected GitHub App installation.',
+    })
+    expect(provider.installationToken).toHaveBeenCalledTimes(1)
+  })
+
   it('[spec: github-adapter/github-graphql-proxy] preserves the GitHub CLI addComment mutation', async () => {
     const provider = fakeProvider()
     provider.request = vi
