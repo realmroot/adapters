@@ -140,6 +140,14 @@ Feature: GitHub App adapter
     And unsupported createPullRequest, addComment, and mergePullRequest mutations use GitHub's installation-compatible REST operations
     And the GitHub credential is never returned
 
+  @journey:github-cross-installation-boundary @entrypoint:http
+  Scenario: GitHub operations stay inside one selected App installation
+    Given an Agent selected a GitHub App installation
+    When GitHub CLI tries to create a pull request in a repository outside that installation
+    Then the adapter rejects the operation before requesting a write credential
+    And explains that the target repository must belong to the selected App installation
+    But it does not request broader user credentials or another OAuth application
+
   @journey:github-git-transport @entrypoint:http
   Scenario: Native Git uses the GitHub installation through the adapter
     Given the Agent has approved repository contents authority

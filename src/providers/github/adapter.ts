@@ -475,7 +475,7 @@ function repositoryTarget(path: string, installation: GitHubAuthorizationContext
   if (!match) return
   const owner = decodeURIComponent(match[1] as string)
   if (owner.toLowerCase() !== installation.accountLogin.toLowerCase()) {
-    throw forbidden('The repository owner is outside the selected GitHub installation.')
+    throw forbidden('The target repository must belong to the selected GitHub App installation.')
   }
   const repository = decodeURIComponent(match[2] as string)
   if (
