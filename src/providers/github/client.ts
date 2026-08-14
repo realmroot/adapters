@@ -8,7 +8,24 @@ const githubApiVersion = '2026-03-10'
 const userAgent = 'realmroot-adapters/0.1'
 const permissionsSchema = z.record(z.string(), z.enum(['read', 'write', 'admin']))
 const installationTokenSchema = z.object({ token: z.string().min(1), expires_at: z.iso.datetime() })
-const oauthTokenSchema = z.object({ access_token: z.string().min(1) })
+const oauthTokenSchema = z
+  .object({
+    access_token: z.string().min(1),
+    expires_in: z.number().int().positive().optional(),
+    refresh_token: z.string().min(1).optional(),
+    refresh_token_expires_in: z.number().int().positive().optional(),
+  })
+  .superRefine((value, context) => {
+    const expiring = value.expires_in !== undefined || value.refresh_token !== undefined
+    if (
+      expiring &&
+      (value.expires_in === undefined ||
+        value.refresh_token === undefined ||
+        value.refresh_token_expires_in === undefined)
+    ) {
+      context.addIssue({ code: 'custom', message: 'GitHub returned an incomplete expiring user credential.' })
+    }
+  })
 const userSchema = z.object({ id: z.number().int().positive(), login: z.string().min(1), name: z.string().nullable() })
 const userInstallationsSchema = z.object({
   installations: z.array(
@@ -75,8 +92,8 @@ export function createGitHubProvider(input: GitHubClientInput): GitHubProvider {
       return installationTokenSchema.parse(await response.json()).token
     },
 
-    request(request, installationToken, mode = 'api') {
-      return githubRequest(request, installationToken, false, mode)
+    request(request, token, mode = 'api') {
+      return githubRequest(request, token, false, mode)
     },
   }
 
@@ -114,6 +131,7 @@ export function createGitHubConnectionProvider(
 ): GitHubConnectionProvider {
   const fetcher = input.fetcher ?? fetch
   const appJwt = createAppJwt(input)
+  const now = input.now ?? Date.now
 
   return {
     authorizationUrl(state) {
@@ -124,19 +142,10 @@ export function createGitHubConnectionProvider(
       return url.toString()
     },
     async exchangeUserCode(code) {
-      const response = await fetcher('https://github.com/login/oauth/access_token', {
-        method: 'POST',
-        headers: { accept: 'application/json', 'content-type': 'application/json', 'user-agent': userAgent },
-        body: JSON.stringify({
-          client_id: input.clientId,
-          client_secret: input.clientSecret,
-          code,
-          redirect_uri: input.redirectUri,
-        }),
-        signal: AbortSignal.timeout(10_000),
-      })
-      if (!response.ok) throw failedDependency(`GitHub rejected OAuth authorization with ${response.status}.`)
-      return oauthTokenSchema.parse(await response.json()).access_token
+      return tokenRequest({ code, redirect_uri: input.redirectUri })
+    },
+    async refreshUserToken(refreshToken) {
+      return tokenRequest({ grant_type: 'refresh_token', refresh_token: refreshToken })
     },
     async getUser(token) {
       const response = await userRequest('/user', token)
@@ -171,6 +180,28 @@ export function createGitHubConnectionProvider(
     permissionUpdateUrl(installation) {
       return `${installation.htmlUrl}/permissions/update`
     },
+  }
+
+  async function tokenRequest(parameters: Record<string, string>) {
+    const response = await fetcher('https://github.com/login/oauth/access_token', {
+      method: 'POST',
+      headers: { accept: 'application/json', 'content-type': 'application/json', 'user-agent': userAgent },
+      body: JSON.stringify({
+        client_id: input.clientId,
+        client_secret: input.clientSecret,
+        ...parameters,
+      }),
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (!response.ok) throw failedDependency(`GitHub rejected OAuth authorization with ${response.status}.`)
+    const token = oauthTokenSchema.parse(await response.json())
+    return {
+      accessToken: token.access_token,
+      refreshToken: token.refresh_token ?? null,
+      expiresAt: token.expires_in === undefined ? null : now() + token.expires_in * 1000,
+      refreshTokenExpiresAt:
+        token.refresh_token_expires_in === undefined ? null : now() + token.refresh_token_expires_in * 1000,
+    }
   }
 
   async function listInstallationRepositories(token: string, installationId: number) {

@@ -210,9 +210,10 @@ Resource Servers and never appear in the audience URL:
 }
 ```
 
-Set `GITHUB_APP_ID`, `GITHUB_PRIVATE_KEY`, `GITHUB_CLIENT_ID`, and
-`GITHUB_CLIENT_SECRET` in the ignored `.dev.vars` file. Both GitHub-downloaded
-PKCS#1 keys and unencrypted PKCS#8 PEM keys are accepted.
+Set `GITHUB_APP_ID`, `GITHUB_PRIVATE_KEY`, `GITHUB_CLIENT_ID`,
+`GITHUB_CLIENT_SECRET`, and a base64-encoded 32-byte
+`GITHUB_CREDENTIAL_ENCRYPTION_KEY` in the ignored `.dev.vars` file. Both
+GitHub-downloaded PKCS#1 keys and unencrypted PKCS#8 PEM keys are accepted.
 
 Configure the GitHub App callbacks as:
 
@@ -251,6 +252,7 @@ pnpm exec wrangler secret put GITHUB_APP_ID
 pnpm exec wrangler secret put GITHUB_PRIVATE_KEY < github-app.private-key.pem
 pnpm exec wrangler secret put GITHUB_CLIENT_ID
 pnpm exec wrangler secret put GITHUB_CLIENT_SECRET
+pnpm exec wrangler secret put GITHUB_CREDENTIAL_ENCRYPTION_KEY
 pnpm exec wrangler secret put GITHUB_WEBHOOK_SECRET
 ```
 
@@ -276,6 +278,13 @@ discovery publishes the subset GitHub documents for installation access tokens,
 preserving alternative permission sets as OR and each set's required permissions
 as AND. For every request, the adapter resolves the original method and path and
 mints only one least-privileged permission set satisfied by the Realmroot token.
+Installation credentials remain the default for Git and API operations. A
+pull-request creation uses the connected user's credential to resolve GitHub's
+opaque repository ID. The actual write still uses the installation credential
+for an installed target. A cross-fork write is the narrow exception: after
+verifying that its head belongs to the selected installation account and
+repository boundary, the adapter uses the encrypted delegated credential to
+create the pull request against the external upstream.
 
 GitHub requires both `contents:write` and `workflows:write` when the Contents API
 writes under `.github/workflows`; the adapter enforces that condition from the

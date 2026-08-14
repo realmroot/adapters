@@ -98,6 +98,15 @@ connection identity, and the resource authorization record. Provider
 credentials never cross the Agent boundary. The Worker runtime uses Web Crypto
 and Fetch APIs without a Node process or filesystem.
 
+Provider credential selection is operation-specific and least-privileged.
+GitHub uses installation credentials for repository reads, ordinary writes,
+Git transport, comments, and merges. Pull-request creation uses an encrypted
+delegated-user credential to resolve GitHub's opaque target repository ID. The
+write keeps installation authority for an installed target, and uses delegated
+user authority only when GitHub requires it for an approved installed fork to
+an external upstream; the Adapter verifies the head installation boundary
+before that credential is selected.
+
 ## Identity model
 
 Every operation records two identities:

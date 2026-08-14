@@ -37,10 +37,10 @@ tokens, not a Resource Server URL or caller-selected path parameter.
 - discover connected installations and selected repositories;
 - create an issue with Agent attribution.
 
-The current executable slice supports installation repository discovery, issue
-creation, and webhook-driven installation lifecycle invalidation. Pull
-requests, comments, reviews, and delegated user-token operations remain roadmap
-work. Standard OAuth revocation is implemented.
+The current executable slice supports installation repository discovery,
+attributed issue and pull-request operations, cross-fork pull-request creation,
+and webhook-driven installation lifecycle invalidation. Standard OAuth
+revocation is implemented.
 
 GitHub sends lifecycle deliveries to `/github/webhooks`. The adapter verifies
 `X-Hub-Signature-256`, durably deduplicates `X-GitHub-Delivery`, and updates
@@ -51,10 +51,14 @@ future exchanges fail as soon as the Adapter observes removed authority.
 ## Initial credential modes
 
 - installation access token for App-attributed automation;
-- GitHub App user access token only while authorizing and verifying a
-  Connection; it is not returned to Realmroot or retained as Agent authority.
+- encrypted GitHub App user access and refresh credentials for resolving the
+  target of a pull-request creation and for the cross-fork write that GitHub
+  cannot perform with the selected installation.
 
-Provider credentials remain adapter-owned and are never returned to the Agent.
+The delegated-user credential is selected only after the Adapter verifies that
+the pull-request head belongs to the approved installation account and
+repository boundary. Provider credentials remain adapter-owned and are never
+returned to Realmroot or the Agent.
 
 ## Acceptance outcome
 

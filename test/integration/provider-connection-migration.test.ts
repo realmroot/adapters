@@ -10,6 +10,8 @@ describe('Provider connection migration', () => {
     const linearConnections = env.TEST_MIGRATIONS.slice(5, 6)
     const webhookLifecycle = env.TEST_MIGRATIONS.slice(6, 7)
     const externalAuthorizationServer = env.TEST_MIGRATIONS.slice(7, 8)
+    const linearAuthorizationCleanup = env.TEST_MIGRATIONS.slice(8, 9)
+    const githubDelegatedCredentials = env.TEST_MIGRATIONS.slice(9, 10)
     expect(legacy).toHaveLength(2)
     expect(lifecycle).toHaveLength(1)
     expect(installationOwnership).toHaveLength(1)
@@ -17,6 +19,8 @@ describe('Provider connection migration', () => {
     expect(linearConnections).toHaveLength(1)
     expect(webhookLifecycle).toHaveLength(1)
     expect(externalAuthorizationServer).toHaveLength(1)
+    expect(linearAuthorizationCleanup).toHaveLength(1)
+    expect(githubDelegatedCredentials).toHaveLength(1)
     await applyD1Migrations(env.MIGRATION_DB, legacy)
     const now = Date.now()
     await env.MIGRATION_DB.batch([
@@ -177,5 +181,40 @@ describe('Provider connection migration', () => {
         "SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name IN ('external_oauth_client', 'external_oauth_intent', 'external_oauth_code', 'external_oauth_refresh', 'external_oauth_access', 'cloudflare_external_credential')",
       ).first(),
     ).resolves.toEqual({ count: 6 })
+
+    await env.MIGRATION_DB.batch([
+      env.MIGRATION_DB.prepare(
+        `INSERT INTO external_oauth_client
+          (client_id, provider_id, client_secret_hash, redirect_uris_json, jwks_uri, created_at)
+         VALUES (?, 'github', ?, '[]', ?, ?)`,
+      ).bind('github-client', 'hash', 'https://id.example/jwks', now),
+      env.MIGRATION_DB.prepare(
+        `INSERT INTO external_oauth_refresh
+          (token_hash, provider_id, client_id, subject, display_name, scope_json,
+           authorization_details_json, created_at, updated_at)
+         VALUES (?, 'github', ?, ?, ?, '[]', '[]', ?, ?)`,
+      ).bind('refresh-hash', 'github-client', '7', 'Controller', now, now),
+    ])
+    await applyD1Migrations(env.MIGRATION_DB, linearAuthorizationCleanup)
+    await applyD1Migrations(env.MIGRATION_DB, githubDelegatedCredentials)
+
+    await expect(
+      env.MIGRATION_DB.prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'github_user_credential'",
+      ).first(),
+    ).resolves.toEqual({ name: 'github_user_credential' })
+    await expect(
+      env.MIGRATION_DB.prepare(
+        "SELECT revoked_at IS NOT NULL AS revoked FROM external_oauth_refresh WHERE provider_id = 'github'",
+      ).first(),
+    ).resolves.toEqual({ revoked: 1 })
+    await expect(
+      env.MIGRATION_DB.prepare(
+        "SELECT COUNT(*) AS count FROM github_connection_binding WHERE status = 'active'",
+      ).first(),
+    ).resolves.toEqual({ count: 0 })
+    await expect(
+      env.MIGRATION_DB.prepare('SELECT COUNT(*) AS count FROM github_connection_context').first(),
+    ).resolves.toEqual({ count: 0 })
   })
 })

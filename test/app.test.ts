@@ -140,7 +140,7 @@ describe('GitHub adapter contract', () => {
       .fn()
       .mockImplementationOnce(async (request: Request, token: string) => {
         expect(request.url).toBe('https://api.github.com/graphql')
-        expect(token).toBe('installation-secret')
+        expect(token).toBe('delegated-user-token')
         await expect(request.json()).resolves.toMatchObject({ variables: { id: 'repository-1' } })
         return Response.json({ data: { node: { nameWithOwner: 'realmroot/example' } } })
       })
@@ -189,14 +189,96 @@ describe('GitHub adapter contract', () => {
     await expect(response.json()).resolves.toMatchObject({
       data: { createPullRequest: { pullRequest: { url: 'https://github.test/pull/1' } } },
     })
-    expect(provider.installationToken).toHaveBeenNthCalledWith(1, {
-      installationId: 42,
-      permissions: { metadata: 'read' },
-    })
-    expect(provider.installationToken).toHaveBeenNthCalledWith(2, {
+    expect(provider.installationToken).toHaveBeenCalledTimes(1)
+    expect(provider.installationToken).toHaveBeenCalledWith({
       installationId: 42,
       permissions: { pull_requests: 'write' },
     })
+  })
+
+  it('[spec: github-adapter/github-cross-fork-pull-request] creates a cross-fork pull request as the connected user', async () => {
+    const provider = fakeProvider()
+    provider.request = vi
+      .fn()
+      .mockImplementationOnce(async (request: Request, token: string) => {
+        expect(request.url).toBe('https://api.github.com/graphql')
+        expect(token).toBe('delegated-user-token')
+        return Response.json({ data: { node: { nameWithOwner: 'upstream/example' } } })
+      })
+      .mockImplementationOnce(async (request: Request, token: string) => {
+        expect(request.url).toBe('https://api.github.com/repos/upstream/example/pulls')
+        expect(token).toBe('delegated-user-token')
+        await expect(request.json()).resolves.toMatchObject({ head: 'realmroot:codex/fix', base: 'main' })
+        return Response.json({ node_id: 'pull-request-2', html_url: 'https://github.test/pull/2' }, { status: 201 })
+      })
+    const audit = vi.fn(async () => {})
+    const response = await testApp({
+      provider,
+      audit,
+      authenticator: {
+        authenticate: vi.fn(async () => ({
+          ...principal,
+          scopes: new Set(['metadata:read', 'pull_requests:write']),
+        })),
+      },
+    }).request('/github/graphql', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify({
+        query:
+          'mutation PullRequestCreate($input: CreatePullRequestInput!) { createPullRequest(input: $input) { pullRequest { id url } } }',
+        variables: {
+          input: {
+            repositoryId: 'upstream-repository',
+            baseRefName: 'main',
+            headRefName: 'realmroot:codex/fix',
+            title: 'Fix adapter',
+          },
+        },
+      }),
+    })
+
+    expect(response.status).toBe(200)
+    expect(provider.installationToken).not.toHaveBeenCalled()
+    expect(audit).toHaveBeenCalledWith(
+      expect.objectContaining({ providerActor: { type: 'github_user', id: principal.subject } }),
+    )
+  })
+
+  it('[spec: github-adapter/github-cross-fork-pull-request] rejects a head outside the selected installation boundary', async () => {
+    const provider = fakeProvider()
+    provider.request = vi.fn(async () => Response.json({ data: { node: { nameWithOwner: 'upstream/example' } } }))
+    const authenticate = vi.fn(async () => ({
+      ...principal,
+      scopes: new Set(['metadata:read', 'pull_requests:write']),
+    }))
+
+    const wrongOwner = await testApp({ provider, authenticator: { authenticate } }).request(
+      '/github/graphql',
+      createPullRequestRequest('attacker:codex/fix'),
+    )
+    expect(wrongOwner.status).toBe(403)
+
+    const selectedRepositoryConnection = fakeConnections()
+    selectedRepositoryConnection.externalAuthorization = vi.fn(async () =>
+      authorizationWithContexts([
+        {
+          installationId: 42,
+          accountLogin: 'realmroot',
+          targetType: 'Organization',
+          scopes: ['metadata:read', 'pull_requests:write'],
+          repositorySelection: 'selected',
+          repositories: [{ id: 1, fullName: 'realmroot/another-repository' }],
+        },
+      ]),
+    )
+    const unselectedRepository = await testApp({
+      provider,
+      connections: selectedRepositoryConnection,
+      authenticator: { authenticate },
+    }).request('/github/graphql', createPullRequestRequest('realmroot:codex/fix'))
+    expect(unselectedRepository.status).toBe(403)
+    expect(provider.request).toHaveBeenCalledTimes(2)
   })
 
   it('[spec: github-adapter/github-graphql-proxy] preserves the GitHub CLI addComment mutation', async () => {
@@ -641,6 +723,26 @@ function testApp(
     },
     provider: fakeProvider(),
     connections: fakeConnections(),
+    connectionProvider: {
+      authorizationUrl: vi.fn(),
+      exchangeUserCode: vi.fn(),
+      refreshUserToken: vi.fn(),
+      getUser: vi.fn(),
+      listUserInstallations: vi.fn(),
+      newInstallationUrl: vi.fn(),
+      permissionUpdateUrl: vi.fn(),
+    },
+    userCredentials: {
+      credential: vi.fn(async () => ({
+        subject: principal.subject,
+        accessToken: 'delegated-user-token',
+        refreshToken: 'delegated-refresh-token',
+        expiresAt: Date.now() + 60_000,
+        refreshTokenExpiresAt: Date.now() + 120_000,
+        credentialVersion: 1,
+      })),
+      replace: vi.fn(),
+    } as never,
     audit: vi.fn(async () => {}),
     ...overrides,
   }
@@ -768,5 +870,24 @@ function authorizationWithContexts(
     displayName: 'Controller',
     scopes: [...new Set(contexts.flatMap((context) => context.scopes))],
     contexts,
+  }
+}
+
+function createPullRequestRequest(headRefName: string) {
+  return {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json; charset=utf-8' },
+    body: JSON.stringify({
+      query:
+        'mutation PullRequestCreate($input: CreatePullRequestInput!) { createPullRequest(input: $input) { pullRequest { id url } } }',
+      variables: {
+        input: {
+          repositoryId: 'upstream-repository',
+          baseRefName: 'main',
+          headRefName,
+          title: 'Fix adapter',
+        },
+      },
+    }),
   }
 }

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { D1ExternalOAuthStore, ExternalOAuthIntent } from '../../src/core/external-oauth-store.js'
 import { GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE } from '../../src/providers/github/authorization-details.js'
 import type { D1GitHubConnections } from '../../src/providers/github/connections.js'
+import type { GitHubUserCredentialStore } from '../../src/providers/github/credentials.js'
 import { createGitHubExternalAuthorization } from '../../src/providers/github/external-authorization.js'
 import type { GitHubInstallation } from '../../src/providers/github/types.js'
 
@@ -24,6 +25,7 @@ describe('GitHub external authorization', () => {
       connections: {
         externalAuthorization: vi.fn(async () => ({ scopes: ['metadata:read'], contexts })),
       } as unknown as D1GitHubConnections,
+      credentials: githubCredentials(),
       oauthStore: {} as D1ExternalOAuthStore,
       scopes: ['metadata:read'],
     })
@@ -84,6 +86,7 @@ describe('GitHub external authorization', () => {
           contexts,
         })),
       } as unknown as D1GitHubConnections,
+      credentials: githubCredentials(),
       oauthStore: {} as D1ExternalOAuthStore,
       scopes: ['administration:write', 'metadata:read'],
     })
@@ -120,6 +123,7 @@ describe('GitHub external authorization', () => {
           ],
         })),
       } as unknown as D1GitHubConnections,
+      credentials: githubCredentials(),
       oauthStore: {} as D1ExternalOAuthStore,
       scopes: ['actions:read', 'metadata:read'],
     })
@@ -160,13 +164,15 @@ describe('GitHub external authorization', () => {
       origin: 'https://adapter.example',
       connection: {
         authorizationUrl: vi.fn(() => 'https://github.com/login/oauth/authorize'),
-        exchangeUserCode: vi.fn(async () => 'user-token'),
+        exchangeUserCode: vi.fn(async () => userToken()),
+        refreshUserToken: vi.fn(async () => userToken()),
         getUser: vi.fn(async () => ({ id: 70, login: 'controller', name: 'Controller' })),
         listUserInstallations: vi.fn(async () => [installation]),
         newInstallationUrl: vi.fn(async () => 'https://github.com/apps/example/installations/new'),
         permissionUpdateUrl: vi.fn((installation: GitHubInstallation) => `${installation.htmlUrl}/permissions/update`),
       },
       connections: connections as unknown as D1GitHubConnections,
+      credentials: githubCredentials(),
       oauthStore: {} as D1ExternalOAuthStore,
       scopes: ['metadata:read', 'pull_requests:read', 'pull_requests:write'],
     })
@@ -198,6 +204,7 @@ describe('GitHub external authorization', () => {
       connections: {
         upsertExternalAuthorization: vi.fn(async () => [connectionContext(selected), connectionContext(other)]),
       } as unknown as D1GitHubConnections,
+      credentials: githubCredentials(),
       oauthStore: {} as D1ExternalOAuthStore,
       scopes: ['administration:read'],
     })
@@ -235,10 +242,15 @@ describe('GitHub external authorization', () => {
     const installation = githubInstallation({ administration: 'read' })
     const connections = { upsertExternalAuthorization: vi.fn() }
     const connection = githubConnection([installation])
+    const upsertCredential = vi.fn()
     const external = createGitHubExternalAuthorization({
       origin: 'https://adapter.example',
       connection,
       connections: connections as unknown as D1GitHubConnections,
+      credentials: {
+        upsert: upsertCredential,
+        revoke: vi.fn(),
+      } as unknown as GitHubUserCredentialStore,
       oauthStore: {} as D1ExternalOAuthStore,
       scopes: ['administration:read', 'administration:write'],
     })
@@ -267,6 +279,7 @@ describe('GitHub external authorization', () => {
     })
     expect(connection.newInstallationUrl).not.toHaveBeenCalled()
     expect(connections.upsertExternalAuthorization).not.toHaveBeenCalled()
+    expect(upsertCredential).toHaveBeenCalledWith('70', expect.objectContaining({ accessToken: 'user-token' }))
   })
 
   it('[spec: github-adapter/github-installation-permission-upgrade] resumes only after the target installation accepts the permission', async () => {
@@ -290,6 +303,7 @@ describe('GitHub external authorization', () => {
       origin: 'https://adapter.example',
       connection: githubConnection([before]),
       connections: { externalAuthorization } as unknown as D1GitHubConnections,
+      credentials: githubCredentials(),
       oauthStore: {} as D1ExternalOAuthStore,
       scopes: ['administration:read', 'administration:write'],
     })
@@ -343,6 +357,7 @@ describe('GitHub external authorization', () => {
       origin: 'https://adapter.example',
       connection,
       connections: {} as D1GitHubConnections,
+      credentials: githubCredentials(),
       oauthStore: oauthStore as unknown as D1ExternalOAuthStore,
       scopes: ['administration:write'],
     })
@@ -375,7 +390,8 @@ function githubInstallation(permissions: Record<string, 'read' | 'write'>) {
 function githubConnection(installations: ReturnType<typeof githubInstallation>[]) {
   return {
     authorizationUrl: vi.fn((state: string) => `https://github.com/login/oauth/authorize?state=${state}`),
-    exchangeUserCode: vi.fn(async () => 'user-token'),
+    exchangeUserCode: vi.fn(async () => userToken()),
+    refreshUserToken: vi.fn(async () => userToken()),
     getUser: vi.fn(async () => ({ id: 70, login: 'controller', name: 'Controller' })),
     listUserInstallations: vi.fn(async () => installations),
     newInstallationUrl: vi.fn(
@@ -384,6 +400,22 @@ function githubConnection(installations: ReturnType<typeof githubInstallation>[]
     permissionUpdateUrl: vi.fn(
       (installation: ReturnType<typeof githubInstallation>) => `${installation.htmlUrl}/permissions/update`,
     ),
+  }
+}
+
+function githubCredentials() {
+  return {
+    upsert: vi.fn(),
+    revoke: vi.fn(),
+  } as unknown as GitHubUserCredentialStore
+}
+
+function userToken() {
+  return {
+    accessToken: 'user-token',
+    refreshToken: 'refresh-token',
+    expiresAt: Date.now() + 60_000,
+    refreshTokenExpiresAt: Date.now() + 120_000,
   }
 }
 
