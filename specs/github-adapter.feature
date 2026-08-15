@@ -93,6 +93,7 @@ Feature: GitHub App adapter
     Given an Agent token satisfies one or more permission alternatives for a GitHub REST operation
     When the Agent calls the original GitHub REST path through the adapter
     Then the adapter selects one least-privileged satisfied permission set for that method and path
+    But a metadata-only alternative is a fallback when no satisfied domain permission alternative exists
     And the short-lived GitHub installation credential contains only that selected permission set
     And unrelated scopes in the Agent token are not minted into the GitHub credential
     And slash-delimited Git reference names resolve to their documented operation
