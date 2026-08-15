@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { HttpProblem } from '../../src/core/problem.js'
 import { githubOperationRequirements } from '../../src/providers/github/openapi-paths.js'
-import { resolveGitHubOperationPermissions } from '../../src/providers/github/operation-permissions.js'
+import { authorizeGitHubOperation } from '../../src/providers/github/operation-permissions.js'
 
 describe('GitHub operation permissions', () => {
   it('[spec: github-adapter/github-operation-permissions] generates alternatives and conjunctions from structured docs', () => {
@@ -14,40 +14,40 @@ describe('GitHub operation permissions', () => {
     ])
   })
 
-  it('[spec: github-adapter/github-operation-authority] selects one least-privileged satisfied alternative', () => {
+  it('[spec: github-adapter/github-operation-authority] accepts any satisfied permission alternative', () => {
     expect(
-      resolveGitHubOperationPermissions({
+      authorizeGitHubOperation({
         method: 'PATCH',
         path: '/repos/realmroot/example/issues/42',
         scopes: new Set(['metadata:read', 'pull_requests:write']),
         available: { issues: 'write', metadata: 'read', pull_requests: 'write' },
       }),
-    ).toEqual({ pull_requests: 'write' })
+    ).toBeUndefined()
 
     expect(
-      resolveGitHubOperationPermissions({
+      authorizeGitHubOperation({
         method: 'PATCH',
         path: '/repos/realmroot/example/issues/42',
         scopes: new Set(['issues:write', 'pull_requests:write']),
         available: { issues: 'write', pull_requests: 'write' },
       }),
-    ).toEqual({ issues: 'write' })
+    ).toBeUndefined()
   })
 
-  it('[spec: github-adapter/github-operation-authority] prefers repository-domain authority over the metadata fallback', () => {
+  it('[spec: github-adapter/github-operation-authority] accepts repository-domain authority alongside metadata', () => {
     expect(
-      resolveGitHubOperationPermissions({
+      authorizeGitHubOperation({
         method: 'GET',
         path: '/repos/saltbo/wakatoken/pulls',
         scopes: new Set(['metadata:read', 'pull_requests:write']),
         available: { metadata: 'read', pull_requests: 'write' },
       }),
-    ).toEqual({ pull_requests: 'read' })
+    ).toBeUndefined()
   })
 
   it('[spec: github-adapter/github-native-tool-scope-challenge] reports every available scope alternative', () => {
     try {
-      resolveGitHubOperationPermissions({
+      authorizeGitHubOperation({
         method: 'PATCH',
         path: '/repos/realmroot/example/issues/42',
         scopes: new Set(['metadata:read']),
@@ -64,21 +64,21 @@ describe('GitHub operation permissions', () => {
 
   it('[spec: github-adapter/github-operation-authority] matches slash-delimited Git reference names', () => {
     expect(
-      resolveGitHubOperationPermissions({
+      authorizeGitHubOperation({
         method: 'GET',
         path: '/repos/realmroot/example/git/ref/heads/main',
         scopes: new Set(['contents:read']),
         available: { contents: 'write' },
       }),
-    ).toEqual({ contents: 'read' })
+    ).toBeUndefined()
     expect(
-      resolveGitHubOperationPermissions({
+      authorizeGitHubOperation({
         method: 'DELETE',
         path: '/repos/realmroot/example/git/refs/tags/v1.0.0',
         scopes: new Set(['contents:write']),
         available: { contents: 'write' },
       }),
-    ).toEqual({ contents: 'write' })
+    ).toBeUndefined()
   })
 
   it('[spec: github-adapter/github-operation-permissions] requires every scope in a conjunction', () => {
@@ -88,12 +88,12 @@ describe('GitHub operation permissions', () => {
       available: { administration: 'write', contents: 'write' } as const,
     }
     expect(
-      resolveGitHubOperationPermissions({
+      authorizeGitHubOperation({
         ...input,
         scopes: new Set(['administration:write', 'contents:write']),
       }),
-    ).toEqual({ administration: 'write', contents: 'read' })
-    expect(() => resolveGitHubOperationPermissions({ ...input, scopes: new Set(['administration:write']) })).toThrow(
+    ).toBeUndefined()
+    expect(() => authorizeGitHubOperation({ ...input, scopes: new Set(['administration:write']) })).toThrow(
       'Agent token does not grant',
     )
   })
@@ -104,44 +104,44 @@ describe('GitHub operation permissions', () => {
       available: { contents: 'write', workflows: 'write' } as const,
     }
     expect(
-      resolveGitHubOperationPermissions({
+      authorizeGitHubOperation({
         ...input,
         path: '/repos/realmroot/example/contents/README.md',
         scopes: new Set(['contents:write']),
       }),
-    ).toEqual({ contents: 'write' })
+    ).toBeUndefined()
     expect(
-      resolveGitHubOperationPermissions({
+      authorizeGitHubOperation({
         ...input,
         path: '/repos/realmroot/example/contents/.github/workflows',
         scopes: new Set(['contents:write']),
       }),
-    ).toEqual({ contents: 'write' })
+    ).toBeUndefined()
     expect(() =>
-      resolveGitHubOperationPermissions({
+      authorizeGitHubOperation({
         ...input,
         path: '/repos/realmroot/example/contents/.github/workflows/release.yml',
         scopes: new Set(['contents:write']),
       }),
     ).toThrow('Agent token does not grant')
     expect(
-      resolveGitHubOperationPermissions({
+      authorizeGitHubOperation({
         ...input,
         path: '/repos/realmroot/example/contents/.github%2Fworkflows%2Frelease.yml',
         scopes: new Set(['contents:write', 'workflows:write']),
       }),
-    ).toEqual({ contents: 'write', workflows: 'write' })
+    ).toBeUndefined()
   })
 
   it('[spec: github-adapter/github-workflow-file-authority] leaves workflow file reads unchanged', () => {
     expect(
-      resolveGitHubOperationPermissions({
+      authorizeGitHubOperation({
         method: 'GET',
         path: '/repos/realmroot/example/contents/.github/workflows/release.yml',
         scopes: new Set(['contents:read']),
         available: { contents: 'write', workflows: 'write' },
       }),
-    ).toEqual({ contents: 'read' })
+    ).toBeUndefined()
   })
 
   it('does not invent a path condition for target-commit-dependent release permissions', () => {
@@ -150,12 +150,12 @@ describe('GitHub operation permissions', () => {
       ['contents:write', 'workflows:write'],
     ])
     expect(
-      resolveGitHubOperationPermissions({
+      authorizeGitHubOperation({
         method: 'POST',
         path: '/repos/realmroot/example/releases',
         scopes: new Set(['contents:write', 'workflows:write']),
         available: { contents: 'write', workflows: 'write' },
       }),
-    ).toEqual({ contents: 'write' })
+    ).toBeUndefined()
   })
 })

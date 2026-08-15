@@ -1,6 +1,5 @@
 import { forbidden, insufficientScope } from '../../core/problem.js'
 import { githubOperationRequirements } from './openapi-paths.js'
-import { scopesToPermissions } from './permissions.js'
 import type { GitHubPermissionAccess, GitHubPermissions } from './types.js'
 
 const accessRank = { read: 1, write: 2, admin: 3 } as const
@@ -14,7 +13,7 @@ const operationMatchers = Object.entries(githubOperationRequirements)
   })
   .sort((left, right) => literalLength(right.template) - literalLength(left.template))
 
-export function resolveGitHubOperationPermissions(input: {
+export function authorizeGitHubOperation(input: {
   method: string
   path: string
   scopes: ReadonlySet<string>
@@ -38,21 +37,12 @@ export function resolveGitHubOperationPermissions(input: {
     throw forbidden('The connected GitHub App does not grant the permissions required for this operation.')
   }
   const satisfied = available.filter((requirement) => requirement.every((scope) => scopeSatisfies(scope, input.scopes)))
-  const domainSatisfied = satisfied.filter((requirement) => !metadataOnly(requirement))
-  const candidates = domainSatisfied.length > 0 ? domainSatisfied : satisfied
-  candidates.sort(compareRequirements)
-  const selected = candidates[0]
-  if (!selected) {
+  if (satisfied.length === 0) {
     throw insufficientScope(
       'The Agent token does not grant the permissions required for this operation.',
       [...available].sort(compareRequirements),
     )
   }
-  return scopesToPermissions(new Set(selected), input.available)
-}
-
-function metadataOnly(requirement: readonly string[]) {
-  return requirement.length > 0 && requirement.every((scope) => parseScope(scope).permission === 'metadata')
 }
 
 function workflowFileRequirements(

@@ -89,13 +89,13 @@ Feature: GitHub App adapter
     And every scope uses GitHub's native permission name without a provider prefix
 
   @journey:github-operation-authority @entrypoint:http
-  Scenario: The adapter mints the least-privileged credential for the requested operation
+  Scenario: The adapter authorizes a published operation before using the installation
     Given an Agent token satisfies one or more permission alternatives for a GitHub REST operation
     When the Agent calls the original GitHub REST path through the adapter
-    Then the adapter selects one least-privileged satisfied permission set for that method and path
-    But a metadata-only alternative is a fallback when no satisfied domain permission alternative exists
-    And the short-lived GitHub installation credential contains only that selected permission set
-    And unrelated scopes in the Agent token are not minted into the GitHub credential
+    Then the adapter accepts the operation when any complete permission alternative is satisfied
+    And rejects the operation before calling GitHub when none is satisfied
+    And the short-lived GitHub credential uses the selected installation's approved permissions
+    And the credential is never exposed to the Agent
     And slash-delimited Git reference names resolve to their documented operation
 
   @journey:github-workflow-file-authority @entrypoint:http
@@ -112,7 +112,8 @@ Feature: GitHub App adapter
     And the token contains the GitHub permissions requested as Realmroot scopes
     When the Agent calls any GitHub REST path through the adapter
     Then query parameters do not change the DPoP target URI
-    And the adapter translates the scopes into a short-lived GitHub installation credential
+    And the adapter authorizes the operation from the Agent scopes before calling GitHub
+    And the adapter uses a short-lived credential for the selected installation without narrowing its permissions per operation
     And the adapter selects GitHub's API or upload origin for the original operation
     And the original method, path, query, body, status, and response headers are preserved
     And GitHub performs endpoint permission enforcement
@@ -136,7 +137,9 @@ Feature: GitHub App adapter
   Scenario: GitHub CLI sends GraphQL through approved Agent authority
     Given the Agent has an approved GitHub installation authority
     When GitHub CLI sends a GraphQL request through the adapter
-    Then the adapter mints an installation credential constrained to the approved scopes
+    Then recognized GitHub CLI operations are authorized from the Agent scopes before calling GitHub
+    And recognized operations use the selected installation's permissions without per-operation credential narrowing
+    And opaque GraphQL requests remain constrained to the approved Agent scopes because their operation cannot be authorized structurally
     And the GraphQL request and response are preserved
     And unsupported createPullRequest, addComment, and mergePullRequest mutations use GitHub's installation-compatible REST operations
     And the GitHub credential is never returned
@@ -153,7 +156,8 @@ Feature: GitHub App adapter
   Scenario: Native Git uses the GitHub installation through the adapter
     Given the Agent has approved repository contents authority
     When Git performs Smart HTTP discovery, fetch, or push through the adapter
-    Then the adapter constrains the installation credential to that repository
+    Then the adapter authorizes the transport operation from the Agent scopes before calling GitHub
+    And the adapter constrains the installation credential to that repository without narrowing its permissions
     And read transport requires contents read
     And write transport requires contents write and workflows write because the adapter cannot inspect the complete Git pack before forwarding it
     And the GitHub credential is never returned
@@ -163,7 +167,7 @@ Feature: GitHub App adapter
     Given the Agent has write authority for the selected GitHub installation
     And the selected repository belongs to the installation
     When the Agent writes user-visible GitHub content through any supported interface
-    Then the adapter downscopes the GitHub credential to that repository and the requested permissions
+    Then the adapter constrains the GitHub credential to that repository without narrowing its permissions
     And GitHub records the GitHub App as its native actor
     And every written body identifies the originating Realmroot Agent
     And the original GitHub response is returned unchanged

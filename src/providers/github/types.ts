@@ -3,7 +3,7 @@ export type GitHubPermissions = Readonly<Record<string, GitHubPermissionAccess>>
 
 export type GitHubInstallationTokenRequest = Readonly<{
   installationId: number
-  permissions: GitHubPermissions
+  permissions?: GitHubPermissions
   repositories?: readonly string[]
 }>
 

@@ -191,11 +191,9 @@ describe('GitHub adapter contract', () => {
     })
     expect(provider.installationToken).toHaveBeenNthCalledWith(1, {
       installationId: 42,
-      permissions: { metadata: 'read' },
     })
     expect(provider.installationToken).toHaveBeenNthCalledWith(2, {
       installationId: 42,
-      permissions: { pull_requests: 'write' },
     })
   })
 
@@ -284,11 +282,9 @@ describe('GitHub adapter contract', () => {
     })
     expect(provider.installationToken).toHaveBeenNthCalledWith(1, {
       installationId: 42,
-      permissions: { metadata: 'read' },
     })
     expect(provider.installationToken).toHaveBeenNthCalledWith(2, {
       installationId: 42,
-      permissions: { issues: 'write' },
     })
   })
 
@@ -332,7 +328,6 @@ describe('GitHub adapter contract', () => {
     })
     expect(provider.installationToken).toHaveBeenNthCalledWith(2, {
       installationId: 42,
-      permissions: { contents: 'write' },
     })
   })
 
@@ -367,7 +362,6 @@ describe('GitHub adapter contract', () => {
     expect(fetchResponse.status).toBe(200)
     expect(provider.installationToken).toHaveBeenLastCalledWith({
       installationId: 42,
-      permissions: { contents: 'read' },
     })
     const pushResponse = await app.request('/github/git/realmroot/example.git/git-receive-pack', {
       method: 'POST',
@@ -376,7 +370,6 @@ describe('GitHub adapter contract', () => {
     expect(pushResponse.status).toBe(200)
     expect(provider.installationToken).toHaveBeenLastCalledWith({
       installationId: 42,
-      permissions: { contents: 'write', workflows: 'write' },
     })
   })
 
@@ -464,7 +457,35 @@ describe('GitHub adapter contract', () => {
     expect(await response.json()).toEqual({ id: 9 })
     expect(provider.installationToken).toHaveBeenCalledWith({
       installationId: 42,
-      permissions: { issues: 'write' },
+    })
+  })
+
+  it('[spec: github-adapter/github-operation-authority] retains the selected repository boundary on a full installation token', async () => {
+    const provider = fakeProvider()
+    const connections = fakeConnections()
+    connections.externalAuthorization = vi.fn(async () =>
+      authorizationWithContexts([
+        {
+          installationId: 42,
+          accountLogin: 'realmroot',
+          targetType: 'Organization',
+          scopes: ['issues:read', 'issues:write', 'metadata:read'],
+          repositorySelection: 'selected' as const,
+          repositories: [{ id: 7, fullName: 'realmroot/allowed' }],
+        },
+      ]),
+    )
+
+    const response = await testApp({ provider, connections }).request('/github/repos/realmroot/allowed/labels/bug', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ color: '123456' }),
+    })
+
+    expect(response.status).toBe(204)
+    expect(provider.installationToken).toHaveBeenCalledWith({
+      installationId: 42,
+      repositories: ['allowed'],
     })
   })
 

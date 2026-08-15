@@ -25,7 +25,7 @@ describe('GitHub provider HTTP boundary', () => {
     closeServer = () => new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
   })
 
-  it('reads App permissions, mints a downscoped token, and transparently forwards GitHub HTTP', async () => {
+  it('reads App permissions, mints a full installation token, and transparently forwards GitHub HTTP', async () => {
     const provider = createGitHubProvider({
       appId: '123',
       privateKey: privateKey('pkcs8'),
@@ -37,7 +37,6 @@ describe('GitHub provider HTTP boundary', () => {
     await expect(provider.appPermissions()).resolves.toEqual({ metadata: 'read', issues: 'write' })
     const token = await provider.installationToken({
       installationId: 42,
-      permissions: { issues: 'write' },
       repositories: ['example'],
     })
     const response = await provider.request(
@@ -53,7 +52,6 @@ describe('GitHub provider HTTP boundary', () => {
     expect(response.headers.get('x-github-request-id')).toBe('request-1')
     expect(seen.filter((request) => request.url === '/app')).toHaveLength(1)
     expect(seen.find((request) => request.url === '/app/installations/42/access_tokens')?.body).toEqual({
-      permissions: { issues: 'write' },
       repositories: ['example'],
     })
     expect(seen.at(-1)).toMatchObject({

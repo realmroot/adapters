@@ -20,7 +20,7 @@ import {
 } from './graphql.js'
 import { githubManifest } from './manifest.js'
 import { githubOpenApi } from './openapi.js'
-import { resolveGitHubOperationPermissions } from './operation-permissions.js'
+import { authorizeGitHubOperation } from './operation-permissions.js'
 import { permissionsToScopes, scopesToPermissions } from './permissions.js'
 import { transformGitHubRequest } from './transformers.js'
 import type { GitHubProvider } from './types.js'
@@ -114,7 +114,6 @@ export function createGitHubAdapter(
       const principal = await dependencies.authenticator.authenticate(c.req.raw, resource)
       const installation = await selectedInstallation(principal)
       const available = scopesToPermissions(new Set(installation.scopes), await provider.appPermissions())
-      const permissions = scopesToPermissions(principal.scopes, available)
       const body = await transformGitHubRequest({
         request: c.req.raw,
         upstreamPath: '/graphql',
@@ -131,9 +130,9 @@ export function createGitHubAdapter(
             [...requiredScopes],
           ])
         }
+        scopesToPermissions(requiredScopes, available)
         const lookupToken = await provider.installationToken({
           installationId: installation.installationId,
-          permissions: scopesToPermissions(new Set(['metadata:read']), available),
           ...(installation.repositorySelection === 'selected'
             ? {
                 repositories: installation.repositories.map(
@@ -151,7 +150,6 @@ export function createGitHubAdapter(
         const repository = repositoryTarget(`/repos/${nameWithOwner}`, installation)
         const createToken = await provider.installationToken({
           installationId: installation.installationId,
-          permissions: scopesToPermissions(new Set(['pull_requests:write']), available),
           ...repositoryRestriction(installation, repository as string),
         })
         const response = await createGitHubPullRequestWithRest({
@@ -177,9 +175,9 @@ export function createGitHubAdapter(
             ['metadata:read', 'pull_requests:write'],
           ])
         }
+        scopesToPermissions(new Set(['metadata:read', commentScope]), available)
         const lookupToken = await provider.installationToken({
           installationId: installation.installationId,
-          permissions: scopesToPermissions(new Set(['metadata:read']), available),
           ...(installation.repositorySelection === 'selected'
             ? {
                 repositories: installation.repositories.map(
@@ -197,7 +195,6 @@ export function createGitHubAdapter(
         const repository = repositoryTarget(`/repos/${target.nameWithOwner}`, installation)
         const commentToken = await provider.installationToken({
           installationId: installation.installationId,
-          permissions: scopesToPermissions(new Set([commentScope]), available),
           ...repositoryRestriction(installation, repository as string),
         })
         const response = await createGitHubCommentWithRest({
@@ -220,9 +217,9 @@ export function createGitHubAdapter(
             [...requiredScopes],
           ])
         }
+        scopesToPermissions(requiredScopes, available)
         const lookupToken = await provider.installationToken({
           installationId: installation.installationId,
-          permissions: scopesToPermissions(new Set(['metadata:read']), available),
           ...(installation.repositorySelection === 'selected'
             ? {
                 repositories: installation.repositories.map(
@@ -240,7 +237,6 @@ export function createGitHubAdapter(
         const repository = repositoryTarget(`/repos/${target.nameWithOwner}`, installation)
         const mergeToken = await provider.installationToken({
           installationId: installation.installationId,
-          permissions: scopesToPermissions(new Set(['contents:write']), available),
           ...repositoryRestriction(installation, repository as string),
         })
         const response = await mergeGitHubPullRequestWithRest({
@@ -256,7 +252,7 @@ export function createGitHubAdapter(
       }
       const token = await provider.installationToken({
         installationId: installation.installationId,
-        permissions,
+        permissions: scopesToPermissions(principal.scopes, available),
         ...(installation.repositorySelection === 'selected'
           ? {
               repositories: installation.repositories.map(
@@ -293,10 +289,9 @@ export function createGitHubAdapter(
         ])
       }
       const available = scopesToPermissions(new Set(installation.scopes), await provider.appPermissions())
-      const permissions = scopesToPermissions(requestedScopes, available)
+      scopesToPermissions(requestedScopes, available)
       const token = await provider.installationToken({
         installationId: installation.installationId,
-        permissions,
         ...repositoryRestriction(installation, repository as string),
       })
       const response = await provider.request(
@@ -324,7 +319,7 @@ export function createGitHubAdapter(
       const installation = await selectedInstallation(principal)
       const available = scopesToPermissions(new Set(installation.scopes), await provider.appPermissions())
       const upstream = upstreamUrl(c.req.url, c.req.method, config)
-      const permissions = resolveGitHubOperationPermissions({
+      authorizeGitHubOperation({
         method: c.req.method,
         path: upstream.pathname,
         scopes: principal.scopes,
@@ -340,7 +335,6 @@ export function createGitHubAdapter(
       })
       const token = await provider.installationToken({
         installationId: installation.installationId,
-        permissions,
         ...(repository ? repositoryRestriction(installation, repository) : {}),
       })
       const upstreamRequest = new Request(upstream, {

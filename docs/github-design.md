@@ -69,16 +69,18 @@ GitHub metadata=read  -> metadata:read
 GitHub issues=write   -> issues:read, issues:write
 ```
 
-For each Agent request, the adapter translates the approved scopes back into
-the `permissions` object used to mint a short-lived GitHub installation access
-token. A `/repos/{owner}/{repo}/...` path additionally limits that credential
-to the named repository. GitHub remains responsible for deciding which
-permissions each endpoint requires and returns its original `403` response
-when authority is insufficient.
+For each Agent request, the adapter authorizes the published operation against
+the approved scopes before minting a short-lived GitHub installation access
+token. That internal credential uses the selected installation's approved
+permissions rather than repeating Agent authorization through per-operation
+permission narrowing. A `/repos/{owner}/{repo}/...` path additionally limits
+the credential to the named repository. GitHub remains responsible for its own
+provider permission enforcement and returns its original `403` response when
+the installation lacks authority.
 
 ## Transparent proxy
 
-After DPoP authentication and credential downscoping, the adapter preserves the
+After DPoP authentication and operation authorization, the adapter preserves the
 original HTTP method, GitHub path, query string, request body, response status,
 and response headers. It removes the Realmroot authorization and DPoP headers
 before injecting the short-lived installation credential. Provider credentials

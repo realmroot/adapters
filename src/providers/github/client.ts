@@ -68,7 +68,7 @@ export function createGitHubProvider(input: GitHubClientInput): GitHubProvider {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
-            permissions: request.permissions,
+            ...(request.permissions ? { permissions: request.permissions } : {}),
             ...(request.repositories ? { repositories: request.repositories } : {}),
           }),
         }),

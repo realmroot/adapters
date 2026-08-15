@@ -135,7 +135,7 @@ is stabilized. It is expected to contain these cohesive capabilities:
 - **Authorization** — complete provider installation or delegation and retain
   the grant outside Agent visibility.
 - **Scope mapping** — expose provider permissions in Realmroot's scope model and
-  translate approved scopes back to the provider credential.
+  authorize each published operation against the approved Agent scopes.
 - **Credentials** — acquire, cache, rotate, revoke, and destroy provider
   credentials according to provider semantics.
 - **Proxy** — preserve the provider's original method, path, query, body,
@@ -186,9 +186,13 @@ informal future intention.
 
 1. Authenticate the DPoP-bound Agent request.
 2. Resolve the immutable Realmroot Agent principal.
-3. Translate approved scopes into the provider's native permission model.
+3. Authorize the published operation against the approved Agent scopes.
 4. Resolve the connected provider account and provider-native actor.
-5. Acquire the narrowest valid provider credential without exposing it.
+5. Acquire a short-lived credential for the selected provider context without
+   exposing it. Do not repeat Agent authorization by narrowing an internal
+   credential when the concrete operation has already been authorized. An
+   opaque provider surface must instead be rejected or credential-downscoped
+   when its operation cannot be authorized structurally.
 6. Apply a provider-owned transformer only when the operation requires one.
 7. Stream the original operation to the provider and let it enforce endpoint
    permissions.

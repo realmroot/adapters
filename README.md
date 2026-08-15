@@ -275,10 +275,10 @@ continues to define request and response schemas and endpoint behavior. OpenAPI
 discovery publishes the subset GitHub documents for installation access tokens,
 preserving alternative permission sets as OR and each set's required permissions
 as AND. For every request, the adapter resolves the original method and path and
-mints only one least-privileged permission set satisfied by the Realmroot token.
-When GitHub documents a metadata-only alternative, it is used only as a fallback;
-an available satisfied repository-domain permission is preferred so private
-repository operations are not attempted with public-metadata authority.
+verifies that the Realmroot token satisfies at least one complete permission
+alternative before calling GitHub. The internal installation credential uses
+the selected installation's approved permissions; it is not narrowed again per
+operation and is never returned to the Agent.
 
 GitHub requires both `contents:write` and `workflows:write` when the Contents API
 writes under `.github/workflows`; the adapter enforces that condition from the
