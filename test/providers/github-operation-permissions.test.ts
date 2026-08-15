@@ -34,6 +34,17 @@ describe('GitHub operation permissions', () => {
     ).toEqual({ issues: 'write' })
   })
 
+  it('[spec: github-adapter/github-operation-authority] prefers repository-domain authority over the metadata fallback', () => {
+    expect(
+      resolveGitHubOperationPermissions({
+        method: 'GET',
+        path: '/repos/saltbo/wakatoken/pulls',
+        scopes: new Set(['metadata:read', 'pull_requests:write']),
+        available: { metadata: 'read', pull_requests: 'write' },
+      }),
+    ).toEqual({ pull_requests: 'read' })
+  })
+
   it('[spec: github-adapter/github-native-tool-scope-challenge] reports every available scope alternative', () => {
     try {
       resolveGitHubOperationPermissions({

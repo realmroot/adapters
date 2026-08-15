@@ -37,10 +37,11 @@ export function resolveGitHubOperationPermissions(input: {
   if (available.length === 0) {
     throw forbidden('The connected GitHub App does not grant the permissions required for this operation.')
   }
-  const satisfied = available
-    .filter((requirement) => requirement.every((scope) => scopeSatisfies(scope, input.scopes)))
-    .sort(compareRequirements)
-  const selected = satisfied[0]
+  const satisfied = available.filter((requirement) => requirement.every((scope) => scopeSatisfies(scope, input.scopes)))
+  const domainSatisfied = satisfied.filter((requirement) => !metadataOnly(requirement))
+  const candidates = domainSatisfied.length > 0 ? domainSatisfied : satisfied
+  candidates.sort(compareRequirements)
+  const selected = candidates[0]
   if (!selected) {
     throw insufficientScope(
       'The Agent token does not grant the permissions required for this operation.',
@@ -48,6 +49,10 @@ export function resolveGitHubOperationPermissions(input: {
     )
   }
   return scopesToPermissions(new Set(selected), input.available)
+}
+
+function metadataOnly(requirement: readonly string[]) {
+  return requirement.length > 0 && requirement.every((scope) => parseScope(scope).permission === 'metadata')
 }
 
 function workflowFileRequirements(
