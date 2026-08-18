@@ -62,25 +62,45 @@ describe('Linear connection persistence', () => {
     )
   })
 
-  it('replaces a legacy brokered workspace when external authorization is established', async () => {
+  it('[spec: linear-adapter/linear-provider-connection] keys external authorization by Linear user while retaining workspace contexts', async () => {
     const store = new D1LinearConnections(env.DB, cipher, state)
     await connectWorkspace(store, 'legacy-owner', 'legacy', 'legacy-workspace', 'legacy-user')
 
-    const contexts = await store.upsertExternalAuthorization(
+    await store.upsertExternalAuthorization(
       humanViewer('legacy-user').user,
       appViewer('legacy-workspace', 'external-app-user'),
       token('external-access', 'external-refresh'),
     )
+    const contexts = await store.upsertExternalAuthorization(
+      humanViewer('legacy-user').user,
+      appViewer('second-workspace', 'second-app-user'),
+      token('second-access', 'second-refresh'),
+    )
 
-    expect(contexts.map((context) => context.workspaceId)).toEqual(['legacy-workspace'])
-    await expect(store.externalCredentials('legacy-workspace')).resolves.toMatchObject([
-      {
-        brokerReference: 'linear:legacy-workspace',
-        workspaceId: 'legacy-workspace',
-        accessToken: 'external-access',
-        refreshToken: 'external-refresh',
-      },
-    ])
+    expect(contexts.map((context) => context.workspaceId).sort()).toEqual(['legacy-workspace', 'second-workspace'])
+    await expect(store.externalAuthorization('legacy-user')).resolves.toMatchObject({
+      displayName: 'Jasper Van',
+      contexts: expect.arrayContaining([
+        expect.objectContaining({ workspaceId: 'legacy-workspace' }),
+        expect.objectContaining({ workspaceId: 'second-workspace' }),
+      ]),
+    })
+    await expect(store.externalCredentials('legacy-user')).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          brokerReference: 'linear:legacy-user',
+          workspaceId: 'legacy-workspace',
+          accessToken: 'external-access',
+          refreshToken: 'external-refresh',
+        }),
+        expect.objectContaining({
+          brokerReference: 'linear:legacy-user',
+          workspaceId: 'second-workspace',
+          accessToken: 'second-access',
+          refreshToken: 'second-refresh',
+        }),
+      ]),
+    )
     const legacy = await env.DB.prepare(
       `SELECT status, access_token_ciphertext AS accessToken, refresh_token_ciphertext AS refreshToken
        FROM linear_connection_context WHERE broker_reference = ? AND workspace_id = ?`,
