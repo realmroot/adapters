@@ -55,8 +55,8 @@ export function createLinearExternalAuthorization(input: {
       return {
         type: 'complete',
         grant: {
-          subject: workspace.workspaceId,
-          displayName: workspace.workspaceName,
+          subject: linearUser.id,
+          displayName: linearUser.name,
           scopes: intent.scopes,
           authorizationDetails: [],
         },

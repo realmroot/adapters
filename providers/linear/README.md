@@ -115,7 +115,7 @@ claiming that the external Realmroot Agent is the Linear security principal.
 | `CLIENT-REGISTRATION` | ➖ | The Linear OAuth App is preregistered. |
 | `CLIENT-MANAGEMENT` | ➖ | Dynamic client registration is not selected. |
 | `ACTOR-CHAIN` | 🟨 | The adapter preserves Realmroot actor context, but Linear receives an App actor token. |
-| `ACTOR-PROFILE` | 🟨 | The adapter validates `ai_agent`; Linear does not consume that profile. |
+| `ACTOR-PROFILE` | 🟨 | The adapter validates the Realmroot `act` issuer and subject; Linear does not consume that actor classification. |
 | `ACTOR-NATIVE` | 🧪 | `actor=app` creates one provider-native App user per workspace, but every Realmroot Agent shares it and the stable external Agent identifier is not the token principal. |
 | `AGENT-DISPLAY` | 🧪 | Trusted adapter-supplied `createAsUser` and `displayIconUrl` render the originating Agent without a footer; the fields are operation display metadata, not identity proof. |
 | `ACTOR-ASSERTION` | 🟨 | Linear does not document the RFC 7523 Agent assertion grant required by the profile. |

@@ -28,6 +28,8 @@ export interface DpopReplayStore {
   claim(input: { keyThumbprint: string; jti: string; expiresAt: number; now: number }): Promise<boolean>
 }
 
+const realmrootCliClientId = 'realmroot-cli'
+
 export function createRealmrootAuthenticator(input: {
   issuer: string
   jwksUrl?: string
@@ -56,12 +58,13 @@ export function createRealmrootAuthenticator(input: {
       const confirmation = access.payload.cnf as { jkt?: unknown } | undefined
       if (confirmation?.jkt !== proof.jkt) throw unauthorized('The DPoP key does not match the access token.')
 
-      const actor = access.payload.act as { iss?: unknown; sub?: unknown; sub_profile?: unknown } | undefined
+      const actor = access.payload.act as { iss?: unknown; sub?: unknown } | undefined
       if (
         typeof access.payload.sub !== 'string' ||
+        access.payload.client_id !== realmrootCliClientId ||
         typeof actor?.iss !== 'string' ||
         typeof actor.sub !== 'string' ||
-        actor.sub_profile !== 'ai_agent'
+        actor.iss !== input.issuer
       ) {
         throw unauthorized('The access token does not identify a Realmroot Agent.')
       }

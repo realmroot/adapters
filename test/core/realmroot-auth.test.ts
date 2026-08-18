@@ -14,8 +14,9 @@ describe('Realmroot DPoP authentication', () => {
     const now = 1_800_000_000_000
     const token = await new SignJWT({
       scope: 'github:metadata:read',
+      client_id: 'realmroot-cli',
       cnf: { jkt: await calculateJwkThumbprint(dpopJwk) },
-      act: { iss: issuer, sub: 'agt_1', sub_profile: 'ai_agent' },
+      act: { iss: issuer, sub: 'agt_1' },
     })
       .setProtectedHeader({ alg: 'RS256', typ: 'at+jwt', kid: 'access-1' })
       .setIssuer(issuer)
@@ -48,6 +49,47 @@ describe('Realmroot DPoP authentication', () => {
       actor: { issuer, subject: 'agt_1', profile: 'ai_agent' },
     })
     await expect(authenticator.authenticate(request, audience)).rejects.toThrow('already used')
+  })
+
+  it('rejects an Agent token issued to a different client', async () => {
+    const issuer = 'https://id.example/api/auth'
+    const audience = 'https://adapter.example/github/installations/42'
+    const accessKeys = await generateKeyPair('RS256')
+    const dpopKeys = await generateKeyPair('ES256')
+    const accessJwk = { ...(await exportJWK(accessKeys.publicKey)), kid: 'access-1', alg: 'RS256' }
+    const dpopJwk = await exportJWK(dpopKeys.publicKey)
+    const now = 1_800_000_000_000
+    const token = await new SignJWT({
+      client_id: 'another-client',
+      cnf: { jkt: await calculateJwkThumbprint(dpopJwk) },
+      act: { iss: issuer, sub: 'agt_1' },
+    })
+      .setProtectedHeader({ alg: 'RS256', typ: 'at+jwt', kid: 'access-1' })
+      .setIssuer(issuer)
+      .setSubject('org_1')
+      .setAudience(audience)
+      .setIssuedAt(now / 1000)
+      .setExpirationTime(now / 1000 + 300)
+      .sign(accessKeys.privateKey)
+    const targetUrl = `${audience}/repositories`
+    const proof = await new SignJWT({ htu: targetUrl, htm: 'GET', ath: await sha256Base64Url(token) })
+      .setProtectedHeader({ alg: 'ES256', typ: 'dpop+jwt', jwk: dpopJwk })
+      .setIssuedAt(now / 1000)
+      .setJti('wrong-client-proof')
+      .sign(dpopKeys.privateKey)
+    const authenticator = createRealmrootAuthenticator({
+      issuer,
+      jwks: { keys: [accessJwk] },
+      replayStore: replayStore(),
+      now: () => now,
+    })
+
+    await expect(
+      authenticator.authenticate(
+        new Request(targetUrl, { headers: { authorization: `DPoP ${token}`, dpop: proof } }),
+        audience,
+      ),
+    ).rejects.toThrow('does not identify a Realmroot Agent')
   })
 
   it('rejects missing and invalid Realmroot credentials before authorization', async () => {

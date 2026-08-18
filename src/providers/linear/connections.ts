@@ -81,7 +81,7 @@ export class D1LinearConnections implements LinearConnectionStore {
 
   async upsertExternalAuthorization(linearUser: LinearViewer['user'], viewer: LinearViewer, token: LinearToken) {
     const now = Date.now()
-    const brokerReference = `linear:${viewer.workspace.id}`
+    const brokerReference = `linear:${linearUser.id}`
     const context = credentialContext(brokerReference, viewer.workspace.id)
     const [accessToken, refreshToken] = await Promise.all([
       this.cipher.seal(token.accessToken, `${context}:access`),
@@ -96,15 +96,7 @@ export class D1LinearConnections implements LinearConnectionStore {
            ON CONFLICT(broker_reference) DO UPDATE SET display_name = excluded.display_name,
              scopes_json = excluded.scopes_json, status = 'active', updated_at = excluded.updated_at`,
         )
-        .bind(
-          brokerReference,
-          viewer.workspace.id,
-          linearUser.id,
-          viewer.workspace.name,
-          JSON.stringify(token.scopes),
-          now,
-          now,
-        ),
+        .bind(brokerReference, linearUser.id, linearUser.id, linearUser.name, JSON.stringify(token.scopes), now, now),
       this.db
         .prepare(
           `UPDATE linear_connection_context
@@ -154,39 +146,39 @@ export class D1LinearConnections implements LinearConnectionStore {
     return this.contexts(brokerReference)
   }
 
-  async externalAuthorization(workspaceId: string) {
+  async externalAuthorization(ownerSubject: string) {
     const binding = await this.db
       .prepare(
         `SELECT broker_reference AS brokerReference, display_name AS displayName
          FROM linear_connection_binding
          WHERE owner_subject = ? AND status = 'active'`,
       )
-      .bind(workspaceId)
+      .bind(ownerSubject)
       .first<{ brokerReference: string; displayName: string }>()
     if (!binding) throw forbidden('Active Linear authorization is required.')
     return { displayName: binding.displayName, contexts: await this.contexts(binding.brokerReference) }
   }
 
-  async externalCredentials(workspaceId: string) {
+  async externalCredentials(ownerSubject: string) {
     const binding = await this.db
       .prepare(
         `SELECT broker_reference AS brokerReference FROM linear_connection_binding
          WHERE owner_subject = ? AND status = 'active'`,
       )
-      .bind(workspaceId)
+      .bind(ownerSubject)
       .first<{ brokerReference: string }>()
     if (!binding) return []
     return Promise.all((await this.credentialRows(binding.brokerReference)).map((row) => this.decryptCredential(row)))
   }
 
-  async revokeExternalAuthorization(workspaceId: string) {
+  async revokeExternalAuthorization(ownerSubject: string) {
     const now = Date.now()
     const binding = await this.db
       .prepare(
         `SELECT broker_reference AS brokerReference FROM linear_connection_binding
          WHERE owner_subject = ? AND status = 'active'`,
       )
-      .bind(workspaceId)
+      .bind(ownerSubject)
       .first<{ brokerReference: string }>()
     if (!binding) return
     await this.db.batch([
