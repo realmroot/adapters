@@ -101,7 +101,7 @@ mean GitHub implements that capability natively.
 | `CLIENT-REGISTRATION` | ➖ | The selected GitHub App is preregistered. |
 | `CLIENT-MANAGEMENT` | ➖ | Dynamic client registration is not selected. |
 | `ACTOR-CHAIN` | 🟨 | The adapter can preserve the Realmroot actor in its audit chain, but GitHub receives a GitHub credential. |
-| `ACTOR-PROFILE` | 🟨 | The adapter validates `ai_agent`; GitHub does not consume that actor profile. |
+| `ACTOR-PROFILE` | 🟨 | The adapter validates the Realmroot `act` issuer and subject; GitHub does not consume that actor classification. |
 | `ACTOR-NATIVE` | ❌ | GitHub attributes installation calls to the App and user-token calls to the user plus App, not to the originating Realmroot Agent. |
 | `AGENT-DISPLAY` | ❌ | A footer or adapter-side record is not provider-native Agent display. |
 | `ACTOR-ASSERTION` | 🟨 | GitHub App JWT authentication is provider-specific and is not the RFC 7523 Agent assertion grant required by this profile. |

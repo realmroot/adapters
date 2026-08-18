@@ -350,7 +350,6 @@ export async function createExternalAuthorizationServer(input: {
             act: {
               iss: actor.payload.agent_iss,
               sub: actor.payload.sub,
-              sub_profile: 'ai_agent',
             },
             cnf: { jkt: proof.jkt },
           })
@@ -432,12 +431,11 @@ export async function createExternalAuthorizationServer(input: {
         const proof = await verifyDpop(request, dpopTargetUri(request.url), input.replayStore, token)
         const confirmation = verified.payload.cnf as { jkt?: unknown } | undefined
         if (confirmation?.jkt !== proof.jkt) throw oauthError('invalid_token', 'DPoP key does not match.', 401)
-        const actor = verified.payload.act as { iss?: unknown; sub?: unknown; sub_profile?: unknown } | undefined
+        const actor = verified.payload.act as { iss?: unknown; sub?: unknown } | undefined
         if (
           typeof verified.payload.sub !== 'string' ||
           typeof actor?.iss !== 'string' ||
-          typeof actor.sub !== 'string' ||
-          actor.sub_profile !== 'ai_agent'
+          typeof actor.sub !== 'string'
         ) {
           throw oauthError('invalid_token', 'Token does not identify an Agent.', 401)
         }
