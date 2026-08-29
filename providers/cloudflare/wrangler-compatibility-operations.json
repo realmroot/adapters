@@ -5,6 +5,52 @@
   "operations": [
     {
       "method": "GET",
+      "path": "/accounts/{account_id}/containers/me",
+      "operationId": "wrangler-containers-get-account",
+      "scopes": ["containers.read", "containers.write"]
+    },
+    {
+      "method": "GET",
+      "path": "/accounts/{account_id}/containers/applications",
+      "operationId": "wrangler-containers-list-applications",
+      "officialOperationId": "listApplications",
+      "scopes": ["containers.read", "containers.write"]
+    },
+    {
+      "method": "POST",
+      "path": "/accounts/{account_id}/containers/applications",
+      "operationId": "wrangler-containers-create-application",
+      "officialOperationId": "createApplication",
+      "scopes": ["containers.write"]
+    },
+    {
+      "method": "POST",
+      "path": "/accounts/{account_id}/containers/applications/{application_id}/rollouts",
+      "operationId": "wrangler-containers-create-application-rollout",
+      "officialOperationId": "createApplicationRollout",
+      "scopes": ["containers.write"]
+    },
+    {
+      "method": "GET",
+      "path": "/accounts/{account_id}/containers/dash/applications",
+      "operationId": "wrangler-containers-list-dash-applications",
+      "scopes": ["containers.read", "containers.write"]
+    },
+    {
+      "method": "GET",
+      "path": "/accounts/{account_id}/containers/dash/applications/{application_id}/instances",
+      "operationId": "wrangler-containers-list-dash-application-instances",
+      "scopes": ["containers.read", "containers.write"]
+    },
+    {
+      "method": "POST",
+      "path": "/accounts/{account_id}/containers/registries/{domain}/credentials",
+      "operationId": "wrangler-containers-generate-registry-credentials",
+      "officialOperationId": "generateImageRegistryCredentials",
+      "scopes": ["containers.write"]
+    },
+    {
+      "method": "GET",
       "path": "/accounts/{account_id}/workers/services/{service_name}",
       "operationId": "wrangler-workers-get-service",
       "scopes": ["workers-scripts.read"]

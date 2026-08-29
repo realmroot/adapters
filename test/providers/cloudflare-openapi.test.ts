@@ -18,8 +18,8 @@ describe('generated Cloudflare OpenAPI', () => {
     expect(source.commit).toMatch(/^[a-f0-9]{40}$/)
     expect(source.openapiSha256).toMatch(/^[a-f0-9]{64}$/)
     expect(catalog.sha256).toBe(createHash('sha256').update(JSON.stringify(catalog.scopes)).digest('hex'))
-    expect(cloudflareOperations).toHaveLength(2663)
-    expect(exclusions.operations).toHaveLength(630)
+    expect(cloudflareOperations).toHaveLength(2670)
+    expect(exclusions.operations).toHaveLength(626)
     const additiveCompatibilityOperations = wranglerCompatibility.operations.filter(
       (operation: { officialOperationId?: string }) => !operation.officialOperationId,
     )
@@ -121,6 +121,36 @@ describe('generated Cloudflare OpenAPI', () => {
       expect(openapi.paths[path]?.[method]).toMatchObject({
         security: scopes.map((scope) => ({ realmrootOidc: [scope] })),
         'x-realmroot-compatibility-source': { officialOperationId: expect.any(String) },
+      })
+    }
+  })
+
+  it('publishes the pinned Wrangler Container list and deployment operations', async () => {
+    const openapi = await json('public/cloudflare/openapi.json')
+    const expected = [
+      ['GET', '/accounts/{account_id}/containers/me', ['containers.read', 'containers.write']],
+      ['GET', '/accounts/{account_id}/containers/applications', ['containers.read', 'containers.write']],
+      ['POST', '/accounts/{account_id}/containers/applications', ['containers.write']],
+      ['POST', '/accounts/{account_id}/containers/applications/{application_id}/rollouts', ['containers.write']],
+      ['GET', '/accounts/{account_id}/containers/dash/applications', ['containers.read', 'containers.write']],
+      [
+        'GET',
+        '/accounts/{account_id}/containers/dash/applications/{application_id}/instances',
+        ['containers.read', 'containers.write'],
+      ],
+      ['POST', '/accounts/{account_id}/containers/registries/{domain}/credentials', ['containers.write']],
+    ] as const
+
+    for (const [method, path, scopes] of expected) {
+      expect(cloudflareOperations.find((operation) => operation.method === method && operation.path === path)).toEqual(
+        expect.objectContaining({ method, path, scopes }),
+      )
+      expect(openapi.paths[path]?.[method.toLowerCase()].security).toEqual(
+        scopes.map((scope) => ({ realmrootOidc: [scope] })),
+      )
+      expect(openapi.paths[path]?.[method.toLowerCase()]['x-realmroot-compatibility-source']).toMatchObject({
+        package: 'wrangler',
+        version: '4.120.0',
       })
     }
   })

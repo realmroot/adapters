@@ -260,6 +260,34 @@ describe('Cloudflare adapter', () => {
     expect(upstream).toHaveBeenCalledTimes(1)
   })
 
+  it('forwards the pinned Wrangler Container list and deployment operations', async () => {
+    const operations = [
+      ['GET', '/accounts/account-1/containers/me', 'containers.read'],
+      ['GET', '/accounts/account-1/containers/applications', 'containers.read'],
+      ['POST', '/accounts/account-1/containers/applications', 'containers.write'],
+      ['POST', '/accounts/account-1/containers/applications/app-1/rollouts', 'containers.write'],
+      ['GET', '/accounts/account-1/containers/dash/applications', 'containers.read'],
+      ['GET', '/accounts/account-1/containers/dash/applications/app-1/instances', 'containers.read'],
+      ['POST', '/accounts/account-1/containers/registries/registry.example/credentials', 'containers.write'],
+    ] as const
+
+    for (const [method, path, scope] of operations) {
+      const upstream = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const request = input instanceof Request ? input : new Request(input, init)
+        expect(request.url).toBe(`https://api.cloudflare.com/client/v4${path}`)
+        expect(request.method).toBe(method)
+        return Response.json({ success: true, result: [] })
+      })
+      const { app, credential } = fixture({ upstream, principal: principal([scope]) })
+
+      const response = await app.request(`/cloudflare${path}`, { method })
+
+      expect(response.status).toBe(200)
+      expect(credential).toHaveBeenCalledWith('user-1')
+      expect(upstream).toHaveBeenCalledTimes(1)
+    }
+  })
+
   it('[spec: cloudflare-adapter/cloudflare-native-tool-scope-challenge] fails closed and reports operation scope alternatives', async () => {
     const unpublished = fixture()
     expect((await unpublished.app.request('/cloudflare/not-an-operation')).status).toBe(404)

@@ -1091,34 +1091,6 @@
       "permissionGroups": null
     },
     {
-      "method": "GET",
-      "path": "/accounts/{account_id}/containers/applications",
-      "operationId": "listApplications",
-      "reason": "Cloudflare OpenAPI does not declare an API token permission group; OAuth authority cannot be proven.",
-      "permissionGroups": null
-    },
-    {
-      "method": "POST",
-      "path": "/accounts/{account_id}/containers/applications",
-      "operationId": "createApplication",
-      "reason": "Cloudflare OpenAPI does not declare an API token permission group; OAuth authority cannot be proven.",
-      "permissionGroups": null
-    },
-    {
-      "method": "POST",
-      "path": "/accounts/{account_id}/containers/applications/{application_id}/rollouts",
-      "operationId": "createApplicationRollout",
-      "reason": "Cloudflare OpenAPI does not declare an API token permission group; OAuth authority cannot be proven.",
-      "permissionGroups": null
-    },
-    {
-      "method": "POST",
-      "path": "/accounts/{account_id}/containers/registries/{domain}/credentials",
-      "operationId": "generateImageRegistryCredentials",
-      "reason": "Cloudflare OpenAPI does not declare an API token permission group; OAuth authority cannot be proven.",
-      "permissionGroups": null
-    },
-    {
       "method": "DELETE",
       "path": "/accounts/{account_id}/custom_ns/{custom_ns_id}",
       "operationId": "account-level-custom-nameservers-delete-account-custom-nameserver",
