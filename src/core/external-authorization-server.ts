@@ -32,13 +32,13 @@ export type ExternalProviderAuthorization = {
   authorizationDetailsTypes?: readonly string[]
   authorizationDetailsCatalog?: {
     scope: string
-    list(input: { subject: string; limit: number; offset: number }): Promise<{
+    list(input: { subject: string; page: number; pageSize: number }): Promise<{
       items: Array<{
         authorizationDetail: Record<string, unknown>
         grantedScopes?: string[]
         display: { label: string; description?: string; metadata?: Record<string, string> }
       }>
-      pagination: { limit: number; offset: number; total: number; hasMore: boolean; nextOffset: number | null }
+      pagination: { page: number; pageSize: number; totalItems: number; totalPages: number }
     }>
   }
   authorizationDetailsSubset?(input: {
@@ -410,13 +410,14 @@ export async function createExternalAuthorizationServer(input: {
           if (!scopes.includes(authorizationDetailsCatalog.scope)) {
             throw oauthError('insufficient_scope', 'The access token does not authorize catalog discovery.', 403)
           }
-          return c.json(
-            await authorizationDetailsCatalog.list({
-              subject: String(verified.payload.sub),
-              limit: paginationInteger(c.req.query('limit'), 'limit', 50, 1),
-              offset: paginationInteger(c.req.query('offset'), 'offset', 0, 0),
-            }),
-          )
+          const result = await authorizationDetailsCatalog.list({
+            subject: String(verified.payload.sub),
+            page: paginationInteger(c.req.query('page'), 'page', 1, 1),
+            pageSize: paginationInteger(c.req.query('pageSize'), 'pageSize', 20, 1),
+          })
+          const link = paginationLinkHeader(c.req.url, result.pagination)
+          if (link) c.header('Link', link)
+          return c.json(result)
         })
       }
     },
@@ -684,10 +685,31 @@ function normalizeScopes(value: string) {
 function paginationInteger(value: string | undefined, name: string, fallback: number, minimum: number) {
   if (value === undefined) return fallback
   const parsed = Number(value)
-  if (!Number.isSafeInteger(parsed) || parsed < minimum || (name === 'limit' && parsed > 100)) {
+  if (!Number.isSafeInteger(parsed) || parsed < minimum || (name === 'pageSize' && parsed > 100)) {
     throw oauthError('invalid_request', `${name} is invalid.`)
   }
   return parsed
+}
+
+function paginationLinkHeader(requestUrl: string, pagination: { page: number; pageSize: number; totalPages: number }) {
+  if (pagination.totalPages === 0) return null
+  const links: string[] = []
+  if (pagination.page > 1) {
+    links.push(paginationLink(requestUrl, 1, pagination.pageSize, 'first'))
+    links.push(paginationLink(requestUrl, pagination.page - 1, pagination.pageSize, 'previous'))
+  }
+  if (pagination.page < pagination.totalPages) {
+    links.push(paginationLink(requestUrl, pagination.page + 1, pagination.pageSize, 'next'))
+    links.push(paginationLink(requestUrl, pagination.totalPages, pagination.pageSize, 'last'))
+  }
+  return links.length ? links.join(', ') : null
+}
+
+function paginationLink(requestUrl: string, page: number, pageSize: number, relation: string) {
+  const url = new URL(requestUrl)
+  url.searchParams.set('page', String(page))
+  url.searchParams.set('pageSize', String(pageSize))
+  return `<${url.toString()}>; rel="${relation}"`
 }
 
 function validRedirectUri(value: string) {

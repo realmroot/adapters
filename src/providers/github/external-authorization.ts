@@ -67,22 +67,21 @@ export function createGitHubExternalAuthorization(input: {
     authorizationDetailsTypes: [GITHUB_INSTALLATION_AUTHORIZATION_DETAIL_TYPE],
     authorizationDetailsCatalog: {
       scope: authorizationDetailsCatalogScope,
-      async list({ subject, limit, offset }) {
+      async list({ subject, page, pageSize }) {
         const contexts = (await input.connections.externalAuthorization(subject)).contexts
-        const items = contexts.slice(offset, offset + limit).map((context) => ({
+        const offset = (page - 1) * pageSize
+        const items = contexts.slice(offset, offset + pageSize).map((context) => ({
           authorizationDetail: githubInstallationAuthorizationDetail(context),
           grantedScopes: context.scopes,
           display: githubInstallationAuthorizationDetailDisplay(context),
         }))
-        const nextOffset = offset + limit < contexts.length ? offset + limit : null
         return {
           items,
           pagination: {
-            limit,
-            offset,
-            total: contexts.length,
-            hasMore: nextOffset !== null,
-            nextOffset,
+            page,
+            pageSize,
+            totalItems: contexts.length,
+            totalPages: Math.ceil(contexts.length / pageSize),
           },
         }
       },
