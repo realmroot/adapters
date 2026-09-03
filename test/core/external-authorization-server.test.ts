@@ -53,7 +53,7 @@ describe('external authorization server', () => {
     expect(tokenResponse.status).toBe(200)
     const token = (await tokenResponse.json()) as { access_token: string }
 
-    const response = await app.request('/oauth/example/authorization-details?limit=10&offset=0', {
+    const response = await app.request('/oauth/example/authorization-details?page=2&pageSize=1', {
       headers: { authorization: `Bearer ${token.access_token}` },
     })
 
@@ -65,12 +65,16 @@ describe('external authorization server', () => {
           display: { label: 'Project One' },
         },
       ],
-      pagination: { limit: 10, offset: 0, total: 1, hasMore: false, nextOffset: null },
+      pagination: { page: 2, pageSize: 1, totalItems: 2, totalPages: 2 },
     })
+    expect(response.headers.get('link')).toBe(
+      '<http://localhost/oauth/example/authorization-details?page=1&pageSize=1>; rel="first", ' +
+        '<http://localhost/oauth/example/authorization-details?page=1&pageSize=1>; rel="previous"',
+    )
     expect(provider.authorizationDetailsCatalog?.list).toHaveBeenCalledWith({
       subject: 'provider-user-1',
-      limit: 10,
-      offset: 0,
+      page: 2,
+      pageSize: 1,
     })
   })
 
@@ -289,14 +293,14 @@ async function testServer(
     authorizationDetailsTypes: ['example_context'],
     authorizationDetailsCatalog: {
       scope: 'authorization-details:read',
-      list: vi.fn(async ({ limit, offset }) => ({
+      list: vi.fn(async ({ page, pageSize }) => ({
         items: [
           {
             authorizationDetail: { type: 'example_context', project_id: 'project-1' },
             display: { label: 'Project One' },
           },
         ],
-        pagination: { limit, offset, total: 1, hasMore: false, nextOffset: null },
+        pagination: { page, pageSize, totalItems: 2, totalPages: 2 },
       })),
     },
     begin: vi.fn(({ providerState }) => ({

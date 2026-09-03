@@ -29,7 +29,7 @@ describe('GitHub external authorization', () => {
     })
 
     await expect(
-      external.authorization.authorizationDetailsCatalog?.list({ subject: '70', limit: 10, offset: 0 }),
+      external.authorization.authorizationDetailsCatalog?.list({ subject: '70', page: 1, pageSize: 10 }),
     ).resolves.toEqual({
       items: [
         {
@@ -52,7 +52,7 @@ describe('GitHub external authorization', () => {
           },
         },
       ],
-      pagination: { limit: 10, offset: 0, total: 1, hasMore: false, nextOffset: null },
+      pagination: { page: 1, pageSize: 10, totalItems: 1, totalPages: 1 },
     })
   })
 
