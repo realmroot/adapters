@@ -87,6 +87,15 @@ export type ExternalAuthorizationServer = {
   authenticator: RealmrootAuthenticator
 }
 
+export function openIdConfigurationUrl(issuer: string) {
+  const url = new URL(issuer)
+  const issuerPath = url.pathname.replace(/\/$/, '')
+  url.pathname = `/.well-known/openid-configuration${issuerPath}`
+  url.search = ''
+  url.hash = ''
+  return url.toString()
+}
+
 export async function createExternalAuthorizationServer(input: {
   origin: string
   provider: ExternalProviderAuthorization
@@ -96,6 +105,7 @@ export async function createExternalAuthorizationServer(input: {
   replayStore: DpopReplayStore
 }): Promise<ExternalAuthorizationServer> {
   const issuer = `${input.origin}/oauth/${input.provider.id}`
+  const openIdConfiguration = new URL(openIdConfigurationUrl(issuer))
   const providerCallbackPath = input.providerCallbackPath ?? `/oauth/${input.provider.id}/provider/callback`
   const privateKey = await importJWK(input.signingPrivateJwk, 'ES256')
   const signingKid = input.signingPrivateJwk.kid ?? 'adapter-oauth-signing-key'
@@ -112,7 +122,7 @@ export async function createExternalAuthorizationServer(input: {
     id: `${input.provider.id}-authorization-server`,
     register(app) {
       app.get(`/.well-known/oauth-authorization-server/oauth/${input.provider.id}`, (c) => c.json(metadata()))
-      app.get(`/.well-known/openid-configuration/oauth/${input.provider.id}`, (c) => c.json(metadata()))
+      app.get(openIdConfiguration.pathname, (c) => c.json(metadata()))
       app.get(`/oauth/${input.provider.id}/jwks`, (c) => c.json({ keys: [publicJwk] }))
       app.post(`/oauth/${input.provider.id}/register`, async (c) => {
         const body = await c.req.json<Record<string, unknown>>()

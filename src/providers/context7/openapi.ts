@@ -1,3 +1,5 @@
+import { openIdConfigurationUrl } from '../../core/external-authorization-server.js'
+
 const documentationScope = 'documentation:read'
 
 export function context7OpenApi(input: { resource: string; issuer: string }) {
@@ -116,7 +118,7 @@ export function context7OpenApi(input: { resource: string; issuer: string }) {
       securitySchemes: {
         context7Documentation: {
           type: 'openIdConnect',
-          openIdConnectUrl: `${input.issuer}/.well-known/openid-configuration`,
+          openIdConnectUrl: openIdConfigurationUrl(input.issuer),
           'x-dpop-required': true,
           description: 'Realmroot Agent credential with approved Context7 documentation access.',
         },

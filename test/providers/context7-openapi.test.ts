@@ -14,6 +14,7 @@ describe('Context7 OpenAPI', () => {
     }
     expect(document.components.securitySchemes.context7Documentation).toMatchObject({
       type: 'openIdConnect',
+      openIdConnectUrl: 'https://adapter.example/.well-known/openid-configuration/oauth/context7',
       'x-dpop-required': true,
     })
   })
