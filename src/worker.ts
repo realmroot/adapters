@@ -3,6 +3,7 @@ import { createApp } from './app.js'
 import { loadConfig } from './config.js'
 import type { AdapterModule } from './core/adapter.js'
 import { createCredentialCipher } from './core/credential-cipher.js'
+import { createDynamicOAuthClient, D1DynamicOAuthRegistrationStore } from './core/dynamic-oauth-client.js'
 import { createExternalAuthorizationServer } from './core/external-authorization-server.js'
 import { D1ExternalOAuthStore } from './core/external-oauth-store.js'
 import { createCloudflareAdapter } from './providers/cloudflare/adapter.js'
@@ -13,6 +14,13 @@ import {
   createCloudflareOAuthProvider,
   D1CloudflareCredentials,
 } from './providers/cloudflare/oauth.js'
+import { createContext7Adapter } from './providers/context7/adapter.js'
+import { loadContext7Config } from './providers/context7/config.js'
+import {
+  context7ProviderScopes,
+  createContext7ExternalAuthorization,
+  D1Context7Credentials,
+} from './providers/context7/oauth.js'
 import { createGitHubAdapter } from './providers/github/adapter.js'
 import { createGitHubConnectionProvider, createGitHubProvider } from './providers/github/client.js'
 import { loadGitHubConfig } from './providers/github/config.js'
@@ -35,6 +43,7 @@ export default {
       const config = loadConfig(env, request.url)
       const githubConfig = loadGitHubConfig(env, config)
       const cloudflareConfig = loadCloudflareConfig(env, config)
+      const context7Config = loadContext7Config(env, config)
       const linearConfig = loadLinearConfig(env, config)
       const state = new D1RuntimeState(env.DB)
       const oauthStore = new D1ExternalOAuthStore(env.DB)
@@ -161,6 +170,43 @@ export default {
             authenticator: cloudflareAuthorization.authenticator,
             provider: cloudflareProvider,
             credentials: cloudflareCredentials,
+            audit: (record) => state.recordAudit(record),
+            fetch,
+          }),
+        )
+      }
+      if (context7Config.context7CredentialEncryptionKey) {
+        if (!signingPrivateJwk) throw new Error('Context7 external authorization is not configured.')
+        const context7Credentials = new D1Context7Credentials(
+          env.DB,
+          createCredentialCipher(context7Config.context7CredentialEncryptionKey),
+        )
+        const context7Provider = createDynamicOAuthClient({
+          providerId: 'context7',
+          clientName: 'Realmroot Context7 Adapter',
+          issuer: context7Config.context7OAuthIssuer,
+          redirectUri: `${config.origin}/oauth/context7/provider/callback`,
+          scopes: context7ProviderScopes,
+          registrationStore: new D1DynamicOAuthRegistrationStore(env.DB),
+          fetcher: fetch,
+        })
+        const context7Authorization = await createExternalAuthorizationServer({
+          origin: config.origin,
+          provider: createContext7ExternalAuthorization({
+            origin: config.origin,
+            provider: context7Provider,
+            credentials: context7Credentials,
+          }),
+          store: oauthStore,
+          signingPrivateJwk,
+          replayStore: state,
+        })
+        adapters.push(
+          context7Authorization,
+          createContext7Adapter(context7Config, {
+            authenticator: context7Authorization.authenticator,
+            provider: context7Provider,
+            credentials: context7Credentials,
             audit: (record) => state.recordAudit(record),
             fetch,
           }),

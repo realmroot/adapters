@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schemas.agentskills.io/discovery/0.2.0/schema.json",
+  "skills": [
+    {
+      "name": "use-context7",
+      "type": "skill-md",
+      "description": "Use Context7 through Realmroot Toolbox to resolve a software library and retrieve current, task-relevant documentation without handling Context7 credentials.",
+      "url": "/.well-known/agent-skills/context7/SKILL.md",
+      "digest": "sha256:4393c50b664853900c0d42b26842fb736be05a89e34d9bfb4b00ef98b69d9869"
+    }
+  ]
+}

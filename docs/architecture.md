@@ -36,6 +36,30 @@ into Realmroot, adds another authorization model, or introduces a private
 Realmroot-to-Adapter protocol requires an architecture decision and security
 review before implementation.
 
+## Managed OpenAPI adapters
+
+Information-query providers often have a useful OpenAPI contract and ordinary
+OAuth, but none of the Agent-facing discovery or proof machinery. They use a
+shared managed runtime instead of duplicating that machinery per provider.
+
+A managed provider definition supplies a fixed upstream origin, a canonical
+resource-oriented OpenAPI document, an operation allowlist, scope mapping, and
+a credential resolver. The runtime supplies RFC 9728 metadata, service
+description discovery, Adapter-issued DPoP authentication, scope enforcement,
+credential/header isolation, response streaming, and privacy-preserving audit.
+Provider OpenAPI is input to the mapping; it is not permission to expose every
+upstream path.
+
+Upstream OAuth is composed separately. Providers with RFC 7591 dynamic client
+registration can use the shared public-client implementation with S256 PKCE,
+so deployment needs an encryption key but no manually provisioned client ID or
+secret. More complex provider consent, context selection, or lifecycle rules
+remain isolated in a provider module while reusing the same Agent boundary.
+
+Context7 is the first managed provider. Its action-shaped upstream search and
+context endpoints are published as the `/libraries` collection and the
+`/documentation` derived representation, both under `documentation:read`.
+
 ## Target architecture
 
 ```text

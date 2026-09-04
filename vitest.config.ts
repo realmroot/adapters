@@ -36,6 +36,8 @@ export default defineConfig({
                 LINEAR_API_ORIGIN: 'https://api.linear.app',
                 LINEAR_AUTHORIZATION_ORIGIN: 'https://linear.app',
                 LINEAR_CREDENTIAL_ENCRYPTION_KEY: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+                CONTEXT7_API_ORIGIN: 'https://context7.com/api',
+                CONTEXT7_OAUTH_ISSUER: 'https://clerk.context7.com',
               },
             },
           })),

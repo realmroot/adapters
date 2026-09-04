@@ -16,7 +16,9 @@
     "LINEAR_API_ORIGIN": "https://api.linear.app",
     "LINEAR_AUTHORIZATION_ORIGIN": "https://linear.app",
     "CLOUDFLARE_API_ORIGIN": "https://api.cloudflare.com/client/v4",
-    "CLOUDFLARE_AUTHORIZATION_ORIGIN": "https://dash.cloudflare.com"
+    "CLOUDFLARE_AUTHORIZATION_ORIGIN": "https://dash.cloudflare.com",
+    "CONTEXT7_API_ORIGIN": "https://context7.com/api",
+    "CONTEXT7_OAUTH_ISSUER": "https://clerk.context7.com"
   },
   "assets": { "directory": "./public" },
   "secrets": {
@@ -33,7 +35,8 @@
       "ADAPTER_OAUTH_SIGNING_PRIVATE_JWK",
       "CLOUDFLARE_CLIENT_ID",
       "CLOUDFLARE_CLIENT_SECRET",
-      "CLOUDFLARE_CREDENTIAL_ENCRYPTION_KEY"
+      "CLOUDFLARE_CREDENTIAL_ENCRYPTION_KEY",
+      "CONTEXT7_CREDENTIAL_ENCRYPTION_KEY"
     ]
   },
   "d1_databases": [
