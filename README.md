@@ -69,6 +69,7 @@ identity model has already passed a capability review.
 | GitHub | Provider-delegated application actor | Shared GitHub App actor with trusted Agent attribution | 1 | Alpha |
 | Linear | Provider-delegated native App actor | Shared App user with trusted per-operation Agent attribution | 1 | Experimental |
 | Cloudflare | Native service principal | Dedicated account-owned token actor in audit logs | 1 | Design |
+| Context7 | Provider-delegated user | Shared OAuth user grant with Agent-attributed adapter audit | 1 | Experimental |
 | GitLab | Native service principal | Dedicated service account visible in groups, projects, and audit records | 2 | Proposal |
 | Bitbucket | Native service principal | Repository, project, or workspace access-token actor | 2 | Proposal |
 | Vercel | Native service principal | Dedicated integration identity with provider-side audit correlation | 2 | Proposal |
@@ -170,7 +171,7 @@ specs/
   github-adapter.feature
   linear-adapter.feature
 src/
-  core/         Shared HTTP lifecycle, DPoP, Agent Profile, and errors
+  core/         Shared HTTP lifecycle, DPoP, managed OpenAPI runtime, Agent Profile, and errors
   providers/    Isolated provider connections, permission translation, proxy, and transformations
   storage/      Worker-owned D1 runtime state
   worker.ts     Cloudflare Worker entrypoint
@@ -213,6 +214,12 @@ Resource Servers and never appear in the audience URL:
 Set `GITHUB_APP_ID`, `GITHUB_PRIVATE_KEY`, `GITHUB_CLIENT_ID`, and
 `GITHUB_CLIENT_SECRET` in the ignored `.dev.vars` file. Both GitHub-downloaded
 PKCS#1 keys and unencrypted PKCS#8 PEM keys are accepted.
+
+Context7 uses the reusable managed OpenAPI runtime. It does not need a
+provisioned client ID or client secret: the Adapter dynamically registers a
+public OAuth client and uses S256 PKCE. Set only a base64-encoded 32-byte
+`CONTEXT7_CREDENTIAL_ENCRYPTION_KEY`; the Adapter persists the resulting public
+client ID and encrypts controller credentials in D1.
 
 Configure the GitHub App callbacks as:
 

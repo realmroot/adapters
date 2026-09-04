@@ -4,16 +4,25 @@ import { createApp } from '../../src/app.js'
 import {
   createExternalAuthorizationServer,
   type ExternalProviderAuthorization,
+  openIdConfigurationUrl,
 } from '../../src/core/external-authorization-server.js'
 import { type D1ExternalOAuthStore, type ExternalOAuthIntent, sha256 } from '../../src/core/external-oauth-store.js'
 
 describe('external authorization server', () => {
+  it('places OpenID configuration before an issuer path', () => {
+    expect(openIdConfigurationUrl('https://adapter.example/oauth/example')).toBe(
+      'https://adapter.example/.well-known/openid-configuration/oauth/example',
+    )
+  })
+
   it('publishes the standard OAuth surface for one provider', async () => {
     const { app } = await testServer()
 
     const response = await app.request('/.well-known/oauth-authorization-server/oauth/example')
+    const openIdResponse = await app.request('/.well-known/openid-configuration/oauth/example')
 
     expect(response.status).toBe(200)
+    expect(openIdResponse.status).toBe(200)
     await expect(response.json()).resolves.toMatchObject({
       issuer: 'https://adapter.example/oauth/example',
       authorization_endpoint: 'https://adapter.example/oauth/example/authorize',
