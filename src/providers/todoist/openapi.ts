@@ -1,8 +1,6 @@
 import { openIdConfigurationUrl } from '../../core/external-authorization-server.js'
-import { todoistAgentScope } from './oauth.js'
-
 export function todoistOpenApi(input: { resource: string; issuer: string }) {
-  const security = [{ todoistTasks: [todoistAgentScope] }]
+  const security = [{ todoistTasks: ['tasks:read'] }]
   const cursor = {
     name: 'cursor',
     in: 'query',

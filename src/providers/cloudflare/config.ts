@@ -3,8 +3,6 @@ import type { AppConfig } from '../../config.js'
 
 const schema = z
   .object({
-    CLOUDFLARE_API_ORIGIN: z.url().optional(),
-    CLOUDFLARE_AUTHORIZATION_ORIGIN: z.url().optional(),
     CLOUDFLARE_CLIENT_ID: z.string().min(1).optional(),
     CLOUDFLARE_CLIENT_SECRET: z.string().min(1).optional(),
     CLOUDFLARE_CREDENTIAL_ENCRYPTION_KEY: z.string().min(1).optional(),
@@ -31,11 +29,7 @@ export function loadCloudflareConfig(environment: unknown, app: AppConfig) {
     clientId: parsed.CLOUDFLARE_CLIENT_ID,
     clientSecret: parsed.CLOUDFLARE_CLIENT_SECRET,
     credentialEncryptionKey: parsed.CLOUDFLARE_CREDENTIAL_ENCRYPTION_KEY,
-    authorizationOrigin: strip(parsed.CLOUDFLARE_AUTHORIZATION_ORIGIN ?? 'https://dash.cloudflare.com'),
-    cloudflareApiOrigin: strip(parsed.CLOUDFLARE_API_ORIGIN ?? 'https://api.cloudflare.com/client/v4'),
+    authorizationOrigin: 'https://dash.cloudflare.com',
+    cloudflareApiOrigin: 'https://api.cloudflare.com/client/v4',
   }
-}
-
-function strip(value: string) {
-  return value.replace(/\/+$/, '')
 }

@@ -2,8 +2,6 @@ import { z } from 'zod'
 import type { AppConfig } from '../../config.js'
 
 const linearEnvironmentSchema = z.object({
-  LINEAR_API_ORIGIN: z.url().default('https://api.linear.app'),
-  LINEAR_AUTHORIZATION_ORIGIN: z.url().default('https://linear.app'),
   LINEAR_CLIENT_ID: z.string().trim().min(1).optional(),
   LINEAR_CLIENT_SECRET: z.string().trim().min(1).optional(),
   LINEAR_CREDENTIAL_ENCRYPTION_KEY: z.string().trim().min(1).optional(),
@@ -23,8 +21,8 @@ export function loadLinearConfig(environment: unknown, config: AppConfig): Linea
   const parsed = linearEnvironmentSchema.parse(environment)
   return {
     ...config,
-    linearApiOrigin: parsed.LINEAR_API_ORIGIN.replace(/\/+$/, ''),
-    linearAuthorizationOrigin: parsed.LINEAR_AUTHORIZATION_ORIGIN.replace(/\/+$/, ''),
+    linearApiOrigin: 'https://api.linear.app',
+    linearAuthorizationOrigin: 'https://linear.app',
     ...(parsed.LINEAR_CLIENT_ID ? { linearClientId: parsed.LINEAR_CLIENT_ID } : {}),
     ...(parsed.LINEAR_CLIENT_SECRET ? { linearClientSecret: parsed.LINEAR_CLIENT_SECRET } : {}),
     ...(parsed.LINEAR_CREDENTIAL_ENCRYPTION_KEY

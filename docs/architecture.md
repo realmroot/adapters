@@ -50,15 +50,19 @@ credential/header isolation, response streaming, and privacy-preserving audit.
 Provider OpenAPI is input to the mapping; it is not permission to expose every
 upstream path.
 
-Upstream OAuth is composed separately. Providers with RFC 7591 dynamic client
-registration can use the shared public-client implementation with S256 PKCE,
-so deployment needs an encryption key but no manually provisioned client ID or
-secret. More complex provider consent, context selection, or lifecycle rules
-remain isolated in a provider module while reusing the same Agent boundary.
+Upstream OAuth is composed by the same provider-definition factory. Providers
+with RFC 7591 dynamic client registration use the shared public-client
+implementation with S256 PKCE, so deployment needs an encryption key but no
+manually provisioned client ID or secret. Fixed provider API origins and OAuth
+endpoints live in the definition; environment variables are reserved for
+secrets and deployment-specific Realmroot URLs. More complex provider consent,
+context selection, or lifecycle rules remain isolated in a provider module
+while reusing the same Agent boundary.
 
-Context7 is the first managed provider. Its action-shaped upstream search and
-context endpoints are published as the `/libraries` collection and the
-`/documentation` derived representation, both under `documentation:read`.
+Context7, Todoist, Search1API, and Fast.io use this path. Their provider files
+contain only identity decoding, fixed upstream/OAuth configuration, scopes,
+the operation allowlist, a canonical OpenAPI document, and lifecycle metadata;
+the Worker composition and credential lifecycle are shared.
 
 ## Target architecture
 

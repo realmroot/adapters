@@ -71,6 +71,8 @@ identity model has already passed a capability review.
 | Cloudflare | Native service principal | Dedicated account-owned token actor in audit logs | 1 | Design |
 | Context7 | Provider-delegated user | Shared OAuth user grant with Agent-attributed adapter audit | 1 | Experimental |
 | Todoist | Provider-delegated user | Read-only OAuth user grant with Agent-attributed adapter audit | 1 | Experimental |
+| Search1API | Provider-delegated user | Search OAuth grant with Agent-attributed adapter audit | 1 | Experimental |
+| Fast.io | Provider-delegated user | Read-only workspace OAuth grant with Agent-attributed adapter audit | 1 | Experimental |
 | GitLab | Native service principal | Dedicated service account visible in groups, projects, and audit records | 2 | Proposal |
 | Bitbucket | Native service principal | Repository, project, or workspace access-token actor | 2 | Proposal |
 | Vercel | Native service principal | Dedicated integration identity with provider-side audit correlation | 2 | Proposal |
@@ -228,6 +230,18 @@ comma-separated authorization scopes, a provider-specific identity shape, and
 no public-client token revocation. Set only `TODOIST_CREDENTIAL_ENCRYPTION_KEY`;
 the Adapter dynamically registers the public client and publishes read-only
 project and task collections.
+
+Search1API and Fast.io are configured through the same provider-definition
+factory. Both support public dynamic client registration, S256 PKCE, refresh
+tokens, and token revocation, so they need no provisioned client ID or secret.
+Set `SEARCH1API_CREDENTIAL_ENCRYPTION_KEY` and
+`FASTIO_CREDENTIAL_ENCRYPTION_KEY` respectively. Search1API publishes web/news
+searches and usage; Fast.io publishes accessible workspaces and profile
+availability.
+
+Provider API origins and OAuth endpoints are immutable code configuration, not
+environment variables. Environment configuration is reserved for secrets and
+deployment-specific Realmroot URLs.
 
 Configure the GitHub App callbacks as:
 

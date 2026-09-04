@@ -2,11 +2,10 @@ import { tracing } from 'cloudflare:workers'
 import { createApp } from './app.js'
 import { loadConfig } from './config.js'
 import type { AdapterModule } from './core/adapter.js'
+import { createConfiguredManagedProvider } from './core/configured-managed-provider.js'
 import { createCredentialCipher } from './core/credential-cipher.js'
-import { createDynamicOAuthClient, D1DynamicOAuthRegistrationStore } from './core/dynamic-oauth-client.js'
 import { createExternalAuthorizationServer } from './core/external-authorization-server.js'
 import { D1ExternalOAuthStore } from './core/external-oauth-store.js'
-import { D1ManagedOAuthCredentials } from './core/managed-oauth.js'
 import { createCloudflareAdapter } from './providers/cloudflare/adapter.js'
 import { loadCloudflareConfig } from './providers/cloudflare/config.js'
 import { cloudflareManifest } from './providers/cloudflare/manifest.js'
@@ -15,9 +14,8 @@ import {
   createCloudflareOAuthProvider,
   D1CloudflareCredentials,
 } from './providers/cloudflare/oauth.js'
-import { createContext7Adapter } from './providers/context7/adapter.js'
-import { loadContext7Config } from './providers/context7/config.js'
-import { context7ProviderScopes, createContext7ExternalAuthorization } from './providers/context7/oauth.js'
+import { context7Definition } from './providers/context7/definition.js'
+import { fastioDefinition } from './providers/fastio/definition.js'
 import { createGitHubAdapter } from './providers/github/adapter.js'
 import { createGitHubConnectionProvider, createGitHubProvider } from './providers/github/client.js'
 import { loadGitHubConfig } from './providers/github/config.js'
@@ -31,9 +29,8 @@ import { D1LinearConnections } from './providers/linear/connections.js'
 import { createLinearCredentialCipher } from './providers/linear/credentials.js'
 import { createLinearExternalAuthorization } from './providers/linear/external-authorization.js'
 import { linearScopes } from './providers/linear/scopes.js'
-import { createTodoistAdapter } from './providers/todoist/adapter.js'
-import { loadTodoistConfig } from './providers/todoist/config.js'
-import { createTodoistExternalAuthorization, todoistProviderScopes } from './providers/todoist/oauth.js'
+import { search1ApiDefinition } from './providers/search1api/definition.js'
+import { todoistDefinition } from './providers/todoist/definition.js'
 import { D1RuntimeState } from './storage/d1-runtime-state.js'
 
 export default {
@@ -43,9 +40,7 @@ export default {
       const config = loadConfig(env, request.url)
       const githubConfig = loadGitHubConfig(env, config)
       const cloudflareConfig = loadCloudflareConfig(env, config)
-      const context7Config = loadContext7Config(env, config)
       const linearConfig = loadLinearConfig(env, config)
-      const todoistConfig = loadTodoistConfig(env, config)
       const state = new D1RuntimeState(env.DB)
       const oauthStore = new D1ExternalOAuthStore(env.DB)
       const signingPrivateJwk = config.oauthSigningPrivateJwk ? JSON.parse(config.oauthSigningPrivateJwk) : undefined
@@ -176,98 +171,29 @@ export default {
           }),
         )
       }
-      if (context7Config.context7CredentialEncryptionKey) {
-        if (!signingPrivateJwk) throw new Error('Context7 external authorization is not configured.')
-        const context7Credentials = new D1ManagedOAuthCredentials(
-          'context7',
-          'Context7',
-          env.DB,
-          createCredentialCipher(context7Config.context7CredentialEncryptionKey),
-        )
-        const context7Provider = createDynamicOAuthClient({
-          providerId: 'context7',
-          clientName: 'Realmroot Context7 Adapter',
-          endpoints: {
-            authorization: `${context7Config.context7OAuthIssuer}/oauth/authorize`,
-            registration: `${context7Config.context7OAuthIssuer}/oauth/register`,
-            token: `${context7Config.context7OAuthIssuer}/oauth/token`,
-            userInfo: `${context7Config.context7OAuthIssuer}/oauth/userinfo`,
-            revocation: `${context7Config.context7OAuthIssuer}/oauth/token/revoke`,
-          },
-          redirectUri: `${config.origin}/oauth/context7/provider/callback`,
-          scopes: context7ProviderScopes,
-          registrationStore: new D1DynamicOAuthRegistrationStore(env.DB),
-          fetcher: fetch,
-        })
-        const context7Authorization = await createExternalAuthorizationServer({
-          origin: config.origin,
-          provider: createContext7ExternalAuthorization({
-            origin: config.origin,
-            provider: context7Provider,
-            credentials: context7Credentials,
-          }),
-          store: oauthStore,
-          signingPrivateJwk,
-          replayStore: state,
-        })
+      const managedProviders = [
+        { definition: context7Definition, credentialEncryptionKey: env.CONTEXT7_CREDENTIAL_ENCRYPTION_KEY },
+        { definition: todoistDefinition, credentialEncryptionKey: env.TODOIST_CREDENTIAL_ENCRYPTION_KEY },
+        { definition: search1ApiDefinition, credentialEncryptionKey: env.SEARCH1API_CREDENTIAL_ENCRYPTION_KEY },
+        { definition: fastioDefinition, credentialEncryptionKey: env.FASTIO_CREDENTIAL_ENCRYPTION_KEY },
+      ]
+      for (const managed of managedProviders) {
+        if (!managed.credentialEncryptionKey) continue
+        if (!signingPrivateJwk) {
+          throw new Error(`${managed.definition.name} external authorization is not configured.`)
+        }
         adapters.push(
-          context7Authorization,
-          createContext7Adapter(context7Config, {
-            authenticator: context7Authorization.authenticator,
-            provider: context7Provider,
-            credentials: context7Credentials,
-            audit: (record) => state.recordAudit(record),
-            fetch,
-          }),
-        )
-      }
-      if (todoistConfig.todoistCredentialEncryptionKey) {
-        if (!signingPrivateJwk) throw new Error('Todoist external authorization is not configured.')
-        const todoistCredentials = new D1ManagedOAuthCredentials(
-          'todoist',
-          'Todoist',
-          env.DB,
-          createCredentialCipher(todoistConfig.todoistCredentialEncryptionKey),
-        )
-        const todoistProvider = createDynamicOAuthClient({
-          providerId: 'todoist',
-          clientName: 'Realmroot Todoist Adapter',
-          endpoints: {
-            authorization: todoistConfig.todoistAuthorizationEndpoint,
-            registration: todoistConfig.todoistRegistrationEndpoint,
-            token: todoistConfig.todoistTokenEndpoint,
-            userInfo: todoistConfig.todoistUserInfoEndpoint,
-          },
-          redirectUri: `${config.origin}/oauth/todoist/provider/callback`,
-          scopes: todoistProviderScopes,
-          authorizationScopeSeparator: ',',
-          authorizationWrapper: {
-            endpoint: todoistConfig.todoistLoginEndpoint,
-            returnUrlParameter: 'success_page',
-          },
-          registrationStore: new D1DynamicOAuthRegistrationStore(env.DB),
-          fetcher: fetch,
-        })
-        const todoistAuthorization = await createExternalAuthorizationServer({
-          origin: config.origin,
-          provider: createTodoistExternalAuthorization({
+          ...(await createConfiguredManagedProvider({
+            definition: managed.definition,
             origin: config.origin,
-            provider: todoistProvider,
-            credentials: todoistCredentials,
-          }),
-          store: oauthStore,
-          signingPrivateJwk,
-          replayStore: state,
-        })
-        adapters.push(
-          todoistAuthorization,
-          createTodoistAdapter(todoistConfig, {
-            authenticator: todoistAuthorization.authenticator,
-            provider: todoistProvider,
-            credentials: todoistCredentials,
+            db: env.DB,
+            credentialEncryptionKey: managed.credentialEncryptionKey,
+            signingPrivateJwk,
+            oauthStore,
+            replayStore: state,
             audit: (record) => state.recordAudit(record),
-            fetch,
-          }),
+            fetcher: fetch,
+          })),
         )
       }
       const app = createApp(adapters)

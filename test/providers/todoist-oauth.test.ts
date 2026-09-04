@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { ExternalOAuthIntent } from '../../src/core/external-oauth-store.js'
-import type { ManagedOAuthClient, ManagedOAuthCredentials } from '../../src/core/managed-oauth.js'
-import { createTodoistExternalAuthorization } from '../../src/providers/todoist/oauth.js'
+import {
+  createManagedOAuthExternalAuthorization,
+  type ManagedOAuthClient,
+  type ManagedOAuthCredentials,
+} from '../../src/core/managed-oauth.js'
+import { todoistDefinition } from '../../src/providers/todoist/definition.js'
 
 describe('Todoist external authorization', () => {
   it('[spec: todoist-adapter/todoist-provider-oauth] resolves identity and supports local-only revocation', async () => {
@@ -32,10 +36,15 @@ describe('Todoist external authorization', () => {
       replace: vi.fn(async () => true),
       revoke: vi.fn(async () => {}),
     }
-    const authorization = createTodoistExternalAuthorization({
+    const authorization = createManagedOAuthExternalAuthorization({
+      id: todoistDefinition.id,
+      name: todoistDefinition.name,
       origin: 'https://adapter.example',
+      agentScopes: Object.keys(todoistDefinition.agentScopes),
+      providerScopes: todoistDefinition.providerScopes,
       provider,
       credentials,
+      identity: todoistDefinition.identity,
     })
     await expect(
       authorization.validateGrant?.({ subject: 'todoist-user-1', scopes: ['tasks:read'], authorizationDetails: [] }),
