@@ -22,6 +22,14 @@ export type DynamicOAuthToken = Readonly<{
   scopes: readonly string[]
 }>
 
+export type DynamicOAuthEndpoints = Readonly<{
+  authorization: string
+  registration: string
+  token: string
+  userInfo: string
+  revocation?: string
+}>
+
 export class D1DynamicOAuthRegistrationStore implements DynamicOAuthRegistrationStore {
   constructor(private readonly db: D1Database) {}
 
@@ -47,25 +55,27 @@ export class D1DynamicOAuthRegistrationStore implements DynamicOAuthRegistration
 export function createDynamicOAuthClient(input: {
   providerId: string
   clientName: string
-  issuer: string
+  endpoints: DynamicOAuthEndpoints
   redirectUri: string
   scopes: readonly string[]
+  authorizationScopeSeparator?: ' ' | ','
   registrationStore: DynamicOAuthRegistrationStore
   fetcher?: typeof fetch
   now?: () => number
 }) {
   const fetcher = input.fetcher ?? fetch
   const now = input.now ?? Date.now
+  const revocationEndpoint = input.endpoints.revocation
 
   return {
     async authorizationUrl(state: string) {
       const verifier = randomVerifier()
       const clientId = await registeredClientId()
-      const url = new URL('/oauth/authorize', input.issuer)
+      const url = new URL(input.endpoints.authorization)
       url.searchParams.set('client_id', clientId)
       url.searchParams.set('redirect_uri', input.redirectUri)
       url.searchParams.set('response_type', 'code')
-      url.searchParams.set('scope', input.scopes.join(' '))
+      url.searchParams.set('scope', input.scopes.join(input.authorizationScopeSeparator ?? ' '))
       url.searchParams.set('state', state)
       url.searchParams.set('code_challenge', await sha256Base64Url(verifier))
       url.searchParams.set('code_challenge_method', 'S256')
@@ -82,17 +92,25 @@ export function createDynamicOAuthClient(input: {
     refresh(refreshToken: string) {
       return tokenRequest({ grant_type: 'refresh_token', refresh_token: refreshToken })
     },
-    async revoke(token: string) {
-      const response = await fetcher(new URL('/oauth/token/revoke', input.issuer), {
-        method: 'POST',
-        headers: { 'content-type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ token, token_type_hint: 'refresh_token', client_id: await registeredClientId() }),
-        signal: AbortSignal.timeout(10_000),
-      })
-      if (!response.ok) throw providerFailure(response, 'OAuth token revocation')
-    },
+    ...(revocationEndpoint
+      ? {
+          async revoke(token: string) {
+            const response = await fetcher(new URL(revocationEndpoint), {
+              method: 'POST',
+              headers: { 'content-type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({
+                token,
+                token_type_hint: 'refresh_token',
+                client_id: await registeredClientId(),
+              }),
+              signal: AbortSignal.timeout(10_000),
+            })
+            if (!response.ok) throw providerFailure(response, 'OAuth token revocation')
+          },
+        }
+      : {}),
     async userInfo(accessToken: string) {
-      const response = await fetcher(new URL('/oauth/userinfo', input.issuer), {
+      const response = await fetcher(new URL(input.endpoints.userInfo), {
         headers: { authorization: `Bearer ${accessToken}` },
         signal: AbortSignal.timeout(10_000),
       })
@@ -104,7 +122,7 @@ export function createDynamicOAuthClient(input: {
   async function registeredClientId() {
     const existing = await input.registrationStore.clientId(input.providerId)
     if (existing) return existing
-    const response = await fetcher(new URL('/oauth/register', input.issuer), {
+    const response = await fetcher(new URL(input.endpoints.registration), {
       method: 'POST',
       headers: { accept: 'application/json', 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -125,7 +143,7 @@ export function createDynamicOAuthClient(input: {
   }
 
   async function tokenRequest(parameters: Record<string, string>): Promise<DynamicOAuthToken> {
-    const response = await fetcher(new URL('/oauth/token', input.issuer), {
+    const response = await fetcher(new URL(input.endpoints.token), {
       method: 'POST',
       headers: { accept: 'application/json', 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ ...parameters, client_id: await registeredClientId() }),
@@ -151,7 +169,7 @@ function randomVerifier() {
 }
 
 function normalizeScopes(value: string | readonly string[]) {
-  const scopes = typeof value === 'string' ? value.split(/\s+/) : value
+  const scopes = typeof value === 'string' ? value.split(/[\s,]+/) : value
   return [...new Set(scopes.filter(Boolean))].sort()
 }
 

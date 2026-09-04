@@ -1,7 +1,8 @@
 import { z } from 'zod'
 import type { CredentialCipher } from '../../core/credential-cipher.js'
-import type { createDynamicOAuthClient, DynamicOAuthToken } from '../../core/dynamic-oauth-client.js'
+import type { DynamicOAuthToken } from '../../core/dynamic-oauth-client.js'
 import type { ExternalProviderAuthorization } from '../../core/external-authorization-server.js'
+import { createManagedOAuthExternalAuthorization, type ManagedOAuthClient } from '../../core/managed-oauth.js'
 import { failedDependency, forbidden } from '../../core/problem.js'
 
 const identitySchema = z
@@ -16,7 +17,7 @@ const identitySchema = z
 export const context7AgentScope = 'documentation:read'
 export const context7ProviderScopes = ['openid', 'profile', 'email', 'offline_access'] as const
 
-export type Context7OAuthClient = ReturnType<typeof createDynamicOAuthClient>
+export type Context7OAuthClient = ManagedOAuthClient
 export type Context7Credential = Readonly<{
   subject: string
   displayName: string
@@ -141,48 +142,19 @@ export function createContext7ExternalAuthorization(input: {
   provider: Context7OAuthClient
   credentials: D1Context7Credentials
 }): ExternalProviderAuthorization {
-  return {
+  return createManagedOAuthExternalAuthorization({
     id: 'context7',
-    resource: `${input.origin}/context7`,
-    scopes: ['openid', 'profile', 'email', 'offline_access', context7AgentScope],
-    async validateGrant({ subject }) {
-      await input.credentials.credential(subject)
-      return true
-    },
-    async revoke(subject) {
-      const credential = await input.credentials.credential(subject)
-      await input.provider.revoke(credential.refreshToken)
-      await input.credentials.revoke(subject)
-    },
-    async begin({ providerState }) {
-      const started = await input.provider.authorizationUrl(providerState)
+    name: 'Context7',
+    origin: input.origin,
+    agentScopes: [context7AgentScope],
+    provider: input.provider,
+    credentials: input.credentials,
+    identity(value) {
+      const identity = identitySchema.parse(value)
       return {
-        url: started.url,
-        stage: 'provider',
-        data: { verifier: await input.credentials.sealVerifier(started.verifier) },
-      }
-    },
-    async complete({ callbackUrl, intent }) {
-      const code = new URL(callbackUrl).searchParams.get('code')
-      if (!code) throw failedDependency('Context7 OAuth callback did not include a code.')
-      const encryptedVerifier = intent.providerData.verifier
-      if (typeof encryptedVerifier !== 'string') throw failedDependency('Context7 OAuth PKCE state is invalid.')
-      const token = await input.provider.exchangeCode(code, await input.credentials.openVerifier(encryptedVerifier))
-      const identity = identitySchema.parse(await input.provider.userInfo(token.accessToken))
-      const resolved = {
         subject: identity.sub,
         displayName: identity.name ?? identity.preferred_username ?? identity.email ?? identity.sub,
       }
-      await input.credentials.upsert(resolved, token)
-      return {
-        type: 'complete',
-        grant: {
-          subject: resolved.subject,
-          displayName: resolved.displayName,
-          scopes: intent.scopes,
-          authorizationDetails: [],
-        },
-      }
     },
-  }
+  })
 }

@@ -70,6 +70,7 @@ identity model has already passed a capability review.
 | Linear | Provider-delegated native App actor | Shared App user with trusted per-operation Agent attribution | 1 | Experimental |
 | Cloudflare | Native service principal | Dedicated account-owned token actor in audit logs | 1 | Design |
 | Context7 | Provider-delegated user | Shared OAuth user grant with Agent-attributed adapter audit | 1 | Experimental |
+| Todoist | Provider-delegated user | Read-only OAuth user grant with Agent-attributed adapter audit | 1 | Experimental |
 | GitLab | Native service principal | Dedicated service account visible in groups, projects, and audit records | 2 | Proposal |
 | Bitbucket | Native service principal | Repository, project, or workspace access-token actor | 2 | Proposal |
 | Vercel | Native service principal | Dedicated integration identity with provider-side audit correlation | 2 | Proposal |
@@ -163,6 +164,7 @@ providers/
   github/       Provider capability report
   cloudflare/   Provider design and implementation
   linear/       Provider design and implementation
+  todoist/      Managed read-only OAuth provider configuration
 docs/
   architecture.md
   github-design.md
@@ -220,6 +222,12 @@ provisioned client ID or client secret: the Adapter dynamically registers a
 public OAuth client and uses S256 PKCE. Set only a base64-encoded 32-byte
 `CONTEXT7_CREDENTIAL_ENCRYPTION_KEY`; the Adapter persists the resulting public
 client ID and encrypts controller credentials in D1.
+
+Todoist exercises the same runtime with provider endpoints on different hosts,
+comma-separated authorization scopes, a provider-specific identity shape, and
+no public-client token revocation. Set only `TODOIST_CREDENTIAL_ENCRYPTION_KEY`;
+the Adapter dynamically registers the public client and publishes read-only
+project and task collections.
 
 Configure the GitHub App callbacks as:
 
