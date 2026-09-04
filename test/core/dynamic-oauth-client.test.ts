@@ -100,6 +100,10 @@ describe('Dynamic OAuth client', () => {
       redirectUri: 'https://adapter.example/oauth/todoist/provider/callback',
       scopes: ['data:read', 'user:read'],
       authorizationScopeSeparator: ',',
+      authorizationWrapper: {
+        endpoint: 'https://app.todoist.com/users/showlogin',
+        returnUrlParameter: 'success_page',
+      },
       registrationStore: store,
       fetcher: fetcher as typeof fetch,
       now: () => 1_000,
@@ -107,8 +111,12 @@ describe('Dynamic OAuth client', () => {
 
     const started = await client.authorizationUrl('todoist-state')
     const authorizationUrl = new URL(started.url)
-    expect(authorizationUrl.origin).toBe('https://app.todoist.com')
-    expect(authorizationUrl.searchParams.get('scope')).toBe('data:read,user:read')
+    expect(authorizationUrl.pathname).toBe('/users/showlogin')
+    const providerUrl = new URL(authorizationUrl.searchParams.get('success_page') ?? '')
+    expect(providerUrl.pathname).toBe('/oauth/authorize')
+    expect(providerUrl.searchParams.get('scope')).toBe('data:read,user:read')
+    expect(providerUrl.searchParams.get('code_challenge')).toHaveLength(43)
+    expect(providerUrl.searchParams.get('code_challenge_method')).toBe('S256')
     expect(client.revoke).toBeUndefined()
     await expect(client.exchangeCode('todoist-code', started.verifier)).resolves.toMatchObject({
       accessToken: 'todoist-access',

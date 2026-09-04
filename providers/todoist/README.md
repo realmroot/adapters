@@ -20,6 +20,10 @@ The provider URLs have production defaults. Set
 the adapter. Optional URL overrides are declared in `wrangler.jsonc` for local
 or test environments.
 
+The authorization URL is wrapped in Todoist's login page with the complete
+OAuth request as `success_page`. Todoist otherwise drops PKCE parameters when
+an unauthenticated browser is redirected through login.
+
 The adapter persists one dynamically registered public client and stores each
 provider credential encrypted in D1. Todoist's current revocation endpoints
 require confidential-client authentication, so disconnecting revokes the

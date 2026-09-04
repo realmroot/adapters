@@ -40,6 +40,7 @@ export default defineConfig({
                 CONTEXT7_OAUTH_ISSUER: 'https://clerk.context7.com',
                 TODOIST_API_ORIGIN: 'https://api.todoist.com/api/v1',
                 TODOIST_AUTHORIZATION_ENDPOINT: 'https://app.todoist.com/oauth/authorize',
+                TODOIST_LOGIN_ENDPOINT: 'https://app.todoist.com/users/showlogin',
                 TODOIST_TOKEN_ENDPOINT: 'https://api.todoist.com/oauth/access_token',
                 TODOIST_REGISTRATION_ENDPOINT: 'https://api.todoist.com/oauth/register',
                 TODOIST_USERINFO_ENDPOINT: 'https://api.todoist.com/api/v1/user',
