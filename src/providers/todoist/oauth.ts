@@ -26,6 +26,7 @@ export function createTodoistExternalAuthorization(input: {
     name: 'Todoist',
     origin: input.origin,
     agentScopes: [todoistAgentScope],
+    providerScopes: todoistProviderScopes,
     provider: input.provider,
     credentials: input.credentials,
     identity(value) {

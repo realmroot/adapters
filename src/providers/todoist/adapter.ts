@@ -7,7 +7,7 @@ import {
 import { createManagedOpenApiAdapter } from '../../core/managed-openapi-adapter.js'
 import type { RealmrootAuthenticator } from '../../core/realmroot-auth.js'
 import type { TodoistAdapterConfig } from './config.js'
-import { todoistAgentScope } from './oauth.js'
+import { todoistAgentScope, todoistProviderScopes } from './oauth.js'
 import { todoistOpenApi } from './openapi.js'
 
 export function createTodoistAdapter(
@@ -75,6 +75,7 @@ export function createTodoistAdapter(
       ...(dependencies.fetch ? { fetch: dependencies.fetch } : {}),
       credential: createManagedOAuthCredentialSource({
         agentScopes: [todoistAgentScope],
+        providerScopes: todoistProviderScopes,
         provider: dependencies.provider,
         credentials: dependencies.credentials,
       }),

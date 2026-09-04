@@ -147,6 +147,7 @@ export function createContext7ExternalAuthorization(input: {
     name: 'Context7',
     origin: input.origin,
     agentScopes: [context7AgentScope],
+    providerScopes: context7ProviderScopes,
     provider: input.provider,
     credentials: input.credentials,
     identity(value) {

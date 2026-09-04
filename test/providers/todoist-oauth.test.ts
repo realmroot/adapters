@@ -37,6 +37,9 @@ describe('Todoist external authorization', () => {
       provider,
       credentials,
     })
+    await expect(
+      authorization.validateGrant?.({ subject: 'todoist-user-1', scopes: ['tasks:read'], authorizationDetails: [] }),
+    ).resolves.toBe(true)
     const intent: ExternalOAuthIntent = {
       id: 'intent-1',
       providerId: 'todoist',

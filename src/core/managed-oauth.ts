@@ -151,6 +151,7 @@ export function createManagedOAuthExternalAuthorization(input: {
   name: string
   origin: string
   agentScopes: readonly string[]
+  providerScopes: readonly string[]
   provider: ManagedOAuthClient
   credentials: ManagedOAuthCredentials
   identity(value: unknown): { subject: string; displayName: string }
@@ -160,8 +161,8 @@ export function createManagedOAuthExternalAuthorization(input: {
     resource: `${input.origin}/${input.id}`,
     scopes: ['openid', 'profile', 'email', 'offline_access', ...input.agentScopes],
     async validateGrant({ subject }) {
-      await input.credentials.credential(subject)
-      return true
+      const credential = await input.credentials.credential(subject)
+      return input.providerScopes.every((scope) => credential.providerScopes.includes(scope))
     },
     async revoke(subject) {
       const credential = await input.credentials.credential(subject)
@@ -201,6 +202,7 @@ export function createManagedOAuthExternalAuthorization(input: {
 
 export function createManagedOAuthCredentialSource(input: {
   agentScopes: readonly string[]
+  providerScopes: readonly string[]
   provider: ManagedOAuthClient
   credentials: ManagedOAuthCredentials
   now?: () => number
@@ -222,6 +224,9 @@ export function createManagedOAuthCredentialSource(input: {
       } else {
         credential = await input.credentials.credential(subject)
       }
+    }
+    if (!input.providerScopes.every((scope) => credential.providerScopes.includes(scope))) {
+      throw forbidden('The upstream OAuth grant does not contain the configured provider scopes.')
     }
     return {
       authorization: `Bearer ${credential.accessToken}`,

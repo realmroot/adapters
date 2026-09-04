@@ -3,7 +3,12 @@ import { createManagedOAuthCredentialSource } from '../../core/managed-oauth.js'
 import { createManagedOpenApiAdapter } from '../../core/managed-openapi-adapter.js'
 import type { RealmrootAuthenticator } from '../../core/realmroot-auth.js'
 import type { Context7AdapterConfig } from './config.js'
-import { type Context7OAuthClient, context7AgentScope, type D1Context7Credentials } from './oauth.js'
+import {
+  type Context7OAuthClient,
+  context7AgentScope,
+  context7ProviderScopes,
+  type D1Context7Credentials,
+} from './oauth.js'
 import { context7OpenApi } from './openapi.js'
 
 export function createContext7Adapter(
@@ -36,6 +41,7 @@ export function createContext7Adapter(
   ] as const
   const credential = createManagedOAuthCredentialSource({
     agentScopes: [context7AgentScope],
+    providerScopes: context7ProviderScopes,
     provider: dependencies.provider,
     credentials: dependencies.credentials,
   })
