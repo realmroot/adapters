@@ -33,7 +33,13 @@ describe('Dynamic OAuth client', () => {
     const client = createDynamicOAuthClient({
       providerId: 'context7',
       clientName: 'Realmroot Context7 Adapter',
-      issuer: 'https://clerk.context7.com',
+      endpoints: {
+        authorization: 'https://clerk.context7.com/oauth/authorize',
+        registration: 'https://clerk.context7.com/oauth/register',
+        token: 'https://clerk.context7.com/oauth/token',
+        userInfo: 'https://clerk.context7.com/oauth/userinfo',
+        revocation: 'https://clerk.context7.com/oauth/token/revoke',
+      },
       redirectUri: 'https://adapter.example/oauth/context7/provider/callback',
       scopes: ['openid', 'offline_access'],
       registrationStore: store,
@@ -61,5 +67,53 @@ describe('Dynamic OAuth client', () => {
     const tokenInit = tokenRequest?.[1] as RequestInit
     expect(String(tokenInit.body)).toContain(`code_verifier=${first.verifier}`)
     expect(String(tokenInit.body)).toContain('client_id=dynamic-client')
+  })
+
+  it('[spec: todoist-adapter/todoist-provider-oauth] supports split endpoints and comma-separated authorization scopes', async () => {
+    const store: DynamicOAuthRegistrationStore = {
+      clientId: vi.fn(async () => null),
+      saveClientId: vi.fn(async (_providerId, value) => value),
+    }
+    const fetcher = vi.fn(async (request: string | URL | Request) => {
+      const url = new URL(request instanceof Request ? request.url : request)
+      if (url.pathname === '/oauth/register') return Response.json({ client_id: 'tdd_dynamic' }, { status: 201 })
+      if (url.pathname === '/oauth/access_token') {
+        return Response.json({
+          access_token: 'todoist-access',
+          refresh_token: 'todoist-refresh',
+          expires_in: 3600,
+          scope: 'data:read,user:read',
+        })
+      }
+      if (url.pathname === '/api/v1/user') return Response.json({ id: 'user-1' })
+      throw new Error(`Unexpected request ${url}`)
+    })
+    const client = createDynamicOAuthClient({
+      providerId: 'todoist',
+      clientName: 'Realmroot Todoist Adapter',
+      endpoints: {
+        authorization: 'https://app.todoist.com/oauth/authorize',
+        registration: 'https://api.todoist.com/oauth/register',
+        token: 'https://api.todoist.com/oauth/access_token',
+        userInfo: 'https://api.todoist.com/api/v1/user',
+      },
+      redirectUri: 'https://adapter.example/oauth/todoist/provider/callback',
+      scopes: ['data:read', 'user:read'],
+      authorizationScopeSeparator: ',',
+      registrationStore: store,
+      fetcher: fetcher as typeof fetch,
+      now: () => 1_000,
+    })
+
+    const started = await client.authorizationUrl('todoist-state')
+    const authorizationUrl = new URL(started.url)
+    expect(authorizationUrl.origin).toBe('https://app.todoist.com')
+    expect(authorizationUrl.searchParams.get('scope')).toBe('data:read,user:read')
+    expect(client.revoke).toBeUndefined()
+    await expect(client.exchangeCode('todoist-code', started.verifier)).resolves.toMatchObject({
+      accessToken: 'todoist-access',
+      refreshToken: 'todoist-refresh',
+      scopes: ['data:read', 'user:read'],
+    })
   })
 })

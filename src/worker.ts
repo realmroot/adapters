@@ -6,6 +6,7 @@ import { createCredentialCipher } from './core/credential-cipher.js'
 import { createDynamicOAuthClient, D1DynamicOAuthRegistrationStore } from './core/dynamic-oauth-client.js'
 import { createExternalAuthorizationServer } from './core/external-authorization-server.js'
 import { D1ExternalOAuthStore } from './core/external-oauth-store.js'
+import { D1ManagedOAuthCredentials } from './core/managed-oauth.js'
 import { createCloudflareAdapter } from './providers/cloudflare/adapter.js'
 import { loadCloudflareConfig } from './providers/cloudflare/config.js'
 import { cloudflareManifest } from './providers/cloudflare/manifest.js'
@@ -34,6 +35,9 @@ import { D1LinearConnections } from './providers/linear/connections.js'
 import { createLinearCredentialCipher } from './providers/linear/credentials.js'
 import { createLinearExternalAuthorization } from './providers/linear/external-authorization.js'
 import { linearScopes } from './providers/linear/scopes.js'
+import { createTodoistAdapter } from './providers/todoist/adapter.js'
+import { loadTodoistConfig } from './providers/todoist/config.js'
+import { createTodoistExternalAuthorization, todoistProviderScopes } from './providers/todoist/oauth.js'
 import { D1RuntimeState } from './storage/d1-runtime-state.js'
 
 export default {
@@ -45,6 +49,7 @@ export default {
       const cloudflareConfig = loadCloudflareConfig(env, config)
       const context7Config = loadContext7Config(env, config)
       const linearConfig = loadLinearConfig(env, config)
+      const todoistConfig = loadTodoistConfig(env, config)
       const state = new D1RuntimeState(env.DB)
       const oauthStore = new D1ExternalOAuthStore(env.DB)
       const signingPrivateJwk = config.oauthSigningPrivateJwk ? JSON.parse(config.oauthSigningPrivateJwk) : undefined
@@ -184,7 +189,13 @@ export default {
         const context7Provider = createDynamicOAuthClient({
           providerId: 'context7',
           clientName: 'Realmroot Context7 Adapter',
-          issuer: context7Config.context7OAuthIssuer,
+          endpoints: {
+            authorization: `${context7Config.context7OAuthIssuer}/oauth/authorize`,
+            registration: `${context7Config.context7OAuthIssuer}/oauth/register`,
+            token: `${context7Config.context7OAuthIssuer}/oauth/token`,
+            userInfo: `${context7Config.context7OAuthIssuer}/oauth/userinfo`,
+            revocation: `${context7Config.context7OAuthIssuer}/oauth/token/revoke`,
+          },
           redirectUri: `${config.origin}/oauth/context7/provider/callback`,
           scopes: context7ProviderScopes,
           registrationStore: new D1DynamicOAuthRegistrationStore(env.DB),
@@ -207,6 +218,51 @@ export default {
             authenticator: context7Authorization.authenticator,
             provider: context7Provider,
             credentials: context7Credentials,
+            audit: (record) => state.recordAudit(record),
+            fetch,
+          }),
+        )
+      }
+      if (todoistConfig.todoistCredentialEncryptionKey) {
+        if (!signingPrivateJwk) throw new Error('Todoist external authorization is not configured.')
+        const todoistCredentials = new D1ManagedOAuthCredentials(
+          'todoist',
+          'Todoist',
+          env.DB,
+          createCredentialCipher(todoistConfig.todoistCredentialEncryptionKey),
+        )
+        const todoistProvider = createDynamicOAuthClient({
+          providerId: 'todoist',
+          clientName: 'Realmroot Todoist Adapter',
+          endpoints: {
+            authorization: todoistConfig.todoistAuthorizationEndpoint,
+            registration: todoistConfig.todoistRegistrationEndpoint,
+            token: todoistConfig.todoistTokenEndpoint,
+            userInfo: todoistConfig.todoistUserInfoEndpoint,
+          },
+          redirectUri: `${config.origin}/oauth/todoist/provider/callback`,
+          scopes: todoistProviderScopes,
+          authorizationScopeSeparator: ',',
+          registrationStore: new D1DynamicOAuthRegistrationStore(env.DB),
+          fetcher: fetch,
+        })
+        const todoistAuthorization = await createExternalAuthorizationServer({
+          origin: config.origin,
+          provider: createTodoistExternalAuthorization({
+            origin: config.origin,
+            provider: todoistProvider,
+            credentials: todoistCredentials,
+          }),
+          store: oauthStore,
+          signingPrivateJwk,
+          replayStore: state,
+        })
+        adapters.push(
+          todoistAuthorization,
+          createTodoistAdapter(todoistConfig, {
+            authenticator: todoistAuthorization.authenticator,
+            provider: todoistProvider,
+            credentials: todoistCredentials,
             audit: (record) => state.recordAudit(record),
             fetch,
           }),

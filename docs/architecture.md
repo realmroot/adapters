@@ -174,6 +174,13 @@ is stabilized. It is expected to contain these cohesive capabilities:
 The application behavior owns these contracts. Provider SDK objects, HTTP
 responses, token formats, and error types remain inside provider adapters.
 
+Managed OpenAPI providers reuse a declarative runtime for explicit operation
+allowlists, OAuth endpoints, scope serialization, encrypted credentials,
+refresh rotation, external authorization, and request forwarding. A new
+provider supplies endpoint configuration, an identity decoder, an OpenAPI
+contract, and an Agent-to-provider scope mapping. Capabilities such as upstream
+revocation remain optional and are declared as readiness gaps when absent.
+
 ## Capability manifest
 
 Every provider will publish a machine-readable, versioned manifest containing

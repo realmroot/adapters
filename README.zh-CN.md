@@ -64,6 +64,7 @@ Agent 能以自己的稳定身份直接进入各种平台。详见
 | Linear | 代理的原生 App actor | 共享 App user，以及逐次操作中的可信 Agent 名称/头像 | 1 | 实验性 |
 | Cloudflare | 原生 service principal | 独立 account-owned token actor 出现在审计日志中 | 1 | 设计中 |
 | Context7 | 代理用户身份 | 共享 OAuth 用户授权，并由 Adapter 审计记录具体 Agent | 1 | 实验性 |
+| Todoist | 代理用户身份 | 只读 OAuth 用户授权，并由 Adapter 审计记录具体 Agent | 1 | 实验性 |
 | GitLab | 原生 service principal | 独立 service account 出现在 group、project 与审计记录中 | 2 | 提案 |
 | Bitbucket | 原生 service principal | repository、project 或 workspace access-token actor | 2 | 提案 |
 | Vercel | 原生 service principal | 独立 integration 身份，并可关联平台侧审计 | 2 | 提案 |

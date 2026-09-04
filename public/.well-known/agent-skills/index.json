@@ -7,6 +7,13 @@
       "description": "Use Context7 through Realmroot Toolbox to resolve a software library and retrieve current, task-relevant documentation without handling Context7 credentials.",
       "url": "/.well-known/agent-skills/context7/SKILL.md",
       "digest": "sha256:4393c50b664853900c0d42b26842fb736be05a89e34d9bfb4b00ef98b69d9869"
+    },
+    {
+      "name": "use-todoist",
+      "type": "skill-md",
+      "description": "Use Todoist through Realmroot Toolbox to list the user's active projects and tasks with controller-approved, read-only Agent authority.",
+      "url": "/.well-known/agent-skills/todoist/SKILL.md",
+      "digest": "sha256:074c2632102ab7d034f579b91c3e49c53da2095a5d9ec6c806bc5cc1ce9a659f"
     }
   ]
 }

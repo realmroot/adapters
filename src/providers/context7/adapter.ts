@@ -1,8 +1,14 @@
 import type { AdapterModule } from '../../core/adapter.js'
+import { createManagedOAuthCredentialSource } from '../../core/managed-oauth.js'
 import { createManagedOpenApiAdapter } from '../../core/managed-openapi-adapter.js'
 import type { RealmrootAuthenticator } from '../../core/realmroot-auth.js'
 import type { Context7AdapterConfig } from './config.js'
-import { type Context7OAuthClient, context7AgentScope, type D1Context7Credentials } from './oauth.js'
+import {
+  type Context7OAuthClient,
+  context7AgentScope,
+  context7ProviderScopes,
+  type D1Context7Credentials,
+} from './oauth.js'
 import { context7OpenApi } from './openapi.js'
 
 export function createContext7Adapter(
@@ -33,6 +39,12 @@ export function createContext7Adapter(
       scopes: [context7AgentScope],
     },
   ] as const
+  const credential = createManagedOAuthCredentialSource({
+    agentScopes: [context7AgentScope],
+    providerScopes: context7ProviderScopes,
+    provider: dependencies.provider,
+    credentials: dependencies.credentials,
+  })
 
   return createManagedOpenApiAdapter(
     {
@@ -68,29 +80,7 @@ export function createContext7Adapter(
       authenticator: dependencies.authenticator,
       audit: dependencies.audit,
       ...(dependencies.fetch ? { fetch: dependencies.fetch } : {}),
-      async credential(subject) {
-        let credential = await dependencies.credentials.credential(subject)
-        if (credential.expiresAt <= Date.now() + 30_000) {
-          const refreshed = await dependencies.provider.refresh(credential.refreshToken)
-          if (await dependencies.credentials.replace(credential, refreshed)) {
-            credential = {
-              ...credential,
-              accessToken: refreshed.accessToken,
-              refreshToken: refreshed.refreshToken ?? credential.refreshToken,
-              expiresAt: refreshed.expiresAt,
-              providerScopes: refreshed.scopes,
-              credentialVersion: credential.credentialVersion + 1,
-            }
-          } else {
-            credential = await dependencies.credentials.credential(subject)
-          }
-        }
-        return {
-          authorization: `Bearer ${credential.accessToken}`,
-          scopes: [context7AgentScope],
-          actorType: 'oauth_delegated_user',
-        }
-      },
+      credential,
     },
   )
 }
