@@ -1,3 +1,4 @@
+import type { JWK } from 'jose'
 import type { AdapterModule } from './adapter.js'
 import { createCredentialCipher } from './credential-cipher.js'
 import {
@@ -42,7 +43,7 @@ export async function createConfiguredManagedProvider(input: {
   origin: string
   db: D1Database
   credentialEncryptionKey: string
-  signingPrivateJwk: JsonWebKey
+  signingPrivateJwk: JWK
   oauthStore: D1ExternalOAuthStore
   replayStore: DpopReplayStore
   audit(record: Record<string, unknown>): Promise<void>
