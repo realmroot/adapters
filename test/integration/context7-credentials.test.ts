@@ -2,7 +2,7 @@ import { env } from 'cloudflare:test'
 import { describe, expect, it } from 'vitest'
 import { createCredentialCipher } from '../../src/core/credential-cipher.js'
 import { D1DynamicOAuthRegistrationStore } from '../../src/core/dynamic-oauth-client.js'
-import { D1Context7Credentials } from '../../src/providers/context7/oauth.js'
+import { D1ManagedOAuthCredentials } from '../../src/core/managed-oauth.js'
 
 describe('Context7 D1 state', () => {
   it('[spec: context7-adapter/context7-provider-oauth] persists one dynamic client and encrypts provider credentials', async () => {
@@ -10,7 +10,9 @@ describe('Context7 D1 state', () => {
     await expect(registrations.saveClientId('context7', 'client-first')).resolves.toBe('client-first')
     await expect(registrations.saveClientId('context7', 'client-racing')).resolves.toBe('client-first')
 
-    const credentials = new D1Context7Credentials(
+    const credentials = new D1ManagedOAuthCredentials(
+      'context7',
+      'Context7',
       env.DB,
       createCredentialCipher('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'),
     )
@@ -25,9 +27,9 @@ describe('Context7 D1 state', () => {
     )
     const row = await env.DB.prepare(
       `SELECT access_token_ciphertext AS accessToken, refresh_token_ciphertext AS refreshToken
-       FROM context7_external_credential WHERE subject = ?`,
+       FROM managed_oauth_credential WHERE provider_id = ? AND subject = ?`,
     )
-      .bind('context7-user')
+      .bind('context7', 'context7-user')
       .first<{ accessToken: string; refreshToken: string }>()
     expect(row?.accessToken).not.toContain('plain-access-token')
     expect(row?.refreshToken).not.toContain('plain-refresh-token')

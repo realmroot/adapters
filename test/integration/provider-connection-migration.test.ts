@@ -177,5 +177,53 @@ describe('Provider connection migration', () => {
         "SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name IN ('external_oauth_client', 'external_oauth_intent', 'external_oauth_code', 'external_oauth_refresh', 'external_oauth_access', 'cloudflare_external_credential')",
       ).first(),
     ).resolves.toEqual({ count: 6 })
+
+    const managedOAuthBaseline = env.TEST_MIGRATIONS.slice(8, 11)
+    const unifiedManagedOAuthCredentials = env.TEST_MIGRATIONS.slice(11, 12)
+    expect(managedOAuthBaseline).toHaveLength(3)
+    expect(unifiedManagedOAuthCredentials).toHaveLength(1)
+    await applyD1Migrations(env.MIGRATION_DB, managedOAuthBaseline)
+    await env.MIGRATION_DB.prepare(
+      `INSERT INTO context7_external_credential
+        (subject, display_name, access_token_ciphertext, refresh_token_ciphertext, token_expires_at,
+         provider_scope_json, credential_version, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        'context7-user',
+        'Context User',
+        'sealed-access',
+        'sealed-refresh',
+        10_000,
+        '["openid","offline_access"]',
+        3,
+        now,
+      )
+      .run()
+
+    await applyD1Migrations(env.MIGRATION_DB, unifiedManagedOAuthCredentials)
+    await expect(
+      env.MIGRATION_DB.prepare(
+        `SELECT provider_id AS providerId, subject, display_name AS displayName,
+                access_token_ciphertext AS accessToken, refresh_token_ciphertext AS refreshToken,
+                credential_version AS credentialVersion
+         FROM managed_oauth_credential WHERE provider_id = ? AND subject = ?`,
+      )
+        .bind('context7', 'context7-user')
+        .first(),
+    ).resolves.toEqual({
+      providerId: 'context7',
+      subject: 'context7-user',
+      displayName: 'Context User',
+      accessToken: 'sealed-access',
+      refreshToken: 'sealed-refresh',
+      credentialVersion: 3,
+    })
+
+    await expect(
+      env.MIGRATION_DB.prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'context7_external_credential'",
+      ).first(),
+    ).resolves.toBeNull()
   })
 })
