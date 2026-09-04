@@ -30,6 +30,11 @@ export type DynamicOAuthEndpoints = Readonly<{
   revocation?: string
 }>
 
+export type DynamicOAuthAuthorizationWrapper = Readonly<{
+  endpoint: string
+  returnUrlParameter: string
+}>
+
 export class D1DynamicOAuthRegistrationStore implements DynamicOAuthRegistrationStore {
   constructor(private readonly db: D1Database) {}
 
@@ -59,6 +64,7 @@ export function createDynamicOAuthClient(input: {
   redirectUri: string
   scopes: readonly string[]
   authorizationScopeSeparator?: ' ' | ','
+  authorizationWrapper?: DynamicOAuthAuthorizationWrapper
   registrationStore: DynamicOAuthRegistrationStore
   fetcher?: typeof fetch
   now?: () => number
@@ -79,7 +85,11 @@ export function createDynamicOAuthClient(input: {
       url.searchParams.set('state', state)
       url.searchParams.set('code_challenge', await sha256Base64Url(verifier))
       url.searchParams.set('code_challenge_method', 'S256')
-      return { url: url.toString(), verifier }
+      const wrapper = input.authorizationWrapper
+      if (!wrapper) return { url: url.toString(), verifier }
+      const wrapped = new URL(wrapper.endpoint)
+      wrapped.searchParams.set(wrapper.returnUrlParameter, url.toString())
+      return { url: wrapped.toString(), verifier }
     },
     exchangeCode(code: string, verifier: string) {
       return tokenRequest({

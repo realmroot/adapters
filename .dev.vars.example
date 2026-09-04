@@ -18,6 +18,7 @@ CONTEXT7_API_ORIGIN=https://context7.com/api
 CONTEXT7_OAUTH_ISSUER=https://clerk.context7.com
 CONTEXT7_CREDENTIAL_ENCRYPTION_KEY=replace-with-base64-encoded-32-byte-key
 TODOIST_CREDENTIAL_ENCRYPTION_KEY=replace-with-base64-encoded-32-byte-key
+TODOIST_LOGIN_ENDPOINT=https://app.todoist.com/users/showlogin
 LINEAR_API_ORIGIN=https://api.linear.app
 LINEAR_AUTHORIZATION_ORIGIN=https://linear.app
 LINEAR_CLIENT_ID=replace-with-linear-oauth-client-id

@@ -243,6 +243,10 @@ export default {
           redirectUri: `${config.origin}/oauth/todoist/provider/callback`,
           scopes: todoistProviderScopes,
           authorizationScopeSeparator: ',',
+          authorizationWrapper: {
+            endpoint: todoistConfig.todoistLoginEndpoint,
+            returnUrlParameter: 'success_page',
+          },
           registrationStore: new D1DynamicOAuthRegistrationStore(env.DB),
           fetcher: fetch,
         })

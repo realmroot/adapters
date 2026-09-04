@@ -4,6 +4,7 @@ import type { AppConfig } from '../../config.js'
 const environmentSchema = z.object({
   TODOIST_API_ORIGIN: z.url().default('https://api.todoist.com/api/v1'),
   TODOIST_AUTHORIZATION_ENDPOINT: z.url().default('https://app.todoist.com/oauth/authorize'),
+  TODOIST_LOGIN_ENDPOINT: z.url().default('https://app.todoist.com/users/showlogin'),
   TODOIST_TOKEN_ENDPOINT: z.url().default('https://api.todoist.com/oauth/access_token'),
   TODOIST_REGISTRATION_ENDPOINT: z.url().default('https://api.todoist.com/oauth/register'),
   TODOIST_USERINFO_ENDPOINT: z.url().default('https://api.todoist.com/api/v1/user'),
@@ -13,6 +14,7 @@ const environmentSchema = z.object({
 export type TodoistAdapterConfig = AppConfig & {
   todoistApiOrigin: string
   todoistAuthorizationEndpoint: string
+  todoistLoginEndpoint: string
   todoistTokenEndpoint: string
   todoistRegistrationEndpoint: string
   todoistUserInfoEndpoint: string
@@ -25,6 +27,7 @@ export function loadTodoistConfig(environment: unknown, config: AppConfig): Todo
     ...config,
     todoistApiOrigin: parsed.TODOIST_API_ORIGIN.replace(/\/+$/, ''),
     todoistAuthorizationEndpoint: parsed.TODOIST_AUTHORIZATION_ENDPOINT,
+    todoistLoginEndpoint: parsed.TODOIST_LOGIN_ENDPOINT,
     todoistTokenEndpoint: parsed.TODOIST_TOKEN_ENDPOINT,
     todoistRegistrationEndpoint: parsed.TODOIST_REGISTRATION_ENDPOINT,
     todoistUserInfoEndpoint: parsed.TODOIST_USERINFO_ENDPOINT,
