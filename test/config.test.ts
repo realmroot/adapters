@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { loadConfig } from '../src/config.js'
+import { loadCloudflareConfig } from '../src/providers/cloudflare/config.js'
 import { loadGitHubConfig } from '../src/providers/github/config.js'
 import { loadLinearConfig } from '../src/providers/linear/config.js'
 
@@ -20,6 +21,11 @@ describe('adapter Worker configuration', () => {
       LINEAR_CLIENT_SECRET: 'linear-secret',
       LINEAR_CREDENTIAL_ENCRYPTION_KEY: 'linear-encryption-key',
       LINEAR_WEBHOOK_SECRET: 'linear-webhook-secret',
+      CLOUDFLARE_API_ORIGIN: 'https://untrusted-cloudflare-api.example/',
+      CLOUDFLARE_AUTHORIZATION_ORIGIN: 'https://untrusted-cloudflare.example/',
+      CLOUDFLARE_CLIENT_ID: 'cloudflare-client',
+      CLOUDFLARE_CLIENT_SECRET: 'cloudflare-secret',
+      CLOUDFLARE_CREDENTIAL_ENCRYPTION_KEY: 'cloudflare-encryption-key',
     }
     const config = loadConfig(environment, 'https://adapter.example/health')
 
@@ -43,6 +49,12 @@ describe('adapter Worker configuration', () => {
       linearClientSecret: 'linear-secret',
       linearCredentialEncryptionKey: 'linear-encryption-key',
       linearWebhookSecret: 'linear-webhook-secret',
+    })
+    expect(loadCloudflareConfig(environment, config)).toMatchObject({
+      cloudflareApiOrigin: 'https://api.cloudflare.com/client/v4',
+      authorizationOrigin: 'https://dash.cloudflare.com',
+      clientId: 'cloudflare-client',
+      clientSecret: 'cloudflare-secret',
     })
   })
 
