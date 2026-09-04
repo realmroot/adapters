@@ -1,14 +1,9 @@
 import type { AdapterModule } from '../../core/adapter.js'
-import { createManagedOAuthCredentialSource } from '../../core/managed-oauth.js'
+import { createManagedOAuthCredentialSource, type ManagedOAuthCredentials } from '../../core/managed-oauth.js'
 import { createManagedOpenApiAdapter } from '../../core/managed-openapi-adapter.js'
 import type { RealmrootAuthenticator } from '../../core/realmroot-auth.js'
 import type { Context7AdapterConfig } from './config.js'
-import {
-  type Context7OAuthClient,
-  context7AgentScope,
-  context7ProviderScopes,
-  type D1Context7Credentials,
-} from './oauth.js'
+import { type Context7OAuthClient, context7AgentScope, context7ProviderScopes } from './oauth.js'
 import { context7OpenApi } from './openapi.js'
 
 export function createContext7Adapter(
@@ -16,7 +11,7 @@ export function createContext7Adapter(
   dependencies: {
     authenticator: RealmrootAuthenticator
     provider: Context7OAuthClient
-    credentials: D1Context7Credentials
+    credentials: ManagedOAuthCredentials
     audit(record: Record<string, unknown>): Promise<void>
     fetch?: typeof fetch
   },

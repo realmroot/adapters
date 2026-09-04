@@ -17,11 +17,7 @@ import {
 } from './providers/cloudflare/oauth.js'
 import { createContext7Adapter } from './providers/context7/adapter.js'
 import { loadContext7Config } from './providers/context7/config.js'
-import {
-  context7ProviderScopes,
-  createContext7ExternalAuthorization,
-  D1Context7Credentials,
-} from './providers/context7/oauth.js'
+import { context7ProviderScopes, createContext7ExternalAuthorization } from './providers/context7/oauth.js'
 import { createGitHubAdapter } from './providers/github/adapter.js'
 import { createGitHubConnectionProvider, createGitHubProvider } from './providers/github/client.js'
 import { loadGitHubConfig } from './providers/github/config.js'
@@ -182,7 +178,9 @@ export default {
       }
       if (context7Config.context7CredentialEncryptionKey) {
         if (!signingPrivateJwk) throw new Error('Context7 external authorization is not configured.')
-        const context7Credentials = new D1Context7Credentials(
+        const context7Credentials = new D1ManagedOAuthCredentials(
+          'context7',
+          'Context7',
           env.DB,
           createCredentialCipher(context7Config.context7CredentialEncryptionKey),
         )
