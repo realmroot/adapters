@@ -10,21 +10,7 @@
   "vars": {
     "REALMROOT_ISSUER": "https://id.realmroot.dev/api/auth",
     "REALMROOT_JWKS_URL": "https://id.realmroot.dev/api/auth/jwks",
-    "REALMROOT_AGENT_PROFILE_URI_TEMPLATE": "https://id.realmroot.dev/api/public/agents/{subject}",
-    "GITHUB_API_ORIGIN": "https://api.github.com",
-    "GITHUB_UPLOADS_ORIGIN": "https://uploads.github.com",
-    "LINEAR_API_ORIGIN": "https://api.linear.app",
-    "LINEAR_AUTHORIZATION_ORIGIN": "https://linear.app",
-    "CLOUDFLARE_API_ORIGIN": "https://api.cloudflare.com/client/v4",
-    "CLOUDFLARE_AUTHORIZATION_ORIGIN": "https://dash.cloudflare.com",
-    "CONTEXT7_API_ORIGIN": "https://context7.com/api",
-    "CONTEXT7_OAUTH_ISSUER": "https://clerk.context7.com",
-    "TODOIST_API_ORIGIN": "https://api.todoist.com/api/v1",
-    "TODOIST_AUTHORIZATION_ENDPOINT": "https://app.todoist.com/oauth/authorize",
-    "TODOIST_LOGIN_ENDPOINT": "https://app.todoist.com/users/showlogin",
-    "TODOIST_TOKEN_ENDPOINT": "https://api.todoist.com/oauth/access_token",
-    "TODOIST_REGISTRATION_ENDPOINT": "https://api.todoist.com/oauth/register",
-    "TODOIST_USERINFO_ENDPOINT": "https://api.todoist.com/api/v1/user"
+    "REALMROOT_AGENT_PROFILE_URI_TEMPLATE": "https://id.realmroot.dev/api/public/agents/{subject}"
   },
   "assets": { "directory": "./public" },
   "secrets": {
@@ -43,7 +29,9 @@
       "CLOUDFLARE_CLIENT_SECRET",
       "CLOUDFLARE_CREDENTIAL_ENCRYPTION_KEY",
       "CONTEXT7_CREDENTIAL_ENCRYPTION_KEY",
-      "TODOIST_CREDENTIAL_ENCRYPTION_KEY"
+      "TODOIST_CREDENTIAL_ENCRYPTION_KEY",
+      "SEARCH1API_CREDENTIAL_ENCRYPTION_KEY",
+      "FASTIO_CREDENTIAL_ENCRYPTION_KEY"
     ]
   },
   "d1_databases": [
