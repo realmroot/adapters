@@ -11,3 +11,7 @@ dist/
 .wrangler/
 *.pem
 *.cpuprofile
+
+public/console/
+public/index.html
+.console-types/
