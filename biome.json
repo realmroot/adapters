@@ -10,7 +10,10 @@
       "!!public/cloudflare/openapi.json",
       "!!providers/cloudflare/exclusions.json",
       "!!providers/cloudflare/oauth-scopes.json",
-      "!!src/providers/cloudflare/operation-permissions.ts"
+      "!!src/providers/cloudflare/operation-permissions.ts",
+      "!!public/console",
+      "!!public/index.html",
+      "!!.console-types"
     ]
   },
   "formatter": {
@@ -21,7 +24,9 @@
   },
   "linter": {
     "enabled": true,
-    "rules": { "preset": "recommended" }
+    "rules": {
+      "preset": "recommended"
+    }
   },
   "javascript": {
     "formatter": {
