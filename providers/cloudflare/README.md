@@ -53,6 +53,24 @@ response without automatic write retries. Audit stores only the Agent,
 operation, path template, selected scope, status, request ID, CF-Ray, and
 duration.
 
+## Native Cloudflare commands
+
+The Resource advertises both Wrangler and `cf`. Run either through Realmroot
+to use the Agent's approved Cloudflare authority:
+
+```text
+realmroot exec cloudflare -- cf zones list
+realmroot exec cloudflare -- npx cf zones list
+realmroot exec cloudflare -- wrangler deployments list
+```
+
+The CLI sets a process-local `CLOUDFLARE_API_TOKEN` and
+`CLOUDFLARE_API_BASE_URL`. Cloudflare API v4 requests go through the local
+broker and the Adapter's published operation and scope checks. Commands that
+use an unpublished API operation fail at the Adapter. `cf` is currently in
+open beta; commands using other Cloudflare origins or local-only services are
+outside this API v4 broker contract.
+
 ## Regeneration
 
 Set `CLOUDFLARE_API_TOKEN` only for the generator process and run:

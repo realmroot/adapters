@@ -35,11 +35,14 @@ describe('Cloudflare adapter', () => {
     expect(url.searchParams.get('scope')).toBe('openid offline_access d1.read')
   })
 
-  it('[spec: cloudflare-adapter/cloudflare-native-tool-discovery] advertises Wrangler execution', async () => {
+  it('[spec: cloudflare-adapter/cloudflare-native-tool-discovery] advertises Wrangler and cf execution', async () => {
     const { app } = fixture()
     const response = await app.request('/cloudflare')
     await expect(response.json()).resolves.toMatchObject({
-      toolIntegrations: [{ id: 'wrangler', executables: ['wrangler', 'npx', 'pnpm'], protocol: 'cloudflare-api-base' }],
+      toolIntegrations: [
+        { id: 'wrangler', executables: ['wrangler', 'npx', 'pnpm'], protocol: 'cloudflare-api-base' },
+        { id: 'cf', executables: ['cf', 'npx', 'pnpm'], protocol: 'cloudflare-api-base' },
+      ],
     })
   })
 

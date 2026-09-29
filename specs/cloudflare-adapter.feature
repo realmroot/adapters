@@ -30,9 +30,9 @@ Feature: Cloudflare OAuth REST adapter
     And no write request is automatically retried
 
   @journey:cloudflare-native-tool-discovery @entrypoint:http
-  Scenario: Cloudflare advertises Wrangler execution
+  Scenario: Cloudflare advertises Wrangler and cf execution
     When the Agent reads the Cloudflare Resource representation
-    Then it advertises a Wrangler integration with its supported executable names
+    Then it advertises Wrangler and cf integrations with their supported executable names
     And the integration identifies the local API-base broker protocol it requires
     And Wrangler-required Cloudflare routes missing from the official schema are explicitly pinned and scoped
     And Wrangler can inspect, deploy, and delete a Worker through the broker
