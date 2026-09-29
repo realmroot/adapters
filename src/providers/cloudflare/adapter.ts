@@ -83,6 +83,7 @@ export function createCloudflareAdapter(
           authorizationModel: 'external',
           toolIntegrations: [
             { id: 'wrangler', executables: ['wrangler', 'npx', 'pnpm'], protocol: 'cloudflare-api-base' },
+            { id: 'cf', executables: ['cf', 'npx', 'pnpm'], protocol: 'cloudflare-api-base' },
           ],
         },
         200,
@@ -94,10 +95,10 @@ export function createCloudflareAdapter(
     app.get('/cloudflare/user/tokens/verify', async (c) => {
       const principal = await dependencies.authenticator.authenticate(c.req.raw, resource)
       const requiredScope = [...principal.scopes].sort().find((scope) => scope in cloudflareManifest.scopes)
-      if (!requiredScope) throw forbidden('The Agent token has no approved Cloudflare scope for Wrangler verification.')
+      if (!requiredScope) throw forbidden('The Agent token has no approved Cloudflare scope for CLI verification.')
       const provider = await credential(principal.subject)
       if (!provider.scopes.includes(requiredScope))
-        throw forbidden('The Cloudflare OAuth grant does not authorize Wrangler verification.')
+        throw forbidden('The Cloudflare OAuth grant does not authorize CLI verification.')
       await dependencies.audit({
         event: 'provider.operation',
         requestId: c.get('requestId'),
@@ -122,10 +123,10 @@ export function createCloudflareAdapter(
     app.get('/cloudflare/user', async (c) => {
       const principal = await dependencies.authenticator.authenticate(c.req.raw, resource)
       const requiredScope = [...principal.scopes].sort().find((scope) => scope in cloudflareManifest.scopes)
-      if (!requiredScope) throw forbidden('The Agent token has no approved Cloudflare authority for Wrangler identity.')
+      if (!requiredScope) throw forbidden('The Agent token has no approved Cloudflare authority for CLI identity.')
       const provider = await credential(principal.subject)
       if (!provider.scopes.includes(requiredScope))
-        throw forbidden('The Cloudflare OAuth grant does not authorize Wrangler identity.')
+        throw forbidden('The Cloudflare OAuth grant does not authorize CLI identity.')
       return c.json({
         success: true,
         errors: [],
@@ -162,7 +163,7 @@ export function createCloudflareAdapter(
       const principal = await dependencies.authenticator.authenticate(c.req.raw, resource)
       const hasApprovedScope = [...principal.scopes].some((scope) => scope in cloudflareManifest.scopes)
       if (!hasApprovedScope)
-        throw forbidden('The Agent token has no approved Cloudflare authority for Wrangler membership lookup.')
+        throw forbidden('The Agent token has no approved Cloudflare authority for CLI membership lookup.')
       return c.json({ success: true, errors: [], messages: [], result: [], result_info: { count: 0 } })
     })
     app.all('/cloudflare/*', async (c) => {
