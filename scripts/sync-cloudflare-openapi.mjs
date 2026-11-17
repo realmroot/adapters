@@ -111,8 +111,8 @@ for (const operation of wranglerCompatibility.operations) {
     security: operation.scopes.map((scope) => ({ realmrootOidc: [scope] })),
     'x-realmroot-compatibility-source': {
       package: wranglerCompatibility.package,
-      version: wranglerCompatibility.version,
-      source: wranglerCompatibility.source,
+      version: operation.version ?? wranglerCompatibility.version,
+      source: operation.source ?? wranglerCompatibility.source,
       ...(operation.officialOperationId ? { officialOperationId: operation.officialOperationId } : {}),
     },
   }

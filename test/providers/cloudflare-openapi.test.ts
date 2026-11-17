@@ -18,7 +18,7 @@ describe('generated Cloudflare OpenAPI', () => {
     expect(source.commit).toMatch(/^[a-f0-9]{40}$/)
     expect(source.openapiSha256).toMatch(/^[a-f0-9]{64}$/)
     expect(catalog.sha256).toBe(createHash('sha256').update(JSON.stringify(catalog.scopes)).digest('hex'))
-    expect(cloudflareOperations).toHaveLength(2670)
+    expect(cloudflareOperations).toHaveLength(2681)
     expect(exclusions.operations).toHaveLength(626)
     const additiveCompatibilityOperations = wranglerCompatibility.operations.filter(
       (operation: { officialOperationId?: string }) => !operation.officialOperationId,
@@ -151,6 +151,39 @@ describe('generated Cloudflare OpenAPI', () => {
       expect(openapi.paths[path]?.[method.toLowerCase()]['x-realmroot-compatibility-source']).toMatchObject({
         package: 'wrangler',
         version: '4.120.0',
+      })
+    }
+  })
+
+  it('[spec: cloudflare-adapter/cloudflare-native-tool-discovery] publishes the Wrangler Worker Previews operations', async () => {
+    const openapi = await json('public/cloudflare/openapi.json')
+    const read = ['workers-scripts.read', 'workers-scripts.write', 'workers-tail.read']
+    const write = ['workers-scripts.write']
+    const previews = '/accounts/{account_id}/workers/workers/{worker_id}/previews'
+    const expected = [
+      ['GET', previews, read],
+      ['POST', previews, write],
+      ['GET', `${previews}/{preview_id}`, read],
+      ['PUT', `${previews}/{preview_id}`, write],
+      ['PATCH', `${previews}/{preview_id}`, write],
+      ['DELETE', `${previews}/{preview_id}`, write],
+      ['GET', `${previews}/{preview_id}/deployments`, read],
+      ['POST', `${previews}/{preview_id}/deployments`, write],
+      ['PATCH', `${previews}/{preview_id}/deployments/latest`, write],
+      ['GET', `${previews}/{preview_id}/deployments/{deployment_id}`, read],
+      ['DELETE', `${previews}/{preview_id}/deployments/{deployment_id}`, write],
+    ] as const
+
+    for (const [method, path, scopes] of expected) {
+      expect(cloudflareOperations.find((operation) => operation.method === method && operation.path === path)).toEqual(
+        expect.objectContaining({ method, path, scopes }),
+      )
+      expect(openapi.paths[path]?.[method.toLowerCase()].security).toEqual(
+        scopes.map((scope) => ({ realmrootOidc: [scope] })),
+      )
+      expect(openapi.paths[path]?.[method.toLowerCase()]['x-realmroot-compatibility-source']).toMatchObject({
+        package: 'wrangler',
+        version: '4.158.0',
       })
     }
   })

@@ -118,6 +118,94 @@
       "operationId": "wrangler-workers-patch-script-secrets-bulk",
       "officialOperationId": "worker-patch-script-secrets-bulk",
       "scopes": ["workers-scripts.write"]
+    },
+    {
+      "method": "GET",
+      "path": "/accounts/{account_id}/workers/workers/{worker_id}/previews",
+      "operationId": "wrangler-workers-list-previews",
+      "version": "4.158.0",
+      "source": "https://github.com/cloudflare/workers-sdk/blob/wrangler%404.158.0/packages/deploy-helpers/src/preview/api.ts",
+      "scopes": ["workers-scripts.read", "workers-scripts.write", "workers-tail.read"]
+    },
+    {
+      "method": "POST",
+      "path": "/accounts/{account_id}/workers/workers/{worker_id}/previews",
+      "operationId": "wrangler-workers-create-preview",
+      "version": "4.158.0",
+      "source": "https://github.com/cloudflare/workers-sdk/blob/wrangler%404.158.0/packages/deploy-helpers/src/preview/api.ts",
+      "scopes": ["workers-scripts.write"]
+    },
+    {
+      "method": "GET",
+      "path": "/accounts/{account_id}/workers/workers/{worker_id}/previews/{preview_id}",
+      "operationId": "wrangler-workers-get-preview",
+      "version": "4.158.0",
+      "source": "https://github.com/cloudflare/workers-sdk/blob/wrangler%404.158.0/packages/deploy-helpers/src/preview/api.ts",
+      "scopes": ["workers-scripts.read", "workers-scripts.write", "workers-tail.read"]
+    },
+    {
+      "method": "PUT",
+      "path": "/accounts/{account_id}/workers/workers/{worker_id}/previews/{preview_id}",
+      "operationId": "wrangler-workers-update-preview",
+      "version": "4.158.0",
+      "source": "https://github.com/cloudflare/workers-sdk/blob/wrangler%404.158.0/packages/deploy-helpers/src/preview/api.ts",
+      "scopes": ["workers-scripts.write"]
+    },
+    {
+      "method": "PATCH",
+      "path": "/accounts/{account_id}/workers/workers/{worker_id}/previews/{preview_id}",
+      "operationId": "wrangler-workers-edit-preview",
+      "version": "4.158.0",
+      "source": "https://github.com/cloudflare/workers-sdk/blob/wrangler%404.158.0/packages/deploy-helpers/src/preview/api.ts",
+      "scopes": ["workers-scripts.write"]
+    },
+    {
+      "method": "DELETE",
+      "path": "/accounts/{account_id}/workers/workers/{worker_id}/previews/{preview_id}",
+      "operationId": "wrangler-workers-delete-preview",
+      "version": "4.158.0",
+      "source": "https://github.com/cloudflare/workers-sdk/blob/wrangler%404.158.0/packages/deploy-helpers/src/preview/api.ts",
+      "scopes": ["workers-scripts.write"]
+    },
+    {
+      "method": "GET",
+      "path": "/accounts/{account_id}/workers/workers/{worker_id}/previews/{preview_id}/deployments",
+      "operationId": "wrangler-workers-list-preview-deployments",
+      "version": "4.158.0",
+      "source": "https://github.com/cloudflare/workers-sdk/blob/wrangler%404.158.0/packages/deploy-helpers/src/preview/api.ts",
+      "scopes": ["workers-scripts.read", "workers-scripts.write", "workers-tail.read"]
+    },
+    {
+      "method": "POST",
+      "path": "/accounts/{account_id}/workers/workers/{worker_id}/previews/{preview_id}/deployments",
+      "operationId": "wrangler-workers-create-preview-deployment",
+      "version": "4.158.0",
+      "source": "https://github.com/cloudflare/workers-sdk/blob/wrangler%404.158.0/packages/deploy-helpers/src/preview/api.ts",
+      "scopes": ["workers-scripts.write"]
+    },
+    {
+      "method": "PATCH",
+      "path": "/accounts/{account_id}/workers/workers/{worker_id}/previews/{preview_id}/deployments/latest",
+      "operationId": "wrangler-workers-patch-latest-preview-deployment",
+      "version": "4.158.0",
+      "source": "https://github.com/cloudflare/workers-sdk/blob/wrangler%404.158.0/packages/deploy-helpers/src/preview/api.ts",
+      "scopes": ["workers-scripts.write"]
+    },
+    {
+      "method": "GET",
+      "path": "/accounts/{account_id}/workers/workers/{worker_id}/previews/{preview_id}/deployments/{deployment_id}",
+      "operationId": "wrangler-workers-get-preview-deployment",
+      "version": "4.158.0",
+      "source": "https://github.com/cloudflare/workers-sdk/blob/wrangler%404.158.0/packages/deploy-helpers/src/preview/api.ts",
+      "scopes": ["workers-scripts.read", "workers-scripts.write", "workers-tail.read"]
+    },
+    {
+      "method": "DELETE",
+      "path": "/accounts/{account_id}/workers/workers/{worker_id}/previews/{preview_id}/deployments/{deployment_id}",
+      "operationId": "wrangler-workers-delete-preview-deployment",
+      "version": "4.158.0",
+      "source": "https://github.com/cloudflare/workers-sdk/blob/wrangler%404.158.0/packages/deploy-helpers/src/preview/api.ts",
+      "scopes": ["workers-scripts.write"]
     }
   ]
 }

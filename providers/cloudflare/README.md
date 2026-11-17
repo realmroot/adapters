@@ -29,9 +29,16 @@ publishes only operations whose OAuth scope alternatives can be proven.
 Current pinned inventory:
 
 - official operations: 3,286;
-- published OAuth operations: 2,652;
-- fail-closed exclusions: 634;
+- published OAuth operations: 2,681, including Wrangler-required routes pinned
+  in `wrangler-compatibility-operations.json`;
+- fail-closed exclusions: 626;
 - Restish OpenAPI size: about 6.3 MB.
+
+Wrangler routes missing from the pinned schema, such as the Worker Previews API
+used by `wrangler preview`, are pinned in `wrangler-compatibility-operations.json`
+with the Wrangler version that calls them and the scopes of the matching
+Workers operations (`workers-scripts.read`, `workers-scripts.write`, or
+`workers-tail.read` to read; `workers-scripts.write` to change).
 
 `exclusions.json` records every unpublished method, path, operation ID,
 permission metadata, and reason. Most exclusions have no `x-api-token-group`;
