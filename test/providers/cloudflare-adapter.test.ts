@@ -291,6 +291,50 @@ describe('Cloudflare adapter', () => {
     }
   })
 
+  it('[spec: cloudflare-adapter/cloudflare-native-tool-discovery] forwards the Wrangler Worker Previews operations', async () => {
+    const previews = '/accounts/account-1/workers/workers/worker-1/previews'
+    const operations = [
+      ['GET', previews, 'workers-scripts.read'],
+      ['POST', `${previews}?ignore_base_config=true`, 'workers-scripts.write'],
+      ['GET', `${previews}/feature%2Fbranch`, 'workers-tail.read'],
+      ['PUT', `${previews}/feature-branch`, 'workers-scripts.write'],
+      ['PATCH', `${previews}/feature-branch`, 'workers-scripts.write'],
+      ['DELETE', `${previews}/feature-branch`, 'workers-scripts.write'],
+      ['GET', `${previews}/feature-branch/deployments`, 'workers-scripts.read'],
+      ['POST', `${previews}/feature-branch/deployments`, 'workers-scripts.write'],
+      ['GET', `${previews}/feature-branch/deployments/latest`, 'workers-scripts.read'],
+      ['PATCH', `${previews}/feature-branch/deployments/latest`, 'workers-scripts.write'],
+      ['DELETE', `${previews}/feature-branch/deployments/deployment-1`, 'workers-scripts.write'],
+    ] as const
+
+    for (const [method, path, scope] of operations) {
+      const upstream = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const request = input instanceof Request ? input : new Request(input, init)
+        expect(request.url).toBe(`https://api.cloudflare.com/client/v4${path}`)
+        expect(request.method).toBe(method)
+        return Response.json({ success: true, result: {} })
+      })
+      const { app, credential } = fixture({ upstream, principal: principal([scope]) })
+
+      const response = await app.request(`/cloudflare${path}`, {
+        method,
+        ...(method === 'GET' || method === 'DELETE' ? {} : { body: '{}' }),
+      })
+
+      expect(response.status).toBe(200)
+      expect(credential).toHaveBeenCalledWith('user-1')
+      expect(upstream).toHaveBeenCalledTimes(1)
+    }
+
+    const readOnly = fixture({ principal: principal(['workers-scripts.read']) })
+    const denied = await readOnly.app.request(`/cloudflare${previews}`, { method: 'POST', body: '{}' })
+    expect(denied.status).toBe(403)
+    expect(denied.headers.get('www-authenticate')).toBe(
+      'DPoP error="insufficient_scope", scope="workers-scripts.write"',
+    )
+    expect(readOnly.credential).not.toHaveBeenCalled()
+  })
+
   it('[spec: cloudflare-adapter/cloudflare-native-tool-scope-challenge] fails closed and reports operation scope alternatives', async () => {
     const unpublished = fixture()
     expect((await unpublished.app.request('/cloudflare/not-an-operation')).status).toBe(404)
